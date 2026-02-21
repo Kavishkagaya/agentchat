@@ -21,6 +21,7 @@ The Global Control Plane is the always-on layer that owns identity, routing, and
 
 - **Split Services:** Orchestrator (infra), gateway, and app/billing are separate services for clearer isolation and scaling.
 - **Scheduler Model:** Global background jobs run via Cloudflare Cron Triggers. Per-chat timers are handled by Durable Object alarms.
+- **Agents Worker:** Single shared stateless service for LLM reasoning. Agent configs and secrets are fetched on demand (cached) and never stored as authoritative state in the worker.
 
 ### App vs Infra Responsibilities (MVP)
 
@@ -119,7 +120,7 @@ The Global Control Plane is the always-on layer that owns identity, routing, and
 - Create `chats` record and `chat_members`.
 - Attach agents to chat (from org defaults or explicit selections).
 - Create `chat_runtime` row with `status = idle`.
-- Do not prewarm Chat Controller or workers. First message activates the cluster.
+- Do not prewarm Chat Controller or Agents Worker per chat. First message activates the Chat Controller; Agents Worker is shared and stateless.
 
 **Start Sandbox**
 - Orchestrator enforces quota/policy checks before provisioning.
@@ -133,7 +134,7 @@ The Global Control Plane is the always-on layer that owns identity, routing, and
 - Orchestrator updates sandbox status immediately to prevent new traffic.
 - Preview tokens are revoked on stop.
 
-**Long-Idle Archive (e.g., 2 days)**
+**Long-Idle Archive (e.g., 7 days)**
 - Orchestrator detects long-idle chats from `last_active`.
 - Orchestrator requests the Chat Controller to export chat state to R2.
 - Orchestrator tears down all infra (sandboxes, runtime records) and marks chat as archived.

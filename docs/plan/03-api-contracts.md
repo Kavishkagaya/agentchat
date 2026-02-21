@@ -13,40 +13,28 @@ Request: auth context.
 Response: chat record, members, agents, status.
 
 3. `POST /chats/{chat_id}/messages`
-Request: message text, agent_policy, optional tool intent.
+Request: message text, agent_policy.
 Response: message_id, status, streaming channel id.
 
-4. `POST /chats/{chat_id}/approve-sandbox`
-Request: decision reuse or new, template_id optional.
-Response: sandbox_id, preview_url, status.
-
-5. `POST /chats/{chat_id}/archive`
+4. `POST /chats/{chat_id}/archive`
 Request: reason.
 Response: archived_at, r2_path.
 
 ## Orchestrator API (Internal)
 
-1. `POST /infra/sandboxes`
-Request: chat_id, template_id, resources, env_profile, idempotency_key.
-Response: sandbox_id, status, preview_host.
+1. `GET /infra/chats/{chat_id}/route`
+Request: auth context.
+Response: chat_controller_id, status, last_active.
 
-2. `POST /infra/sandboxes/{sandbox_id}/stop`
-Request: idempotency_key.
-Response: status.
+2. `POST /infra/chats/{chat_id}/messages`
+Request: message text, agent_policy, auth context.
+Response: message_id, status, streaming channel id.
 
-3. `POST /infra/preview-token`
-Request: sandbox_id, user_id, org_id.
-Response: jwt_token, expires_at.
+3. `POST /infra/chats/{chat_id}/activate`
+Request: auth context, idempotency_key.
+Response: chat_controller_id, status.
 
-4. `POST /infra/usage`
-Request: chat_id, sandbox_id, seconds, egress_gb.
-Response: accepted true or false.
+## Agents Worker RPC (Internal)
 
-## Chat Controller RPC
-
-1. `request_sandbox(template_id, resources, env_profile, idempotency_key)`
-2. `stop_sandbox(sandbox_id, idempotency_key)`
-3. `release_resources(chat_id, idempotency_key)`
-4. `request_preview_token(sandbox_id)`
-5. `report_sandbox_heartbeat(sandbox_id)`
-6. `report_usage(chat_id, sandbox_id, seconds, egress_gb)`
+1. `run_agent(agent_id, messages, env_profile)`
+2. `run_tool(tool_id, args, context)`

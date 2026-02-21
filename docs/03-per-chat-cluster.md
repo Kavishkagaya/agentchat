@@ -1,6 +1,6 @@
 # Per-Chat Cluster
 
-Each chat runs inside its own disposable cluster. The cluster contains the Chat Controller, Workers (Agents), and Sandboxes (Execution).
+Each chat runs inside its own disposable cluster. The cluster contains the Chat Controller and Sandboxes (Execution). Agent reasoning runs in a shared, stateless Agents Worker service outside the per-chat cluster.
 
 ## I. The Chat Controller
 
@@ -17,7 +17,7 @@ Each chat runs inside its own disposable cluster. The cluster contains the Chat 
 - **Summarization Trigger:** User-defined milestones only.
 - **Hibernation:** Hibernates after idle and rehydrates on wake. Memory persistence is handled via SQLite and R2 backups.
 - **Timers:** Use Durable Object alarms for per-chat idle timers and retry backoff.
-- **The Bridge:** Manages WebSockets for the UI and RPC calls for the Agents.
+- **The Bridge:** Manages WebSockets for the UI and RPC calls to the shared Agents Worker.
 - **WebSocket Model:** Multiple concurrent clients per chat (group chat).
 - **Streaming Policy:** MVP persists only final responses, but may stream progress events (status, tool logs, and optional token chunks) to reduce perceived latency. Final response is the only canonical persisted output.
 - **Execution Model:** Parallel agent/tool execution allowed. Final responses are serialized into the chat log in a controlled order.
@@ -42,7 +42,7 @@ We decouple memory to optimize for both speed (latency) and cost (storage).
 | **Non-Volatile** | Cloudflare R2 | Files, code assets, snapshots, and long-idle chat backups. | 7 Days (Free) / Permanent (Prime) |
 
 - **Chat Storage:** Messages and summaries live in Chat Controller SQLite (authoritative for active chats).
-- **R2 Usage:** Full chat backup is written to R2 on long-idle archival (e.g., 2 days) so infra can be fully removed and later rehydrated.
+- **R2 Usage:** Full chat backup is written to R2 on long-idle archival (e.g., 7 days) so infra can be fully removed and later rehydrated.
 - **Raw Buffer:** Token-capped rolling window with a default 50-message limit.
 - **Summary Format:** Include `Goals`, `Decisions`, `Current State`, `Artifacts` (tool outputs + file diffs), and `Open Questions`.
 - **Summary Consistency:** Each summary includes `summary_version` and `message_cursor` (last message id included). If the latest summary is missing, fall back to the last known summary + recent window and trigger a new summary asynchronously.

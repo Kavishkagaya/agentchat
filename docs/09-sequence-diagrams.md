@@ -7,7 +7,7 @@ sequenceDiagram
     participant UI as "UI (Web)"
     participant APP as "App API"
     participant CC as "Chat Controller"
-    participant AG as "Agents"
+    participant AG as "Agents Worker (shared)"
     participant R2 as "R2"
 
     UI->>APP: Send message
@@ -78,7 +78,7 @@ sequenceDiagram
     ORCH->>DB: Revoke preview tokens
 ```
 
-## Long-Idle Archive (e.g., 2 days)
+## Long-Idle Archive (e.g., 7 days)
 
 ```mermaid
 sequenceDiagram

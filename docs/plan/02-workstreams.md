@@ -4,12 +4,10 @@
 
 Responsibilities:
 1. Chat, membership, agent registry, and message endpoints.
-2. Approval flow and UI state for sandboxes and previews.
-3. Billing portal and plan gating.
+2. Billing portal and plan gating.
 
 Dependencies:
-1. Orchestrator endpoints for lifecycle and preview tokens.
-2. Clerk org and user identity.
+1. Clerk org and user identity.
 
 Runtime:
 1. Next.js app with Route Handlers for API (MVP assumption).
@@ -19,39 +17,35 @@ Runtime:
 Responsibilities:
 1. Authoritative chat state, SQLite persistence, summaries.
 2. Message ordering and concurrency control.
-3. Tool execution orchestration and artifact capture.
+3. External tool execution orchestration and artifact capture (approval-gated).
+4. Invoke the shared Agents Worker for LLM responses (no per-agent workers).
 
 Dependencies:
-1. Orchestrator for sandbox lifecycle.
-2. R2 for archive backup and restore.
+1. R2 for archive backup and restore.
 
-## Orchestrator (Infra Control Plane)
+## Agents Worker
 
 Responsibilities:
-1. Sandbox lifecycle management and routing state.
-2. Usage metering and quota enforcement.
-3. Preview token issuance and revocation via `sandbox_epoch`.
+1. Model invocation and streaming response assembly.
+2. Fixed tool registry and execution, including configurable external HTTP calls.
+3. Provider error handling and retries.
 
 Dependencies:
-1. Postgres for routing and usage records.
-2. Sandbox runtime provider.
+1. Provider API keys and env profiles.
+
+## Orchestrator (Control Plane)
+
+Responsibilities:
+1. Chat routing map and activation state.
+2. Forward chat requests to the correct Chat Controller.
+3. Coordinate lifecycle events (idle/archive triggers) with Chat Controller.
+
+Dependencies:
+1. Postgres for routing and chat runtime records.
+2. Chat Controller for lifecycle callbacks.
 
 Runtime:
 1. Cloudflare Worker for APIs with Cron Triggers for global sweeps.
-
-## Gateway (Preview Proxy)
-
-Responsibilities:
-1. JWT validation and preview routing.
-2. WebSocket passthrough for dev servers.
-3. Rate limiting per sandbox.
-
-Dependencies:
-1. Orchestrator for token format and claims.
-2. Postgres routing records.
-
-Runtime:
-1. Cloudflare Worker.
 
 ## Data And Storage
 
@@ -61,19 +55,18 @@ Responsibilities:
 3. Retention policies and cleanup.
 
 Dependencies:
-1. Orchestrator for routing and usage writes.
-2. Chat Controller for archival exports.
+1. Chat Controller for archival exports.
 
 ## Security And Compliance
 
 Responsibilities:
 1. Secret encryption and grants.
 2. Audit log coverage for admin actions.
-3. Abuse controls and egress limits.
+3. Abuse controls and egress limits for external tools.
 
 Dependencies:
 1. App API for role and permission checks.
-2. Orchestrator for enforcement at runtime.
+2. Agents Worker for enforcement at runtime.
 
 ## Observability And Operations
 

@@ -1,0 +1,17 @@
+{
+  "name": "@agentchat/chat-controller",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev src/index.ts",
+    "deploy": "wrangler deploy",
+    "lint": "echo 'no lint configured'",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "format": "echo 'no format configured'"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "4.20240919.0",
+    "wrangler": "3.75.0",
+    "typescript": "5.6.3"
+  }
+}

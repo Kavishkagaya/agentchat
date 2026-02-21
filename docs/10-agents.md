@@ -27,10 +27,17 @@ Agents are user-created and can be shared publicly or kept private. The platform
 - **Injected Inputs:** `system_prompt`, `model`, `tools`, and optional env profile.
 - **Behavior:** No per-agent memory. All memory is shared at chat level.
 
+## Agent Runtime Service (MVP)
+
+- **Architecture:** Single shared Agents Worker (stateless) used by all chats.
+- **Config Loading:** Agent configs and secrets are fetched on demand and cached in memory with short TTL. Cache is non-authoritative and can be evicted at any time.
+- **Invocation:** Chat Controller calls the Agents Worker with `agent_id` (or `runtime_id`) plus context. The worker reconstructs the agent via the base template and executes the LLM call.
+- **Isolation:** Chat is the trust boundary. Secrets are scoped per chat and never placed in model context; tools receive scoped secrets only when executing.
+
 ## Chat Attachment Model
 
 - Users pick agents from the registry when creating a chat.
-- The same agent definition can be instantiated multiple times in the same chat (separate workers).
+- The same agent definition can be instantiated multiple times in the same chat (logical runtimes in the shared Agents Worker).
 - Agents are fixed after being added to a chat (MVP).
 
 ## Agent Triggering & Selection (MVP)

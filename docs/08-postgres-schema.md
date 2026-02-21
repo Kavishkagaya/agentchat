@@ -44,10 +44,8 @@ This schema is designed for Neon Postgres and uses Clerk IDs as foreign keys for
 - `agent_id` text primary key
 - `org_id` text
 - `name` text
-- `role` text
-- `system_prompt` text
-- `model` text
-- `tools` jsonb
+- `description` text
+- `config` jsonb (system_prompt, model, tools, and model params)
 - `visibility` text (public, private)
 - `created_by` text
 - `parent_agent_id` text null
@@ -66,7 +64,7 @@ This schema is designed for Neon Postgres and uses Clerk IDs as foreign keys for
 ### chat_runtime
 - `chat_id` text primary key
 - `chat_controller_id` text
-- `chat_status` text
+- `status` text
 - `active_sandbox_count` integer
 - `last_active_at` timestamptz
 - `idle_at` timestamptz
@@ -84,6 +82,21 @@ This schema is designed for Neon Postgres and uses Clerk IDs as foreign keys for
 - `created_at` timestamptz
 - `updated_at` timestamptz
 - `last_error` text
+
+### agent_runtimes
+- `runtime_id` text primary key
+- `chat_id` text
+- `agent_id` text
+- `status` text
+- `base_url` text (Agents Worker base URL)
+- `created_at` timestamptz
+- `updated_at` timestamptz
+
+### chat_agent_runtimes
+- `chat_id` text
+- `agent_id` text
+- `runtime_id` text
+- `created_at` timestamptz
 
 ## Templates
 

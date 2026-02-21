@@ -1,0 +1,14 @@
+name = "agentchat-chat-controller"
+main = "src/index.ts"
+compatibility_date = "2025-02-01"
+
+[vars]
+ENVIRONMENT = "dev"
+
+[[durable_objects.bindings]]
+name = "CHAT_CONTROLLER"
+class_name = "ChatController"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["ChatController"]

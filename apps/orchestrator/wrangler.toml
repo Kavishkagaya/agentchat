@@ -1,0 +1,17 @@
+name = "agentchat-orchestrator"
+main = "src/index.ts"
+compatibility_date = "2025-02-01"
+
+[triggers]
+crons = ["*/5 * * * *", "0 3 * * *"]
+
+[[r2_buckets]]
+binding = "TEMPLATES_BUCKET"
+bucket_name = "agentchat-templates"
+
+[[r2_buckets]]
+binding = "ARCHIVES_BUCKET"
+bucket_name = "agentchat-archives"
+
+[vars]
+ENVIRONMENT = "dev"

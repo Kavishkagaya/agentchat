@@ -1,0 +1,13 @@
+{
+  "name": "@agentchat/shared",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "echo 'no lint configured'",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "format": "echo 'no format configured'"
+  },
+  "devDependencies": {
+    "typescript": "5.6.3"
+  }
+}

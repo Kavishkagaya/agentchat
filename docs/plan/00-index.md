@@ -4,9 +4,9 @@ This plan translates the architecture docs into an executable build plan with ph
 
 ## Goals
 
-1. Ship a single-region MVP with reliable chat, agents, and sandbox execution.
-2. Establish clear authority boundaries between Orchestrator, Chat Controller, and R2.
-3. Provide a maintainable path to multi-region and marketplace expansion.
+1. Ship a single-region MVP with reliable chat and agents via a shared worker (no sandbox).
+2. Establish clear authority boundaries between Orchestrator, App API, Chat Controller, and R2.
+3. Provide a maintainable path to future sandbox execution and marketplace expansion.
 
 ## Non-Goals (MVP)
 
@@ -26,7 +26,7 @@ This plan translates the architecture docs into an executable build plan with ph
 ## Dependencies
 
 1. Cloudflare Workers, Durable Objects, R2.
-2. Cloudflare Sandbox SDK.
+2. Vercel AI SDK (model provider integration).
 3. Neon Postgres.
 4. Clerk for org and user identity.
 5. Stripe for billing (MVP).
@@ -35,5 +35,5 @@ This plan translates the architecture docs into an executable build plan with ph
 
 1. UI: Next.js.
 2. App API: Next.js Route Handlers (assumption for MVP).
-3. Orchestrator: Cloudflare Worker with Cron Triggers (no always-on server).
-4. Agents: Node.js runtime service.
+3. Orchestrator: Cloudflare Worker for chat routing and lifecycle coordination.
+4. Agents: Single shared Node.js runtime service (stateless) with in-memory cache for agent configs and secrets.
