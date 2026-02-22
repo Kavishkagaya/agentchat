@@ -1,5 +1,5 @@
 {
-  "name": "agentchat",
+  "name": "axon",
   "private": true,
   "packageManager": "pnpm@9.12.0",
   "workspaces": [

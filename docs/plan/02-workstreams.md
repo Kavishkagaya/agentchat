@@ -12,13 +12,13 @@ Dependencies:
 Runtime:
 1. Next.js app with Route Handlers for API (MVP assumption).
 
-## Chat Controller (Durable Objects)
+## Group Controller (Durable Objects)
 
 Responsibilities:
-1. Authoritative chat state, SQLite persistence, summaries.
+1. Authoritative group state, SQLite persistence, summaries.
 2. Message ordering and concurrency control.
-3. External tool execution orchestration and artifact capture (approval-gated).
-4. Invoke the shared Agents Worker for LLM responses (no per-agent workers).
+3. **Authentication:** Uses Session Private Key (injected by Orchestrator) to sign requests to Agents Worker.
+4. Invoke the shared Agents Worker for LLM responses (securely).
 
 Dependencies:
 1. R2 for archive backup and restore.
@@ -27,18 +27,22 @@ Dependencies:
 
 Responsibilities:
 1. Model invocation and streaming response assembly.
-2. Fixed tool registry and execution, including configurable external HTTP calls.
-3. Provider error handling and retries.
+2. **Authentication:** Verifies `X-Session-Cert` and request signatures (stateless trust via Orchestrator public key).
+3. **Caching:** Implements Read-Through caching (KV first, DB fallback) for Agent Configs with active invalidation support.
+4. Fixed tool registry and execution.
 
 Dependencies:
 1. Provider API keys and env profiles.
+2. Cloudflare KV for config caching.
 
 ## Orchestrator (Control Plane)
 
 Responsibilities:
 1. Chat routing map and activation state.
-2. Forward chat requests to the correct Chat Controller.
-3. Coordinate lifecycle events (idle/archive triggers) with Chat Controller.
+2. **Authentication Authority:** Generates ephemeral Session Keys and issues signed Session Certificates upon chat activation.
+3. **User Access:** Issues stateless `routing_token` for authenticated users.
+4. **WebSocket Gateway:** Validates routing tokens on `upgrade` request and proxies connections to Group Controller.
+5. Coordinate lifecycle events (idle/archive triggers).
 
 Dependencies:
 1. Postgres for routing and chat runtime records.

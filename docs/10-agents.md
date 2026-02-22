@@ -31,24 +31,24 @@ Agents are user-created and can be shared publicly or kept private. The platform
 
 - **Architecture:** Single shared Agents Worker (stateless) used by all chats.
 - **Config Loading:** Agent configs and secrets are fetched on demand and cached in memory with short TTL. Cache is non-authoritative and can be evicted at any time.
-- **Invocation:** Chat Controller calls the Agents Worker with `agent_id` (or `runtime_id`) plus context. The worker reconstructs the agent via the base template and executes the LLM call.
-- **Isolation:** Chat is the trust boundary. Secrets are scoped per chat and never placed in model context; tools receive scoped secrets only when executing.
+- **Invocation:** Group Controller calls the Agents Worker with `agent_id` (or `runtime_id`) plus context. The worker reconstructs the agent via the base template and executes the LLM call.
+- **Isolation:** Group is the trust boundary. Secrets are scoped per group and never placed in model context; tools receive scoped secrets only when executing.
 
-## Chat Attachment Model
+## Group Attachment Model
 
-- Users pick agents from the registry when creating a chat.
-- The same agent definition can be instantiated multiple times in the same chat (logical runtimes in the shared Agents Worker).
-- Agents are fixed after being added to a chat (MVP).
+- Users pick agents from the registry when creating a group.
+- The same agent definition can be instantiated multiple times in the same group (logical runtimes in the shared Agents Worker).
+- Agents are fixed after being added to a group (MVP).
 
 ## Agent Triggering & Selection (MVP)
 
-- **Chat Policy:** Users choose whether agents auto-trigger or only respond when explicitly invoked.
+- **Group Policy:** Users choose whether agents auto-trigger or only respond when explicitly invoked.
 - **Multi-Agent Mode:** If enabled, multiple agents may respond to the same message. If disabled, only the explicitly selected agent responds.
-- **Selection:** No classifier in MVP. Selection is driven by chat policy and user choice.
-- **Ordering:** For a single user message, responses are posted in completion order. Across messages, the Chat Controller preserves FIFO order by message trigger time.
+- **Selection:** No classifier in MVP. Selection is driven by group policy and user choice.
+- **Ordering:** For a single user message, responses are posted in completion order. Across messages, the Group Controller preserves FIFO order by message trigger time.
 - **Agent Discussion:** Optional mode where agents can respond to other agents. Must be bounded by a max-round limit and cooldown to avoid loops.
-  - **Max Rounds:** Configurable per chat (default 2).
-  - **Cooldown:** Auto-trigger cooldown is 15 seconds per agent per chat.
+  - **Max Rounds:** Configurable per group (default 2).
+  - **Cooldown:** Auto-trigger cooldown is 15 seconds per agent per group.
 
 ## Tool Permissions (MVP)
 

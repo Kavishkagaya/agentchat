@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/neon-http";
 import { neon } from "@neondatabase/serverless";
-import * as schema from "@agentchat/db";
+import * as schema from "@axon/database";
 import type { Env } from "./env";
 
 export function getDb(env: Env) {

@@ -1,5 +1,5 @@
 import type { Env } from "./env";
-import type { AgentRunInput } from "@agentchat/agent-factory";
+import type { AgentRunInput } from "@axon/agent-factory";
 import { loadAgentConfig } from "./config";
 import { runAgent } from "./runner";
 import { createEventStream } from "./stream";

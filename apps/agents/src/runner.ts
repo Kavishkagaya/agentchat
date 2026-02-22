@@ -3,7 +3,7 @@ import {
   normalizeAgentConfig,
   type AgentRunInput,
   type ProviderEnv
-} from "@agentchat/agent-factory";
+} from "@axon/agent-factory";
 import type { Env } from "./env";
 import type { AgentConfigRecord } from "./config";
 import { createToolRegistry } from "./tools";

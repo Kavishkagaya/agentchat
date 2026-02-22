@@ -1,6 +1,6 @@
 import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
-import * as schema from "@agentchat/db";
+import * as schema from "@axon/database";
 
 export function getDb(databaseUrl?: string) {
   if (!databaseUrl) {

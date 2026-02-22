@@ -1,11 +1,12 @@
-import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
+import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import * as schema from "@agentchat/db";
+import * as schema from "@axon/database";
+import type { Db } from "@axon/database";
 
 let pool: Pool | undefined;
-let db: NodePgDatabase<typeof schema> | undefined;
+let db: Db | undefined;
 
-export function getDb(): NodePgDatabase<typeof schema> {
+export function getDb(): Db {
   if (!process.env.DATABASE_URL) {
     throw new Error("DATABASE_URL is not set");
   }
@@ -15,7 +16,8 @@ export function getDb(): NodePgDatabase<typeof schema> {
   }
 
   if (!db) {
-    db = drizzle(pool, { schema });
+    // @ts-ignore - casting to generic Db
+    db = drizzle(pool, { schema }) as unknown as Db;
   }
 
   return db;

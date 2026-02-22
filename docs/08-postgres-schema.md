@@ -2,6 +2,8 @@
 
 This schema is designed for Neon Postgres and uses Clerk IDs as foreign keys for users and orgs.
 
+**Note on Terminology:** The `chats` table represents persistent **Groups**. Ephemeral conversations inside a group are handled at the Group Controller level.
+
 ## Core Tables
 
 ### orgs
@@ -18,7 +20,7 @@ This schema is designed for Neon Postgres and uses Clerk IDs as foreign keys for
 - `created_at` timestamptz
 - primary key (`org_id`, `user_id`)
 
-### chats
+### chats (represents "Groups")
 - `chat_id` text primary key
 - `org_id` text
 - `title` text
@@ -30,7 +32,7 @@ This schema is designed for Neon Postgres and uses Clerk IDs as foreign keys for
 - `updated_at` timestamptz
 - `last_active_at` timestamptz
 
-### chat_members
+### chat_members (represents "Group Members")
 - `chat_id` text
 - `user_id` text
 - `role` text
@@ -52,7 +54,7 @@ This schema is designed for Neon Postgres and uses Clerk IDs as foreign keys for
 - `enabled` boolean
 - `created_at` timestamptz
 
-### chat_agents
+### chat_agents (represents "Group Agents")
 - `chat_id` text
 - `agent_id` text
 - `added_by` text
@@ -61,27 +63,15 @@ This schema is designed for Neon Postgres and uses Clerk IDs as foreign keys for
 
 ## Runtime Routing
 
-### chat_runtime
+### chat_runtime (represents "Group Runtime")
 - `chat_id` text primary key
 - `chat_controller_id` text
 - `status` text
-- `active_sandbox_count` integer
 - `last_active_at` timestamptz
 - `idle_at` timestamptz
 - `region` text
+- `public_key` text (Session verification key)
 - `updated_at` timestamptz
-
-### sandboxes
-- `sandbox_id` text primary key
-- `chat_id` text
-- `template_id` text
-- `status` text
-- `preview_host` text
-- `sandbox_epoch` integer
-- `last_heartbeat` timestamptz
-- `created_at` timestamptz
-- `updated_at` timestamptz
-- `last_error` text
 
 ### agent_runtimes
 - `runtime_id` text primary key
@@ -98,7 +88,19 @@ This schema is designed for Neon Postgres and uses Clerk IDs as foreign keys for
 - `runtime_id` text
 - `created_at` timestamptz
 
-## Templates
+## Future Scope (Not in MVP)
+
+### sandboxes
+- `sandbox_id` text primary key
+- `chat_id` text
+- `template_id` text
+- `status` text
+- `preview_host` text
+- `sandbox_epoch` integer
+- `last_heartbeat` timestamptz
+- `created_at` timestamptz
+- `updated_at` timestamptz
+- `last_error` text
 
 ### templates
 - `template_id` text primary key
@@ -120,7 +122,7 @@ This schema is designed for Neon Postgres and uses Clerk IDs as foreign keys for
 - `secret_id` text primary key
 - `org_id` text
 - `name` text
-- `namespace` text (sandbox, agent)
+- `namespace` text (agent)
 - `ciphertext` text
 - `created_by` text
 - `created_at` timestamptz
@@ -146,8 +148,6 @@ This schema is designed for Neon Postgres and uses Clerk IDs as foreign keys for
 
 ### org_limits
 - `org_id` text primary key
-- `max_sandbox_minutes` integer
-- `max_concurrent_sandboxes_per_chat` integer
 - `max_storage_gb` numeric
 - `max_egress_gb` numeric
 
@@ -177,11 +177,9 @@ This schema is designed for Neon Postgres and uses Clerk IDs as foreign keys for
 ### chat_snapshots
 - `snapshot_id` text primary key
 - `chat_id` text
-- `sandbox_id` text
 - `r2_path` text
 - `size_bytes` bigint
 - `created_at` timestamptz
-- `task_id` text
 
 ## Tasks
 

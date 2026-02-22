@@ -1,5 +1,5 @@
 {
-  "name": "@agentchat/agent-factory",
+  "name": "@axon/agent-factory",
   "private": true,
   "type": "module",
   "exports": {
