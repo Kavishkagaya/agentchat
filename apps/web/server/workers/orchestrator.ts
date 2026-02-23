@@ -1,5 +1,3 @@
-import { resolveWorkerBaseUrl } from "./cloudflare";
-
 type GroupActivateRequest = {
   group_id: string;
   org_id: string;
@@ -21,27 +19,31 @@ type RoutingTokenResponse = {
 };
 
 type OrchestratorClient = {
-  activateGroup: (payload: GroupActivateRequest) => Promise<GroupActivateResponse>;
-  getRoutingToken: (payload: RoutingTokenRequest) => Promise<RoutingTokenResponse>;
+  activateGroup: (
+    payload: GroupActivateRequest
+  ) => Promise<GroupActivateResponse>;
+  getRoutingToken: (
+    payload: RoutingTokenRequest
+  ) => Promise<RoutingTokenResponse>;
   getGroupHistory: (groupId: string, token: string) => Promise<any>;
 };
 
 async function requestOrchestrator<T>(
-  path: string, 
-  payload?: unknown, 
+  path: string,
+  payload?: unknown,
   method: "POST" | "GET" = "POST",
   headers: Record<string, string> = {}
 ): Promise<T> {
   // Use explicit URL or resolve (assuming internal network or public if exposed)
   // For dev, might be localhost:8787.
   // resolveWorkerBaseUrl logic might need updating if it assumes something specific.
-  const baseUrl = process.env.ORCHESTRATOR_URL || "http://localhost:8787"; 
-  
+  const baseUrl = process.env.ORCHESTRATOR_URL || "http://localhost:8787";
+
   const options: RequestInit = {
     method,
     headers: { "content-type": "application/json", ...headers },
   };
-  
+
   if (payload) {
     options.body = JSON.stringify(payload);
   }
@@ -58,13 +60,16 @@ async function requestOrchestrator<T>(
 
 export function getOrchestratorClient(): OrchestratorClient {
   return {
-    activateGroup: (payload) => requestOrchestrator<GroupActivateResponse>("/infra/groups", payload),
-    getRoutingToken: (payload) => requestOrchestrator<RoutingTokenResponse>("/infra/routing-token", payload),
-    getGroupHistory: (groupId, token) => requestOrchestrator<any>(
-      `/groups/${groupId}/history`, 
-      undefined, 
-      "GET", 
-      { "X-Routing-Token": token }
-    )
+    activateGroup: (payload) =>
+      requestOrchestrator<GroupActivateResponse>("/infra/groups", payload),
+    getRoutingToken: (payload) =>
+      requestOrchestrator<RoutingTokenResponse>(
+        "/infra/routing-token",
+        payload
+      ),
+    getGroupHistory: (groupId, token) =>
+      requestOrchestrator<any>(`/groups/${groupId}/history`, undefined, "GET", {
+        "X-Routing-Token": token,
+      }),
   };
 }

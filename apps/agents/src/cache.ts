@@ -28,7 +28,7 @@ export class TtlCache<T> {
       value,
       expiresAt: Date.now() + ttlMs,
       lastAccess: Date.now(),
-      version
+      version,
     });
     this.prune();
   }

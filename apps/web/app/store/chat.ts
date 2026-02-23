@@ -35,5 +35,5 @@ export const useChatStore = create<ChatState>((set) => ({
   setAgentModel: (agentModel) => set({ agentModel }),
   setAgentSystemPrompt: (agentSystemPrompt) => set({ agentSystemPrompt }),
   setActiveChatId: (activeChatId) => set({ activeChatId }),
-  setMessageDraft: (messageDraft) => set({ messageDraft })
+  setMessageDraft: (messageDraft) => set({ messageDraft }),
 }));

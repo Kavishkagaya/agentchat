@@ -6,7 +6,11 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === "/health") {
-      return Response.json({ ok: true, service: "agents", env: env.ENVIRONMENT });
+      return Response.json({
+        ok: true,
+        service: "agents",
+        env: env.ENVIRONMENT,
+      });
     }
 
     if (request.method === "POST" && url.pathname === "/agents/run") {
@@ -14,7 +18,10 @@ export default {
         return await handleAgentRun(request, env);
       } catch (error) {
         return Response.json(
-          { ok: false, error: error instanceof Error ? error.message : "agent error" },
+          {
+            ok: false,
+            error: error instanceof Error ? error.message : "agent error",
+          },
           { status: 400 }
         );
       }
@@ -25,5 +32,5 @@ export default {
     }
 
     return new Response("Not Found", { status: 404 });
-  }
+  },
 };

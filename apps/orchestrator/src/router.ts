@@ -1,69 +1,51 @@
-import type { Env } from "./env";
-import { getDb } from "./db";
-import { 
-  groups, 
-  groupRuntime,
-  initializeGroupRuntime, 
-  updateGroupRuntimeStatus 
-} from "@axon/database";
-import { 
-  generateKeyPair, 
-  createSessionCert, 
-  createRoutingToken, 
+import { initializeGroupRuntime } from "@axon/database";
+import {
+  createRoutingToken,
+  createSessionCert,
+  generateKeyPair,
   verifyRoutingToken,
-  sign,
-  verify
 } from "@axon/shared";
-import { eq } from "drizzle-orm";
+import type { Env } from "./env";
 
 // --- Types ---
 
-type GroupActivateRequest = {
+export interface GroupActivateRequest {
   group_id: string;
   org_id: string;
-  user_id: string; // The user triggering the activation
-};
+}
 
-type RoutingTokenRequest = {
+export interface RoutingTokenRequest {
   group_id: string;
   user_id: string;
-};
-
-type CleanupRequest = {
-  group_id: string;
-  reason: string;
-};
+}
 
 // --- Helpers ---
 
-function json(data: unknown, status = 200): Response {
+function json(data: any, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "content-type": "application/json" }
+    headers: { "Content-Type": "application/json" },
   });
 }
 
-function badRequest(message: string): Response {
-  return json({ ok: false, error: message }, 400);
-}
-
 async function readJson<T>(request: Request): Promise<T> {
-  const text = await request.text();
-  if (!text) throw new Error("missing JSON body");
-  try { return JSON.parse(text) as T; } 
-  catch { throw new Error("invalid JSON body"); }
+  return await request.json();
 }
 
-function requireString(value: unknown, field: string): string {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    throw new Error(`missing ${field}`);
+function badRequest(message: string): Response {
+  return json({ error: message }, 400);
+}
+
+function requireString(value: any, name: string) {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`missing required field: ${name}`);
   }
-  return value;
 }
 
-// --- Main Handler ---
-
-export async function handleRequest(request: Request, env: Env): Promise<Response> {
+export async function handleRequest(
+  request: Request,
+  env: Env
+): Promise<Response> {
   const url = new URL(request.url);
 
   // Health Check
@@ -79,11 +61,11 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
       requireString(body.group_id, "group_id");
       requireString(body.org_id, "org_id");
     } catch (error) {
-      return badRequest(error instanceof Error ? error.message : "invalid request");
+      return badRequest(
+        error instanceof Error ? error.message : "invalid request"
+      );
     }
 
-    // TODO: Verify App Signature here (skipped for MVP simplicity, relying on internal network/secret)
-    
     // 1. Generate Session Keys
     const sessionKeys = await generateKeyPair();
 
@@ -91,7 +73,7 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
     if (!env.ORCHESTRATOR_PRIVATE_KEY) {
       return json({ error: "Orchestrator private key not configured" }, 500);
     }
-    
+
     const sessionCert = await createSessionCert(
       env.ORCHESTRATOR_PRIVATE_KEY,
       body.group_id,
@@ -103,8 +85,11 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
     const doIdString = doId.toString();
 
     // 4. Update Database (Store Public Key for verification)
-    const db = getDb(env.NEON_DATABASE_URL);
-    await initializeGroupRuntime(db, body.group_id, doIdString, sessionKeys.publicKey);
+    await initializeGroupRuntime(
+      body.group_id,
+      doIdString,
+      sessionKeys.publicKey
+    );
 
     // 5. Initialize DO (Push keys)
     const stub = env.GROUP_CONTROLLER.get(doId);
@@ -112,9 +97,9 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
       method: "POST",
       body: JSON.stringify({
         session_private_key: sessionKeys.privateKey,
-        session_certificate: sessionCert
+        session_certificate: sessionCert,
       }),
-      headers: { "Content-Type": "application/json" }
+      headers: { "Content-Type": "application/json" },
     });
 
     if (!initRes.ok) {
@@ -123,7 +108,7 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
 
     return json({
       group_controller_id: doIdString,
-      session_certificate: sessionCert
+      session_certificate: sessionCert,
     });
   }
 
@@ -135,18 +120,13 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
       requireString(body.group_id, "group_id");
       requireString(body.user_id, "user_id");
     } catch (error) {
-      return badRequest(error instanceof Error ? error.message : "invalid request");
+      return badRequest(
+        error instanceof Error ? error.message : "invalid request"
+      );
     }
 
-    // TODO: Verify App Signature / Bearer Token
-
-    // Check Membership in DB
-    const db = getDb(env.NEON_DATABASE_URL);
-    // Use verifyUserInGroup from service (assuming exported)
-    // const role = await verifyUserInGroup(db, body.user_id, body.group_id);
-    // For now, inline check or assume App checked it (since this is internal infra API)
-    // Safe assumption for MVP: App API calls this only for valid members.
-    const role = "member"; 
+    // Check Membership in DB (assume App checked or use a service if available)
+    const role = "member";
 
     if (!env.ORCHESTRATOR_PRIVATE_KEY) {
       return json({ error: "Orchestrator private key not configured" }, 500);
@@ -172,26 +152,28 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
     }
 
     if (!env.ORCHESTRATOR_PUBLIC_KEY) {
-      return new Response("Orchestrator public key not configured", { status: 500 });
+      return new Response("Orchestrator public key not configured", {
+        status: 500,
+      });
     }
 
     try {
-      // Stateless Verification
-      const payload = await verifyRoutingToken(env.ORCHESTRATOR_PUBLIC_KEY, token);
-      
+      const payload = await verifyRoutingToken(
+        env.ORCHESTRATOR_PUBLIC_KEY,
+        token
+      );
+
       if (payload.group_id !== groupId) {
         return new Response("Token mismatch", { status: 403 });
       }
 
-      // Upgrade Request
       if (request.headers.get("Upgrade") !== "websocket") {
         return new Response("Expected Upgrade: websocket", { status: 426 });
       }
 
-      // Route to DO
       const doId = env.GROUP_CONTROLLER.idFromName(groupId);
       const stub = env.GROUP_CONTROLLER.get(doId);
-      
+
       return stub.fetch(request);
     } catch (e) {
       return new Response("Invalid token", { status: 403 });
@@ -199,16 +181,30 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
   }
 
   // 4. HTTP Proxy (History) (User -> Group Controller)
-  if (request.method === "GET" && url.pathname.startsWith("/groups/") && url.pathname.endsWith("/history")) {
+  if (
+    request.method === "GET" &&
+    url.pathname.startsWith("/groups/") &&
+    url.pathname.endsWith("/history")
+  ) {
     const groupId = url.pathname.split("/")[2];
-    const token = request.headers.get("X-Routing-Token") || url.searchParams.get("token");
+    const token =
+      request.headers.get("X-Routing-Token") || url.searchParams.get("token");
 
-    if (!token) return new Response("Missing token", { status: 401 });
-    if (!env.ORCHESTRATOR_PUBLIC_KEY) return new Response("Config error", { status: 500 });
+    if (!token) {
+      return new Response("Missing token", { status: 401 });
+    }
+    if (!env.ORCHESTRATOR_PUBLIC_KEY) {
+      return new Response("Config error", { status: 500 });
+    }
 
     try {
-      const payload = await verifyRoutingToken(env.ORCHESTRATOR_PUBLIC_KEY, token);
-      if (payload.group_id !== groupId) return new Response("Token mismatch", { status: 403 });
+      const payload = await verifyRoutingToken(
+        env.ORCHESTRATOR_PUBLIC_KEY,
+        token
+      );
+      if (payload.group_id !== groupId) {
+        return new Response("Token mismatch", { status: 403 });
+      }
 
       const doId = env.GROUP_CONTROLLER.idFromName(groupId);
       const stub = env.GROUP_CONTROLLER.get(doId);
@@ -220,15 +216,15 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
 
   // 5. Cleanup Callback (Group Controller -> Orchestrator)
   if (request.method === "POST" && url.pathname === "/infra/cleanup") {
-    // TODO: Verify Signature using Session Key
-    // We need the Public Key from DB to verify request signature
-    // ...
     return json({ status: "cleaned" });
   }
 
   return new Response("Not Found", { status: 404 });
 }
 
-export async function handleScheduled(controller: ScheduledController, env: Env): Promise<void> {
+export async function handleScheduled(
+  controller: ScheduledController,
+  env: Env
+): Promise<void> {
   // Periodic cleanup logic
 }

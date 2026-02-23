@@ -1,11 +1,11 @@
 import {
+  type AgentRunInput,
   createAgentRunner,
   normalizeAgentConfig,
-  type AgentRunInput,
-  type ProviderEnv
+  type ProviderEnv,
 } from "@axon/agent-factory";
-import type { Env } from "./env";
 import type { AgentConfigRecord } from "./config";
+import type { Env } from "./env";
 import { createToolRegistry } from "./tools";
 
 export type RunResult = {
@@ -23,7 +23,7 @@ export function buildAgentRunner(
   const config = normalizeAgentConfig(record.agentId, record.config);
   const providerEnv: ProviderEnv = {
     OPENAI_API_KEY: env.OPENAI_API_KEY,
-    OPENAI_BASE_URL: env.OPENAI_BASE_URL
+    OPENAI_BASE_URL: env.OPENAI_BASE_URL,
   };
 
   return createAgentRunner({
@@ -31,8 +31,8 @@ export function buildAgentRunner(
     env: providerEnv,
     toolRegistry,
     options: {
-      onToolCall
-    }
+      onToolCall,
+    },
   });
 }
 

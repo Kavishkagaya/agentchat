@@ -1,27 +1,28 @@
-
 export interface KeyPair {
-  publicKey: string;
   privateKey: string;
+  publicKey: string;
 }
 
 export interface SessionCertPayload {
-  group_id: string; // "chat" mapped to group_id
-  session_public_key: string; 
   capabilities?: string[];
   exp: number;
+  group_id: string; // "chat" mapped to group_id
   iat: number;
+  session_public_key: string;
 }
 
 export interface RoutingTokenPayload {
-  user_id: string;
-  group_id: string;
-  role: string;
   exp: number;
+  group_id: string;
   iat: number;
+  role: string;
+  user_id: string;
 }
 
 // Check for global crypto availability
-const cryptoAPI = globalThis.crypto;
+const cryptoAPI =
+  (globalThis as any).crypto ||
+  (typeof crypto !== "undefined" ? crypto : undefined);
 if (!cryptoAPI) {
   throw new Error("Web Crypto API is not available.");
 }
@@ -33,11 +34,11 @@ if (!cryptoAPI) {
  * Returns keys as base64-encoded strings (SPKI for public, PKCS#8 for private).
  */
 export async function generateKeyPair(): Promise<KeyPair> {
-  const keyPair = await cryptoAPI.subtle.generateKey(
+  const keyPair = (await cryptoAPI.subtle.generateKey(
     { name: "Ed25519" },
     true,
     ["sign", "verify"]
-  );
+  )) as CryptoKeyPair;
 
   const pubBuf = await cryptoAPI.subtle.exportKey("spki", keyPair.publicKey);
   const privBuf = await cryptoAPI.subtle.exportKey("pkcs8", keyPair.privateKey);
@@ -51,19 +52,35 @@ export async function generateKeyPair(): Promise<KeyPair> {
 /**
  * Signs a string payload using a private key (PKCS#8 base64).
  */
-export async function sign(privateKeyBase64: string, data: string): Promise<string> {
+export async function sign(
+  privateKeyBase64: string,
+  data: string
+): Promise<string> {
   const key = await importPrivateKey(privateKeyBase64);
-  const buf = await cryptoAPI.subtle.sign("Ed25519", key, new TextEncoder().encode(data));
+  const buf = await cryptoAPI.subtle.sign(
+    "Ed25519",
+    key,
+    new TextEncoder().encode(data)
+  );
   return arrayBufferToBase64(buf);
 }
 
 /**
  * Verifies a signature using a public key (SPKI base64).
  */
-export async function verify(publicKeyBase64: string, data: string, signatureBase64: string): Promise<boolean> {
+export async function verify(
+  publicKeyBase64: string,
+  data: string,
+  signatureBase64: string
+): Promise<boolean> {
   const key = await importPublicKey(publicKeyBase64);
   const sigBuf = base64ToArrayBuffer(signatureBase64);
-  return await cryptoAPI.subtle.verify("Ed25519", key, sigBuf, new TextEncoder().encode(data));
+  return await cryptoAPI.subtle.verify(
+    "Ed25519",
+    key,
+    sigBuf,
+    new TextEncoder().encode(data)
+  );
 }
 
 // --- Session Certificate (Group Controller -> Agents Worker) ---
@@ -92,18 +109,22 @@ export async function verifySessionCert(
   cert: string
 ): Promise<SessionCertPayload> {
   const [encodedPayload, signature] = cert.split(".");
-  if (!encodedPayload || !signature) {
+  if (!(encodedPayload && signature)) {
     throw new Error("Invalid certificate format");
   }
 
-  const isValid = await verify(orchestratorPublicKey, encodedPayload, signature);
+  const isValid = await verify(
+    orchestratorPublicKey,
+    encodedPayload,
+    signature
+  );
   if (!isValid) {
     throw new Error("Invalid certificate signature");
   }
 
   const payload = JSON.parse(atob(encodedPayload)) as SessionCertPayload;
   const now = Math.floor(Date.now() / 1000);
-  
+
   if (payload.exp < now) {
     throw new Error("Certificate expired");
   }
@@ -139,11 +160,15 @@ export async function verifyRoutingToken(
   token: string
 ): Promise<RoutingTokenPayload> {
   const [encodedPayload, signature] = token.split(".");
-  if (!encodedPayload || !signature) {
+  if (!(encodedPayload && signature)) {
     throw new Error("Invalid token format");
   }
 
-  const isValid = await verify(orchestratorPublicKey, encodedPayload, signature);
+  const isValid = await verify(
+    orchestratorPublicKey,
+    encodedPayload,
+    signature
+  );
   if (!isValid) {
     throw new Error("Invalid token signature");
   }
@@ -187,15 +212,20 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   for (let i = 0; i < len; i++) {
     binary += String.fromCharCode(bytes[i]);
   }
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
 }
 
 function base64ToArrayBuffer(base64: string): ArrayBuffer {
-  const standardBase64 = base64.replace(/-/g, '+').replace(/_/g, '/');
+  const standardBase64 = base64.replace(/-/g, "+").replace(/_/g, "/");
   // Pad if necessary
   const pad = standardBase64.length % 4;
-  const paddedBase64 = pad ? standardBase64 + '='.repeat(4 - pad) : standardBase64;
-  
+  const paddedBase64 = pad
+    ? standardBase64 + "=".repeat(4 - pad)
+    : standardBase64;
+
   const binaryString = atob(paddedBase64);
   const len = binaryString.length;
   const bytes = new Uint8Array(len);

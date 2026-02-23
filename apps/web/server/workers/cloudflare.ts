@@ -9,7 +9,9 @@ type WorkerResolutionCache = {
 };
 
 function getCache(): WorkerResolutionCache {
-  const globalStore = globalThis as typeof globalThis & { __agentchatCfCache?: WorkerResolutionCache };
+  const globalStore = globalThis as typeof globalThis & {
+    __agentchatCfCache?: WorkerResolutionCache;
+  };
   if (!globalStore.__agentchatCfCache) {
     globalStore.__agentchatCfCache = {};
   }
@@ -21,7 +23,7 @@ function getCloudflareClient(): CloudflareClient {
   if (!token) {
     throw new Error("CLOUDFLARE_API_TOKEN is not set");
   }
-  return new Cloudflare({ apiToken: token }) as CloudflareClient;
+  return new Cloudflare({ apiToken: token }) as unknown as CloudflareClient;
 }
 
 async function getWorkersSubdomain(): Promise<string> {
@@ -45,7 +47,9 @@ async function getWorkersSubdomain(): Promise<string> {
     throw new Error("Cloudflare SDK does not expose request()");
   }
 
-  const response = await client.request(`/accounts/${accountId}/workers/subdomain`);
+  const response = await client.request(
+    `/accounts/${accountId}/workers/subdomain`
+  );
   const result = response?.result as { subdomain?: string } | undefined;
 
   if (!result?.subdomain) {
@@ -56,11 +60,19 @@ async function getWorkersSubdomain(): Promise<string> {
   return result.subdomain;
 }
 
-export async function resolveWorkerBaseUrl(workerName: string): Promise<string> {
+export async function resolveWorkerBaseUrl(
+  workerName: string
+): Promise<string> {
   const explicit =
-    (workerName === "orchestrator" ? process.env.ORCHESTRATOR_BASE_URL : undefined) ??
-    (workerName === "chat-controller" ? process.env.CHAT_CONTROLLER_BASE_URL : undefined) ??
-    process.env[`WORKER_${workerName.toUpperCase().replace(/-/g, "_")}_BASE_URL`];
+    (workerName === "orchestrator"
+      ? process.env.ORCHESTRATOR_BASE_URL
+      : undefined) ??
+    (workerName === "chat-controller"
+      ? process.env.CHAT_CONTROLLER_BASE_URL
+      : undefined) ??
+    process.env[
+      `WORKER_${workerName.toUpperCase().replace(/-/g, "_")}_BASE_URL`
+    ];
   if (explicit) {
     return explicit.replace(/\/$/, "");
   }

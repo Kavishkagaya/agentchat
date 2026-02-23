@@ -1,21 +1,21 @@
-import { eq, desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
+import { db } from "../client";
 import { agents } from "../schema";
-import type { Db } from "../types";
 
 export interface CreateAgentParams {
-  orgId: string;
-  name: string;
-  description?: string;
   config: any;
   createdBy: string;
+  description?: string;
+  name: string;
+  orgId: string;
 }
 
-export async function createAgent(db: Db, params: CreateAgentParams) {
+export async function createAgent(params: CreateAgentParams) {
   const now = new Date();
-  const agentId = `agent_${crypto.randomUUID()}`;
-  
+  const id = `agent_${crypto.randomUUID()}`;
+
   await db.insert(agents).values({
-    agentId,
+    id,
     orgId: params.orgId,
     name: params.name,
     description: params.description,
@@ -23,15 +23,15 @@ export async function createAgent(db: Db, params: CreateAgentParams) {
     visibility: "private",
     createdBy: params.createdBy,
     createdAt: now,
-    updatedAt: now
+    updatedAt: now,
   });
 
-  return { agentId, createdAt: now };
+  return { agentId: id, createdAt: now };
 }
 
-export async function getAgents(db: Db, orgId: string) {
+export async function getAgents(orgId: string) {
   return await db.query.agents.findMany({
     where: eq(agents.orgId, orgId),
-    orderBy: [desc(agents.updatedAt)]
+    orderBy: [desc(agents.updatedAt)],
   });
 }

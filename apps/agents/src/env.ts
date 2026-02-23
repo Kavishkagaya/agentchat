@@ -1,9 +1,9 @@
 export interface Env {
+  AGENT_CONFIG_CACHE_TTL_SECONDS?: string;
   ENVIRONMENT: string;
   NEON_DATABASE_URL?: string;
   OPENAI_API_KEY?: string;
   OPENAI_BASE_URL?: string;
-  AGENT_CONFIG_CACHE_TTL_SECONDS?: string;
 }
 
 export function getTtlMs(value: string | undefined, fallbackMs: number) {

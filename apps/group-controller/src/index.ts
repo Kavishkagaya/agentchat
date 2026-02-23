@@ -1,6 +1,6 @@
 interface Env {
-  ENVIRONMENT: string;
   CHAT_CONTROLLER: DurableObjectNamespace;
+  ENVIRONMENT: string;
 }
 
 type AgentRuntimeRef = {
@@ -19,7 +19,7 @@ type PostMessageRequest = {
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "content-type": "application/json" }
+    headers: { "content-type": "application/json" },
   });
 }
 
@@ -66,31 +66,56 @@ export class ChatController {
 
   private listMessages() {
     const sql = this.state.storage.sql;
-    const rows: Array<{ message_id: string; role: string; text: string; created_at: string }> = [];
+    const rows: Array<{
+      message_id: string;
+      role: string;
+      text: string;
+      created_at: string;
+    }> = [];
     const result = sql.exec(
       "SELECT message_id, role, text, created_at FROM messages ORDER BY created_at ASC"
     );
     for (const row of result) {
-      rows.push(row as { message_id: string; role: string; text: string; created_at: string });
+      rows.push(
+        row as {
+          message_id: string;
+          role: string;
+          text: string;
+          created_at: string;
+        }
+      );
     }
     return rows;
   }
 
-  private async runAgents(messageText: string, agentRuntimes: AgentRuntimeRef[]) {
-    const agentMessages: Array<{ message_id: string; role: string; text: string }> = [];
+  private async runAgents(
+    messageText: string,
+    agentRuntimes: AgentRuntimeRef[]
+  ) {
+    const agentMessages: Array<{
+      message_id: string;
+      role: string;
+      text: string;
+    }> = [];
     for (const runtime of agentRuntimes) {
-      const response = await fetch(`${runtime.base_url.replace(/\/$/, "")}/agents/run`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          runtime_id: runtime.runtime_id,
-          prompt: messageText
-        })
-      });
+      const response = await fetch(
+        `${runtime.base_url.replace(/\/$/, "")}/agents/run`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            runtime_id: runtime.runtime_id,
+            prompt: messageText,
+          }),
+        }
+      );
       if (!response.ok) {
         continue;
       }
-      const payload = (await response.json()) as { role?: string; text?: string };
+      const payload = (await response.json()) as {
+        role?: string;
+        text?: string;
+      };
       const agentMessageId = `msg_${crypto.randomUUID()}`;
       const role = payload.role ?? "assistant";
       const text = payload.text ?? "";
@@ -103,6 +128,22 @@ export class ChatController {
   async fetch(request: Request): Promise<Response> {
     await this.ensureSchema();
     const url = new URL(request.url);
+
+    if (request.method === "POST" && url.pathname === "/init") {
+      const body = (await request.json()) as {
+        session_private_key: string;
+        session_certificate: string;
+      };
+      await this.state.storage.put(
+        "session_private_key",
+        body.session_private_key
+      );
+      await this.state.storage.put(
+        "session_certificate",
+        body.session_certificate
+      );
+      return json({ ok: true });
+    }
 
     if (request.method === "GET" && url.pathname === "/messages") {
       const messages = this.listMessages();
@@ -123,9 +164,19 @@ export class ChatController {
         await this.insertMessage(messageId, "user", text);
         const agentRuntimes = body.agent_runtimes ?? [];
         const agentMessages = await this.runAgents(text, agentRuntimes);
-        return json({ ok: true, message_id: messageId, agent_messages: agentMessages });
+        return json({
+          ok: true,
+          message_id: messageId,
+          agent_messages: agentMessages,
+        });
       } catch (error) {
-        return json({ ok: false, error: error instanceof Error ? error.message : "invalid request" }, 400);
+        return json(
+          {
+            ok: false,
+            error: error instanceof Error ? error.message : "invalid request",
+          },
+          400
+        );
       }
     }
 
@@ -146,7 +197,11 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === "/health") {
-      return json({ ok: true, service: "chat-controller", env: env.ENVIRONMENT });
+      return json({
+        ok: true,
+        service: "chat-controller",
+        env: env.ENVIRONMENT,
+      });
     }
 
     const chatId = parseChatId(url.pathname);
@@ -162,5 +217,5 @@ export default {
 
     const forward = new Request(targetUrl.toString(), request);
     return stub.fetch(forward);
-  }
+  },
 };

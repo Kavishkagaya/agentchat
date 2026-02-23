@@ -7,5 +7,5 @@ export default {
   },
   async scheduled(controller: ScheduledController, env: Env): Promise<void> {
     await handleScheduled(controller, env);
-  }
+  },
 };

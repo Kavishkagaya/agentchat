@@ -1,9 +1,8 @@
-import { createTRPCRouter, superAdminProcedure } from "../trpc";
 import { getAllGroups } from "@axon/database";
+import { createTRPCRouter, superAdminProcedure } from "../trpc";
 
 export const superAdminRouter = createTRPCRouter({
-  listAllGroups: superAdminProcedure
-    .query(async ({ ctx }) => {
-      return getAllGroups(ctx.db);
-    }),
+  listAllGroups: superAdminProcedure.query(async () => {
+    return getAllGroups();
+  }),
 });

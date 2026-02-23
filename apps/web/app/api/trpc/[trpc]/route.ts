@@ -1,6 +1,6 @@
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
-import { appRouter } from "../../../../server/trpc/root";
 import { createContext } from "../../../../server/trpc/context";
+import { appRouter } from "../../../../server/trpc/root";
 
 export const runtime = "nodejs";
 
@@ -9,7 +9,7 @@ function handler(request: Request) {
     endpoint: "/api/trpc",
     req: request,
     router: appRouter,
-    createContext
+    createContext,
   });
 }
 

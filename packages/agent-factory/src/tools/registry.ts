@@ -1,4 +1,4 @@
-import type { ToolRegistry, ToolImplementation } from "../types";
+import type { ToolImplementation, ToolRegistry } from "../types";
 
 export class DefaultToolRegistry implements ToolRegistry {
   private tools = new Map<string, ToolImplementation>();

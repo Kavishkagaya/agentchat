@@ -1,6 +1,7 @@
-import type { Env } from "./env";
-import { getDb } from "./db";
+import { db, schema } from "@axon/database";
+import { eq } from "drizzle-orm";
 import { TtlCache } from "./cache";
+import type { Env } from "./env";
 
 export type AgentConfigRecord = {
   agentId: string;
@@ -22,40 +23,44 @@ function resolveUpdatedAt(value: unknown) {
   return undefined;
 }
 
-export async function loadAgentConfig(env: Env, agentId?: string, runtimeId?: string): Promise<AgentConfigRecord> {
-  const db = getDb(env);
+export async function loadAgentConfig(
+  env: Env,
+  agentId?: string,
+  runtimeId?: string
+): Promise<AgentConfigRecord> {
+  let targetAgentId = agentId;
 
   if (runtimeId) {
     const runtime = await db.query.agentRuntimes.findFirst({
-      where: (agentRuntimesTable, { eq }) => eq(agentRuntimesTable.runtimeId, runtimeId)
+      where: eq(schema.agentRuntimes.id, runtimeId),
     });
     if (!runtime) {
       throw new Error("agent runtime not found");
     }
-    agentId = runtime.agentId;
+    targetAgentId = runtime.agentId;
   }
 
-  if (!agentId) {
+  if (!targetAgentId) {
     throw new Error("missing agent_id");
   }
 
-  const cached = configCache.get(agentId);
+  const cached = configCache.get(targetAgentId);
   if (cached) {
     return cached.value;
   }
 
   const agent = await db.query.agents.findFirst({
-    where: (agentsTable, { eq }) => eq(agentsTable.agentId, agentId)
+    where: eq(schema.agents.id, targetAgentId),
   });
   if (!agent) {
     throw new Error("agent config not found");
   }
 
   const record: AgentConfigRecord = {
-    agentId,
+    agentId: targetAgentId,
     config: agent.config as Record<string, unknown>,
-    updatedAt: resolveUpdatedAt(agent.updatedAt)
+    updatedAt: resolveUpdatedAt(agent.updatedAt),
   };
-  configCache.set(agentId, record, DEFAULT_TTL_MS, record.updatedAt);
+  configCache.set(targetAgentId, record, DEFAULT_TTL_MS, record.updatedAt);
   return record;
 }

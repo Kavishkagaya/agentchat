@@ -1,24 +1,23 @@
-import { eq, and, desc } from "drizzle-orm";
-import { groups, groupMembers, groupAgents, groupRuntime } from "../schema";
-import type { Db } from "../types";
+import { desc, eq } from "drizzle-orm";
+import { db } from "../client";
+import { groupAgents, groupMembers, groupRuntime, groups } from "../schema";
 
 export interface CreateGroupParams {
+  agentIds: string[];
+  agentPolicy: any;
+  createdBy: string;
   groupId: string;
+  isPrivate: boolean;
+  memberIds: string[];
   orgId: string;
   title: string;
-  isPrivate: boolean;
-  agentPolicy: any; // Ideally strictly typed from schema
-  createdBy: string;
-  agentIds: string[];
-  memberIds: string[];
 }
 
-export async function createGroup(db: Db, params: CreateGroupParams) {
+export async function createGroup(params: CreateGroupParams) {
   const now = new Date();
 
-  // 1. Create Group
   await db.insert(groups).values({
-    groupId: params.groupId,
+    id: params.groupId,
     orgId: params.orgId,
     title: params.title,
     status: "active",
@@ -27,30 +26,28 @@ export async function createGroup(db: Db, params: CreateGroupParams) {
     createdBy: params.createdBy,
     createdAt: now,
     updatedAt: now,
-    lastActiveAt: now
+    lastActiveAt: now,
   });
 
-  // 2. Add Members
   if (params.memberIds.length > 0) {
     await db.insert(groupMembers).values(
-      params.memberIds.map(userId => ({
+      params.memberIds.map((userId) => ({
         groupId: params.groupId,
         userId,
         role: userId === params.createdBy ? "owner" : "member",
         addedBy: params.createdBy,
-        createdAt: now
+        createdAt: now,
       }))
     );
   }
 
-  // 3. Add Agents
   if (params.agentIds.length > 0) {
     await db.insert(groupAgents).values(
-      params.agentIds.map(agentId => ({
+      params.agentIds.map((agentId) => ({
         groupId: params.groupId,
         agentId,
         addedBy: params.createdBy,
-        createdAt: now
+        createdAt: now,
       }))
     );
   }
@@ -58,66 +55,73 @@ export async function createGroup(db: Db, params: CreateGroupParams) {
   return params.groupId;
 }
 
-export async function getGroup(db: Db, groupId: string) {
+export async function getGroup(groupId: string) {
   return await db.query.groups.findFirst({
-    where: eq(groups.groupId, groupId),
+    where: eq(groups.id, groupId),
     with: {
-      members: true, 
-      agents: true
-    }
+      members: true,
+      agents: true,
+    },
   });
 }
 
-export async function getGroupRuntime(db: Db, groupId: string) {
-  return await db.query.groupRuntime.findFirst({
-    where: eq(groupRuntime.groupId, groupId)
-  });
-}
-
-export async function getAllGroups(db: Db) {
+export async function getOrgGroups(orgId: string) {
   return await db.query.groups.findMany({
-    orderBy: [desc(groups.createdAt)]
+    where: eq(groups.orgId, orgId),
+    orderBy: [desc(groups.lastActiveAt)],
+  });
+}
+
+export async function getAllGroups() {
+  return await db.query.groups.findMany({
+    orderBy: [desc(groups.createdAt)],
+  });
+}
+
+export async function getGroupRuntime(groupId: string) {
+  return await db.query.groupRuntime.findFirst({
+    where: eq(groupRuntime.groupId, groupId),
   });
 }
 
 export async function initializeGroupRuntime(
-  db: Db, 
-  groupId: string, 
-  controllerId: string, 
+  groupId: string,
+  controllerId: string,
   publicKey: string
 ) {
   const now = new Date();
-  
-  // Check if exists
-  const existing = await getGroupRuntime(db, groupId);
-  
+  const existing = await getGroupRuntime(groupId);
+
   if (existing) {
-    // Update existing
-    await db.update(groupRuntime)
-      .set({ 
+    await db
+      .update(groupRuntime)
+      .set({
         groupControllerId: controllerId,
-        status: "active", 
-        publicKey, 
+        status: "active",
+        publicKey,
         lastActiveAt: now,
-        updatedAt: now 
+        updatedAt: now,
       })
       .where(eq(groupRuntime.groupId, groupId));
   } else {
-    // Create new
     await db.insert(groupRuntime).values({
       groupId,
       groupControllerId: controllerId,
       status: "active",
       publicKey,
       lastActiveAt: now,
-      updatedAt: now
+      updatedAt: now,
     });
   }
 }
 
-export async function updateGroupRuntimeStatus(db: Db, groupId: string, status: string) {
+export async function updateGroupRuntimeStatus(
+  groupId: string,
+  status: string
+) {
   const now = new Date();
-  await db.update(groupRuntime)
+  await db
+    .update(groupRuntime)
     .set({ status, updatedAt: now })
     .where(eq(groupRuntime.groupId, groupId));
 }

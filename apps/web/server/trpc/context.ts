@@ -1,21 +1,28 @@
+import { db, getInternalOrgId, getInternalUserId } from "@axon/database";
+import { getAuth } from "@clerk/nextjs/server";
 import type { inferAsyncReturnType } from "@trpc/server";
-import { getDb } from "../db";
+import type { NextRequest } from "next/server";
+
 import { getOrchestratorClient } from "../workers/orchestrator";
 
-// Mock Auth or use real if available
-function getAuth(req: Request) {
-  const userId = req.headers.get("x-user-id");
-  const orgId = req.headers.get("x-org-id");
-  return { userId, orgId };
-}
+export async function createContext(opts: { req: Request | NextRequest }) {
+  const { userId: clerkUserId, orgId: clerkOrgId } = getAuth(
+    opts.req as NextRequest
+  );
 
-export async function createContext(opts: { req: Request }) {
-  const { userId, orgId } = getAuth(opts.req);
-  
+  // Resolve internal IDs if available
+  const userId = clerkUserId ? await getInternalUserId(clerkUserId) : null;
+  const orgId = clerkOrgId ? await getInternalOrgId(clerkOrgId) : null;
+
   return {
-    db: getDb(),
+    db,
     orchestrator: getOrchestratorClient(),
-    auth: { userId, orgId }
+    auth: {
+      clerkUserId,
+      clerkOrgId,
+      userId, // internal id
+      orgId, // internal id
+    },
   };
 }
 

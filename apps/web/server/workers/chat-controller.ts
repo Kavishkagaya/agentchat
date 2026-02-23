@@ -21,15 +21,26 @@ type PostMessageResponse = {
 
 type ChatControllerClient = {
   postMessage: (payload: PostMessageRequest) => Promise<PostMessageResponse>;
-  listMessages: (chatId: string) => Promise<{ messages: Array<{ message_id: string; role: string; text: string; created_at: string }> }>;
+  listMessages: (chatId: string) => Promise<{
+    messages: Array<{
+      message_id: string;
+      role: string;
+      text: string;
+      created_at: string;
+    }>;
+  }>;
 };
 
-async function requestChatController<T>(path: string, payload?: unknown, method: "POST" | "GET" = "POST"): Promise<T> {
+async function requestChatController<T>(
+  path: string,
+  payload?: unknown,
+  method: "POST" | "GET" = "POST"
+): Promise<T> {
   const baseUrl = await resolveWorkerBaseUrl("chat-controller");
   const response = await fetch(`${baseUrl}${path}`, {
     method,
     headers: { "content-type": "application/json" },
-    body: payload ? JSON.stringify(payload) : undefined
+    body: payload ? JSON.stringify(payload) : undefined,
   });
 
   if (!response.ok) {
@@ -43,12 +54,18 @@ async function requestChatController<T>(path: string, payload?: unknown, method:
 export function getChatControllerClient(): ChatControllerClient {
   return {
     postMessage: (payload) =>
-      requestChatController<PostMessageResponse>(`/chats/${payload.chat_id}/messages`, payload),
+      requestChatController<PostMessageResponse>(
+        `/chats/${payload.chat_id}/messages`,
+        payload
+      ),
     listMessages: (chatId) =>
-      requestChatController<{ messages: Array<{ message_id: string; role: string; text: string; created_at: string }> }>(
-        `/chats/${chatId}/messages`,
-        undefined,
-        "GET"
-      )
+      requestChatController<{
+        messages: Array<{
+          message_id: string;
+          role: string;
+          text: string;
+          created_at: string;
+        }>;
+      }>(`/chats/${chatId}/messages`, undefined, "GET"),
   };
 }

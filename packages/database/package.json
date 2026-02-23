@@ -6,15 +6,26 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "lint": "echo 'no lint configured'",
+    "lint": "biome lint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "format": "echo 'no format configured'"
+    "format": "echo 'no format configured'",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "drizzle-orm": "0.36.1"
+    "@ai-sdk/openai": "^3.0.30",
+    "@neondatabase/serverless": "0.10.4",
+    "@types/pg": "^8.16.0",
+    "drizzle-orm": "0.36.1",
+    "postgres": "^3.4.8",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
-    "drizzle-kit": "0.24.2",
+    "@axon/typescript-config": "workspace:^",
+    "dotenv": "^17.3.1",
+    "drizzle-kit": "^0.31.0",
     "typescript": "5.6.3"
   }
 }

@@ -1,6 +1,6 @@
-import type { Env } from "./env";
 import type { AgentRunInput } from "@axon/agent-factory";
 import { loadAgentConfig } from "./config";
+import type { Env } from "./env";
 import { runAgent } from "./runner";
 import { createEventStream } from "./stream";
 
@@ -11,7 +11,10 @@ export type AgentRunRequest = {
   messages?: Array<{ role: "user" | "assistant" | "system"; content: string }>;
 };
 
-export async function handleAgentRun(request: Request, env: Env): Promise<Response> {
+export async function handleAgentRun(
+  request: Request,
+  env: Env
+): Promise<Response> {
   const body = (await request.json()) as AgentRunRequest;
   const events: Array<Record<string, unknown>> = [];
   events.push({ type: "status", status: "thinking" });
@@ -20,9 +23,14 @@ export async function handleAgentRun(request: Request, env: Env): Promise<Respon
   events.push({ type: "status", status: "running" });
 
   const input: AgentRunInput = { prompt: body.prompt, messages: body.messages };
-  const result = await runAgent(record, env, input, (toolId, args, toolName) => {
-    events.push({ type: "tool_call", tool: toolId, name: toolName, args });
-  });
+  const result = await runAgent(
+    record,
+    env,
+    input,
+    (toolId, args, toolName) => {
+      events.push({ type: "tool_call", tool: toolId, name: toolName, args });
+    }
+  );
   events.push({ type: "status", status: "completed" });
 
   return new Response(
@@ -34,13 +42,16 @@ export async function handleAgentRun(request: Request, env: Env): Promise<Respon
       text: result.text,
       finish_reason: result.finish_reason,
       usage: result.usage,
-      events
+      events,
     }),
     { headers: { "content-type": "application/json" } }
   );
 }
 
-export async function handleAgentRunStream(request: Request, env: Env): Promise<Response> {
+export async function handleAgentRunStream(
+  request: Request,
+  env: Env
+): Promise<Response> {
   const { stream, send, close } = createEventStream();
 
   const response = new Response(stream, {
@@ -48,8 +59,8 @@ export async function handleAgentRunStream(request: Request, env: Env): Promise<
     headers: {
       "content-type": "text/event-stream",
       "cache-control": "no-cache",
-      "connection": "keep-alive"
-    }
+      connection: "keep-alive",
+    },
   });
 
   (async () => {
@@ -67,10 +78,23 @@ export async function handleAgentRunStream(request: Request, env: Env): Promise<
     try {
       const record = await loadAgentConfig(env, body.agent_id, body.runtime_id);
       send("status", { status: "running" });
-      const input: AgentRunInput = { prompt: body.prompt, messages: body.messages };
-      const result = await runAgent(record, env, input, (toolId, args, toolName) => {
-        send("event", { type: "tool_call", tool: toolId, name: toolName, args });
-      });
+      const input: AgentRunInput = {
+        prompt: body.prompt,
+        messages: body.messages,
+      };
+      const result = await runAgent(
+        record,
+        env,
+        input,
+        (toolId, args, toolName) => {
+          send("event", {
+            type: "tool_call",
+            tool: toolId,
+            name: toolName,
+            args,
+          });
+        }
+      );
       send("status", { status: "completed" });
       send("final", {
         ok: true,
@@ -79,10 +103,13 @@ export async function handleAgentRunStream(request: Request, env: Env): Promise<
         role: "assistant",
         text: result.text,
         finish_reason: result.finish_reason,
-        usage: result.usage
+        usage: result.usage,
       });
     } catch (error) {
-      send("error", { ok: false, error: error instanceof Error ? error.message : "agent error" });
+      send("error", {
+        ok: false,
+        error: error instanceof Error ? error.message : "agent error",
+      });
     } finally {
       await close();
     }

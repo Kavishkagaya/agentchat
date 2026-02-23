@@ -1,8 +1,8 @@
-import { createTRPCRouter } from "./trpc";
-import { groupsRouter } from "./routers/groups.router";
 import { agentsRouter } from "./routers/agents.router";
-import { userRouter } from "./routers/user.router";
+import { groupsRouter } from "./routers/groups.router";
 import { superAdminRouter } from "./routers/super-admin.router";
+import { userRouter } from "./routers/user.router";
+import { createTRPCRouter } from "./trpc";
 
 export const appRouter = createTRPCRouter({
   user: userRouter,

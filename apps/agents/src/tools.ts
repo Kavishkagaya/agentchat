@@ -1,4 +1,4 @@
-import { DefaultToolRegistry, createDefaultTools } from "@axon/agent-factory";
+import { createDefaultTools, DefaultToolRegistry } from "@axon/agent-factory";
 
 export function createToolRegistry() {
   const registry = new DefaultToolRegistry();

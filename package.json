@@ -9,8 +9,14 @@
   "scripts": {
     "dev": "pnpm -r dev",
     "build": "pnpm -r build",
-    "lint": "pnpm -r lint",
-    "typecheck": "pnpm -r typecheck",
-    "format": "pnpm -r format"
+    "lint": "biome lint .",
+    "format": "biome format . --write",
+    "fix": "ultracite fix",
+    "check": "biome check . --write",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.4",
+    "ultracite": "^7.2.3"
   }
 }

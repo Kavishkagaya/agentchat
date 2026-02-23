@@ -1,0 +1,16 @@
+{
+  "name": "@axon/typescript-config",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "files": [
+    "base.json",
+    "nextjs.json",
+    "cloudflare-worker.json"
+  ],
+  "exports": {
+    "./base.json": "./base.json",
+    "./nextjs.json": "./nextjs.json",
+    "./cloudflare-worker.json": "./cloudflare-worker.json"
+  }
+}

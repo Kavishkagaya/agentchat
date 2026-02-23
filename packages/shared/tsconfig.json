@@ -1,9 +1,5 @@
 {
-  "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    "declaration": true,
-    "emitDeclarationOnly": true,
-    "outDir": "dist"
-  },
-  "include": ["src/**/*.ts"]
+  "extends": "@axon/typescript-config/base.json",
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules"]
 }

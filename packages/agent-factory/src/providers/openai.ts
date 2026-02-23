@@ -11,5 +11,5 @@ export const openAIProvider: ProviderAdapter = {
     const baseURL = env.OPENAI_BASE_URL;
     const openai = createOpenAI({ apiKey, baseURL });
     return openai(modelId);
-  }
+  },
 };

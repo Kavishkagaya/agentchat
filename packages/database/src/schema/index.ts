@@ -1,0 +1,387 @@
+import { relations } from "drizzle-orm";
+import {
+  boolean,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
+
+// --- Users ---
+
+export const users = pgTable(
+  "users",
+  {
+    id: text("id").primaryKey(), // Internal DB ID (e.g. uuid)
+    clerkId: text("clerk_id").notNull(), // Clerk User ID
+    email: text("email").notNull(),
+    password: text("password"), // Sync if available
+    firstName: text("first_name"),
+    lastName: text("last_name"),
+    imageUrl: text("image_url"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    clerkIdIdx: uniqueIndex("users_clerk_id_idx").on(table.clerkId),
+    emailIdx: uniqueIndex("users_email_idx").on(table.email),
+  })
+);
+
+// --- Organizations ---
+
+export const orgs = pgTable(
+  "orgs",
+  {
+    id: text("id").primaryKey(), // Internal DB ID
+    clerkId: text("clerk_id").notNull(), // Clerk Org ID
+    name: text("name").notNull(),
+    planId: text("plan_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    clerkIdIdx: uniqueIndex("orgs_clerk_id_idx").on(table.clerkId),
+  })
+);
+
+export const orgMembers = pgTable(
+  "org_members",
+  {
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => orgs.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    clerkOrgId: text("clerk_org_id"),
+    clerkUserId: text("clerk_user_id"),
+    role: text("role").notNull(), // 'owner', 'member', 'admin'
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    orgUserUnique: uniqueIndex("org_members_org_user_idx").on(
+      table.orgId,
+      table.userId
+    ),
+    userIdIdx: index("org_members_user_id_idx").on(table.userId),
+    clerkOrgIdIdx: index("org_members_clerk_org_id_idx").on(table.clerkOrgId),
+    clerkUserIdIdx: index("org_members_clerk_user_id_idx").on(
+      table.clerkUserId
+    ),
+  })
+);
+
+// --- Groups (Persistent Chat Rooms) ---
+
+export const groups = pgTable(
+  "groups",
+  {
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => orgs.id),
+    title: text("title").notNull(),
+    status: text("status").notNull(), // 'active', 'idle', 'archived'
+    isPrivate: boolean("is_private").notNull().default(false),
+    agentPolicy: jsonb("agent_policy").notNull(), // { auto_trigger, multi_agent, ... }
+    createdBy: text("created_by").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+    lastActiveAt: timestamp("last_active_at", { withTimezone: true }),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+  },
+  (table) => ({
+    orgIdIdx: index("groups_org_id_idx").on(table.orgId),
+  })
+);
+
+export const groupsRelations = relations(groups, ({ many }) => ({
+  members: many(groupMembers),
+  agents: many(groupAgents),
+}));
+
+export const groupMembers = pgTable(
+  "group_members",
+  {
+    groupId: text("group_id")
+      .notNull()
+      .references(() => groups.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    role: text("role").notNull(), // 'owner', 'member'
+    addedBy: text("added_by").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.groupId, table.userId] }),
+    userIdIdx: index("group_members_user_id_idx").on(table.userId),
+  })
+);
+
+export const groupMembersRelations = relations(groupMembers, ({ one }) => ({
+  group: one(groups, {
+    fields: [groupMembers.groupId],
+    references: [groups.id],
+  }),
+}));
+
+// --- Agents ---
+
+export const agents = pgTable(
+  "agents",
+  {
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => orgs.id),
+    name: text("name").notNull(),
+    description: text("description"),
+    config: jsonb("config").notNull(), // { system_prompt, model, tools... }
+    visibility: text("visibility").notNull(), // 'public', 'private'
+    createdBy: text("created_by").references(() => users.id),
+    parentAgentId: text("parent_agent_id"),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    orgIdIdx: index("agents_org_id_idx").on(table.orgId),
+  })
+);
+
+export const groupAgents = pgTable(
+  "group_agents",
+  {
+    groupId: text("group_id")
+      .notNull()
+      .references(() => groups.id),
+    agentId: text("agent_id")
+      .notNull()
+      .references(() => agents.id),
+    addedBy: text("added_by").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.groupId, table.agentId] }),
+  })
+);
+
+export const groupAgentsRelations = relations(groupAgents, ({ one }) => ({
+  group: one(groups, {
+    fields: [groupAgents.groupId],
+    references: [groups.id],
+  }),
+  agent: one(agents, {
+    fields: [groupAgents.agentId],
+    references: [agents.id],
+  }),
+}));
+
+// --- Runtime Routing ---
+
+export const groupRuntime = pgTable("group_runtime", {
+  groupId: text("group_id")
+    .primaryKey()
+    .references(() => groups.id),
+  groupControllerId: text("group_controller_id").notNull(), // Durable Object ID string
+  status: text("status").notNull(), // 'active', 'idle'
+  lastActiveAt: timestamp("last_active_at", { withTimezone: true }),
+  idleAt: timestamp("idle_at", { withTimezone: true }),
+  region: text("region"),
+  publicKey: text("public_key"), // Session Public Key for Chain of Trust verification
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+});
+
+export const agentRuntimes = pgTable(
+  "agent_runtimes",
+  {
+    id: text("id").primaryKey(),
+    groupId: text("group_id")
+      .notNull()
+      .references(() => groups.id),
+    agentId: text("agent_id")
+      .notNull()
+      .references(() => agents.id),
+    status: text("status").notNull(),
+    baseUrl: text("base_url").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    groupIdIdx: index("agent_runtimes_group_id_idx").on(table.groupId),
+  })
+);
+
+export const groupAgentRuntimes = pgTable(
+  "group_agent_runtimes",
+  {
+    groupId: text("group_id")
+      .notNull()
+      .references(() => groups.id),
+    agentId: text("agent_id")
+      .notNull()
+      .references(() => agents.id),
+    runtimeId: text("runtime_id")
+      .notNull()
+      .references(() => agentRuntimes.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({
+      columns: [table.groupId, table.agentId, table.runtimeId],
+    }),
+  })
+);
+
+// --- Lifecycle & Archive ---
+
+export const groupArchives = pgTable(
+  "group_archives",
+  {
+    id: text("id").primaryKey(),
+    groupId: text("group_id")
+      .notNull()
+      .references(() => groups.id),
+    snapshotId: text("snapshot_id").notNull(),
+    r2Path: text("r2_path").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    groupIdIdx: index("group_archives_group_id_idx").on(table.groupId),
+  })
+);
+
+export const groupSnapshots = pgTable(
+  "group_snapshots",
+  {
+    id: text("id").primaryKey(),
+    groupId: text("group_id")
+      .notNull()
+      .references(() => groups.id),
+    r2Path: text("r2_path").notNull(),
+    sizeBytes: integer("size_bytes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    groupIdIdx: index("group_snapshots_group_id_idx").on(table.groupId),
+  })
+);
+
+export const groupTasks = pgTable(
+  "group_tasks",
+  {
+    id: text("id").primaryKey(),
+    groupId: text("group_id")
+      .notNull()
+      .references(() => groups.id),
+    taskType: text("task_type").notNull(),
+    status: text("status").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    groupIdIdx: index("group_tasks_group_id_idx").on(table.groupId),
+  })
+);
+
+// --- Secrets ---
+
+export const secrets = pgTable(
+  "secrets",
+  {
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => orgs.id),
+    name: text("name").notNull(),
+    namespace: text("namespace").notNull(), // 'agent'
+    ciphertext: text("ciphertext").notNull(),
+    createdBy: text("created_by").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    rotatedAt: timestamp("rotated_at", { withTimezone: true }),
+  },
+  (table) => ({
+    orgIdIdx: index("secrets_org_id_idx").on(table.orgId),
+  })
+);
+
+export const groupSecrets = pgTable(
+  "group_secrets",
+  {
+    groupId: text("group_id")
+      .notNull()
+      .references(() => groups.id),
+    secretId: text("secret_id")
+      .notNull()
+      .references(() => secrets.id),
+    grantedBy: text("granted_by").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.groupId, table.secretId] }),
+  })
+);
+
+// --- Billing ---
+
+export const orgUsage = pgTable(
+  "org_usage",
+  {
+    orgId: text("org_id")
+      .notNull()
+      .references(() => orgs.id),
+    periodStart: timestamp("period_start", { withTimezone: true }).notNull(),
+    periodEnd: timestamp("period_end", { withTimezone: true }).notNull(),
+    concurrentGroupsPeak: integer("concurrent_groups_peak"),
+  },
+  (table) => ({
+    orgIdIdx: index("org_usage_org_id_idx").on(table.orgId),
+  })
+);
+
+export const orgLimits = pgTable("org_limits", {
+  orgId: text("org_id")
+    .primaryKey()
+    .references(() => orgs.id),
+  maxStorageGb: integer("max_storage_gb"),
+  maxEgressGb: integer("max_egress_gb"),
+});
+
+export const subscriptions = pgTable("subscriptions", {
+  orgId: text("org_id")
+    .primaryKey()
+    .references(() => orgs.id),
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  status: text("status"),
+  currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+});
+
+// --- Audit ---
+
+export const auditLog = pgTable(
+  "audit_log",
+  {
+    id: text("id").primaryKey(),
+    orgId: text("org_id").references(() => orgs.id),
+    actorUserId: text("actor_user_id").references(() => users.id),
+    action: text("action").notNull(),
+    targetType: text("target_type"),
+    targetId: text("target_id"),
+    metadata: jsonb("metadata"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    orgIdIdx: index("audit_log_org_id_idx").on(table.orgId),
+    actorUserIdIdx: index("audit_log_actor_user_id_idx").on(table.actorUserId),
+  })
+);

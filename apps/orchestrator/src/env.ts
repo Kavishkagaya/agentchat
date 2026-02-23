@@ -1,11 +1,11 @@
 export interface Env {
-  ENVIRONMENT: string;
-  ARCHIVES_BUCKET: R2Bucket;
-  NEON_DATABASE_URL?: string;
   AGENTS_BASE_URL?: string;
-  
+  ARCHIVES_BUCKET: R2Bucket;
+  ENVIRONMENT: string;
+
   // Durable Objects
   GROUP_CONTROLLER: DurableObjectNamespace;
+  NEON_DATABASE_URL?: string;
 
   // Secrets
   ORCHESTRATOR_PRIVATE_KEY: string;

@@ -1,4 +1,4 @@
-import type { CoreMessage } from "ai";
+import type { ModelMessage } from "ai";
 import type { ZodTypeAny } from "zod";
 
 export type AgentToolRef = {
@@ -26,7 +26,7 @@ export type AgentConfig = {
 
 export type AgentRunInput = {
   prompt?: string;
-  messages?: CoreMessage[];
+  messages?: ModelMessage[];
 };
 
 export type AgentRunResult = {
