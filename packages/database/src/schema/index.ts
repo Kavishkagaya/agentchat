@@ -141,6 +141,7 @@ export const agents = pgTable(
     orgId: text("org_id")
       .notNull()
       .references(() => orgs.id),
+    providerId: text("provider_id"),
     name: text("name").notNull(),
     description: text("description"),
     config: jsonb("config").notNull(), // { system_prompt, model, tools... }
@@ -182,6 +183,70 @@ export const groupAgentsRelations = relations(groupAgents, ({ one }) => ({
     fields: [groupAgents.agentId],
     references: [agents.id],
   }),
+}));
+
+// --- MCP Servers ---
+
+export const mcpServers = pgTable(
+  "mcp_servers",
+  {
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => orgs.id),
+    name: text("name").notNull(),
+    url: text("url").notNull(),
+    token: text("token").notNull(),
+    secretRef: text("secret_ref"),
+    status: text("status").notNull().default("pending"), // 'pending' | 'valid' | 'error'
+    errorMessage: text("error_message"),
+    lastValidatedAt: timestamp("last_validated_at", { withTimezone: true }),
+    createdBy: text("created_by").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    orgIdIdx: index("mcp_servers_org_id_idx").on(table.orgId),
+    statusIdx: index("mcp_servers_status_idx").on(table.status),
+  })
+);
+
+export const mcpServerTools = pgTable(
+  "mcp_server_tools",
+  {
+    serverId: text("server_id")
+      .notNull()
+      .references(() => mcpServers.id),
+    toolId: text("tool_id").notNull(),
+    name: text("name").notNull(),
+    description: text("description"),
+    inputSchema: jsonb("input_schema"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.serverId, table.toolId] }),
+    serverIdIdx: index("mcp_server_tools_server_id_idx").on(table.serverId),
+  })
+);
+
+export const mcpServerToolsRelations = relations(mcpServerTools, ({ one }) => ({
+  server: one(mcpServers, {
+    fields: [mcpServerTools.serverId],
+    references: [mcpServers.id],
+  }),
+}));
+
+export const mcpServersRelations = relations(mcpServers, ({ one, many }) => ({
+  org: one(orgs, {
+    fields: [mcpServers.orgId],
+    references: [orgs.id],
+  }),
+  createdBy: one(users, {
+    fields: [mcpServers.createdBy],
+    references: [users.id],
+  }),
+  tools: many(mcpServerTools),
 }));
 
 // --- Runtime Routing ---
@@ -296,19 +361,49 @@ export const groupTasks = pgTable(
 export const secrets = pgTable(
   "secrets",
   {
-    id: text("id").primaryKey(),
+    id: text("secret_id").primaryKey(),
     orgId: text("org_id")
       .notNull()
       .references(() => orgs.id),
     name: text("name").notNull(),
     namespace: text("namespace").notNull(), // 'agent'
     ciphertext: text("ciphertext").notNull(),
+    version: integer("version").notNull().default(1),
     createdBy: text("created_by").references(() => users.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
     rotatedAt: timestamp("rotated_at", { withTimezone: true }),
   },
   (table) => ({
     orgIdIdx: index("secrets_org_id_idx").on(table.orgId),
+    orgIdIdIdx: index("secrets_org_id_id_idx").on(table.orgId, table.id),
+  })
+);
+
+export const providerCatalog = pgTable(
+  "provider_catalog",
+  {
+    id: text("provider_id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => orgs.id),
+    name: text("name").notNull(),
+    providerType: text("provider_type").notNull(), // e.g. 'cloudflare_ai_gateway'
+    kind: text("kind").notNull(), // e.g. 'openai', 'gemini'
+    modelId: text("model_id").notNull(),
+    secretRef: text("secret_ref")
+      .notNull()
+      .references(() => secrets.id),
+    gatewayAccountId: text("gateway_account_id").notNull(),
+    gatewayId: text("gateway_id").notNull(),
+    createdBy: text("created_by").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    orgIdIdx: index("provider_catalog_org_id_idx").on(table.orgId),
+    providerTypeIdx: index("provider_catalog_provider_type_idx").on(
+      table.providerType
+    ),
   })
 );
 

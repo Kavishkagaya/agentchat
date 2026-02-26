@@ -1,5 +1,6 @@
 export interface Env {
   AGENT_CONFIG_CACHE_TTL_SECONDS?: string;
+  CLOUDFLARE_AIG_TOKEN?: string;
   ENVIRONMENT: string;
   NEON_DATABASE_URL?: string;
   OPENAI_API_KEY?: string;

@@ -5,6 +5,8 @@ import type { Env } from "./env";
 
 export type AgentConfigRecord = {
   agentId: string;
+  orgId: string;
+  providerId?: string | null;
   config: Record<string, unknown>;
   updatedAt?: string;
 };
@@ -58,6 +60,8 @@ export async function loadAgentConfig(
 
   const record: AgentConfigRecord = {
     agentId: targetAgentId,
+    orgId: agent.orgId,
+    providerId: agent.providerId ?? null,
     config: agent.config as Record<string, unknown>,
     updatedAt: resolveUpdatedAt(agent.updatedAt),
   };
