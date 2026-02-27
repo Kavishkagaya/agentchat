@@ -1,7 +1,9 @@
 import { db, schema } from "@axon/database";
 import { eq } from "drizzle-orm";
 import { TtlCache } from "./cache";
-import type { Env } from "./env";
+import { readLatestVersion, readVersionedCache, writeVersionedCache } from "./cache-store";
+import { getTtlMs, type Env } from "./env";
+import { recordCacheMetric, recordResolutionMetric } from "./telemetry";
 
 export type AgentConfigRecord = {
   agentId: string;
@@ -25,6 +27,10 @@ function resolveUpdatedAt(value: unknown) {
   return undefined;
 }
 
+function runtimeCacheKey(agentId: string) {
+  return `agent:${agentId}`;
+}
+
 export async function loadAgentConfig(
   env: Env,
   agentId?: string,
@@ -46,15 +52,32 @@ export async function loadAgentConfig(
     throw new Error("missing agent_id");
   }
 
-  const cached = configCache.get(targetAgentId);
+  const ttlMs = getTtlMs(env.AGENT_CONFIG_CACHE_TTL_SECONDS, DEFAULT_TTL_MS);
+  const cacheKey = runtimeCacheKey(targetAgentId);
+  const cached = configCache.get(cacheKey);
+
   if (cached) {
-    return cached.value;
+    const latest = await readLatestVersion(env, cacheKey);
+    if (!latest || latest === cached.version) {
+      recordCacheMetric("agent", true);
+      return cached.value;
+    }
   }
 
+  const l2 = await readVersionedCache<AgentConfigRecord>(env, cacheKey);
+  if (l2) {
+    configCache.set(cacheKey, l2.value, ttlMs, l2.version);
+    recordCacheMetric("agent", true);
+    return l2.value;
+  }
+
+  recordCacheMetric("agent", false);
+  const started = Date.now();
   const agent = await db.query.agents.findFirst({
     where: eq(schema.agents.id, targetAgentId),
   });
   if (!agent) {
+    recordResolutionMetric("agent", Date.now() - started, false);
     throw new Error("agent config not found");
   }
 
@@ -65,6 +88,9 @@ export async function loadAgentConfig(
     config: agent.config as Record<string, unknown>,
     updatedAt: resolveUpdatedAt(agent.updatedAt),
   };
-  configCache.set(targetAgentId, record, DEFAULT_TTL_MS, record.updatedAt);
+  const version = record.updatedAt ?? new Date().toISOString();
+  configCache.set(cacheKey, record, ttlMs, version);
+  await writeVersionedCache(env, cacheKey, version, record, Math.ceil(ttlMs / 1000));
+  recordResolutionMetric("agent", Date.now() - started, true);
   return record;
 }

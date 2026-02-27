@@ -4,13 +4,21 @@ import { groupAgents, groupMembers, groupRuntime, groups } from "../schema";
 
 export interface CreateGroupParams {
   agentIds: string[];
-  agentPolicy: any;
+  config: Record<string, unknown>;
   createdBy: string;
   groupId: string;
   isPrivate: boolean;
   memberIds: string[];
   orgId: string;
   title: string;
+}
+
+function extractAgentPolicy(config: Record<string, unknown>) {
+  const candidate = config.agent_policy;
+  if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
+    return candidate as Record<string, unknown>;
+  }
+  return {};
 }
 
 export async function createGroup(params: CreateGroupParams) {
@@ -22,7 +30,8 @@ export async function createGroup(params: CreateGroupParams) {
     title: params.title,
     status: "active",
     isPrivate: params.isPrivate,
-    agentPolicy: params.agentPolicy,
+    config: params.config,
+    agentPolicy: extractAgentPolicy(params.config),
     createdBy: params.createdBy,
     createdAt: now,
     updatedAt: now,

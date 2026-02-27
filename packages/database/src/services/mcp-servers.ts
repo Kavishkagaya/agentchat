@@ -6,6 +6,7 @@ import { mcpServerTools, mcpServers } from "../schema";
 export type McpServerStatus = "pending" | "valid" | "error";
 
 export interface CreateMcpServerParams {
+  config: Record<string, unknown>;
   orgId: string;
   name: string;
   url: string;
@@ -32,6 +33,7 @@ export async function createMcpServer(params: CreateMcpServerParams) {
     url: params.url,
     token: params.token ?? "",
     secretRef: params.secretRef ?? null,
+    config: params.config,
     status: "pending",
     createdBy: params.createdBy,
     createdAt: now,

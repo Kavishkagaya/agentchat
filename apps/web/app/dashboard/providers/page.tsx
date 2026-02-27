@@ -44,6 +44,23 @@ type ProviderRow = {
   gatewayId: string;
 };
 
+function buildProviderConfig(form: ProviderForm) {
+  return {
+    provider_type: form.providerType,
+    kind: form.kind,
+    model_id: form.modelId,
+    credentials_ref: {
+      secret_id: form.secretRef,
+      version: "latest",
+    },
+    gateway: {
+      account_id: form.gatewayAccountId,
+      gateway_id: form.gatewayId,
+    },
+    enabled: true,
+  };
+}
+
 export default function ProvidersPage() {
   const providersQuery = api.providers.list.useQuery();
   const secretsQuery = api.secrets.list.useQuery();
@@ -81,12 +98,7 @@ export default function ProvidersPage() {
 
     await createProvider.mutateAsync({
       name: form.name,
-      providerType: form.providerType,
-      kind: form.kind,
-      modelId: form.modelId,
-      secretRef: form.secretRef,
-      gatewayAccountId: form.gatewayAccountId,
-      gatewayId: form.gatewayId,
+      config: buildProviderConfig(form),
     });
     await providersQuery.refetch();
     setCreateOpen(false);
@@ -106,11 +118,7 @@ export default function ProvidersPage() {
     await updateProvider.mutateAsync({
       providerId: editingProvider.id,
       name: form.name,
-      kind: form.kind,
-      modelId: form.modelId,
-      secretRef: form.secretRef || undefined,
-      gatewayAccountId: form.gatewayAccountId || undefined,
-      gatewayId: form.gatewayId || undefined,
+      config: buildProviderConfig(form),
     });
     await providersQuery.refetch();
     setEditOpen(false);

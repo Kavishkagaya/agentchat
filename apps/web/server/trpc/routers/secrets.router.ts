@@ -13,6 +13,9 @@ import { createTRPCRouter, orgAdminProcedure } from "../trpc";
 
 export const secretsRouter = createTRPCRouter({
   list: orgAdminProcedure.query(async ({ ctx }) => {
+    if (!ctx.auth.orgId) {
+      throw new TRPCError({ code: "UNAUTHORIZED" });
+    }
     return listSecrets(ctx.auth.orgId);
   }),
 
@@ -25,6 +28,9 @@ export const secretsRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      if (!ctx.auth.orgId || !ctx.auth.userId) {
+        throw new TRPCError({ code: "UNAUTHORIZED" });
+      }
       const result = await createSecret({
         orgId: ctx.auth.orgId,
         name: input.name,
@@ -54,6 +60,9 @@ export const secretsRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      if (!ctx.auth.orgId || !ctx.auth.userId) {
+        throw new TRPCError({ code: "UNAUTHORIZED" });
+      }
       const result = await updateSecret({
         orgId: ctx.auth.orgId,
         secretId: input.secretId,
@@ -81,6 +90,9 @@ export const secretsRouter = createTRPCRouter({
   delete: orgAdminProcedure
     .input(z.object({ secretId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
+      if (!ctx.auth.orgId || !ctx.auth.userId) {
+        throw new TRPCError({ code: "UNAUTHORIZED" });
+      }
       const existing = await getSecretMetadata({
         orgId: ctx.auth.orgId,
         secretId: input.secretId,
@@ -106,6 +118,9 @@ export const secretsRouter = createTRPCRouter({
   reveal: orgAdminProcedure
     .input(z.object({ secretId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
+      if (!ctx.auth.orgId || !ctx.auth.userId) {
+        throw new TRPCError({ code: "UNAUTHORIZED" });
+      }
       const secret = await getSecretValue({
         orgId: ctx.auth.orgId,
         secretId: input.secretId,

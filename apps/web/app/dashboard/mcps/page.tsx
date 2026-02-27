@@ -41,8 +41,19 @@ export default function McpsPage() {
 
     await addMcp.mutateAsync({
       name: form.name,
-      url: form.url,
-      secretRef: form.secretRef,
+      config: {
+        url: form.url,
+        auth: {
+          type: "bearer",
+          credentials_ref: {
+            secret_id: form.secretRef,
+            version: "latest",
+          },
+        },
+        validation: {
+          tools_path: "/tools",
+        },
+      },
     });
 
     await mcpQuery.refetch();

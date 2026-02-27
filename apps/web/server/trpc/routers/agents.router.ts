@@ -14,11 +14,11 @@ const mcpToolRefSchema = z.object({
   serverId: z.string().min(1),
   toolId: z.string().min(1),
   name: z.string().min(1),
-});
+}).strict();
 
 const agentConfigSchema = z.object({
   systemPrompt: z.string().min(1),
-  model: z.string().min(1),
+  model: z.string().min(1).optional(),
   tools: z.array(mcpToolRefSchema).optional(),
   temperature: z.number().optional(),
   maxTokens: z.number().optional(),
@@ -27,7 +27,7 @@ const agentConfigSchema = z.object({
   frequencyPenalty: z.number().optional(),
   stop: z.array(z.string()).optional(),
   seed: z.number().int().optional(),
-});
+}).strict();
 
 export const agentsRouter = createTRPCRouter({
   list: orgProcedure.query(async ({ ctx }) => {
@@ -59,6 +59,13 @@ export const agentsRouter = createTRPCRouter({
       });
       if (!provider) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Provider not found" });
+      }
+      if (input.config.model && input.config.model !== provider.modelId) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Agent config model must not diverge from provider catalog model.",
+        });
       }
 
       const result = await createAgent({

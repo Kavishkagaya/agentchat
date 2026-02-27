@@ -22,7 +22,7 @@ export interface UpdateSecretParams {
 
 export async function createSecret(params: CreateSecretParams) {
   const now = new Date();
-  const id = `secret_${randomUUID()}`;
+  const id = randomUUID();
   const ciphertext = encryptSecretValue(params.value);
 
   await db.insert(secrets).values({

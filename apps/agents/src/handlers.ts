@@ -27,8 +27,10 @@ export async function handleAgentRun(
     record,
     env,
     input,
-    (toolId, args, toolName) => {
-      events.push({ type: "tool_call", tool: toolId, name: toolName, args });
+    {
+      onToolCall: (toolId, args, toolName) => {
+        events.push({ type: "tool_call", tool: toolId, name: toolName, args });
+      },
     }
   );
   events.push({ type: "status", status: "completed" });
@@ -86,13 +88,15 @@ export async function handleAgentRunStream(
         record,
         env,
         input,
-        (toolId, args, toolName) => {
-          send("event", {
-            type: "tool_call",
-            tool: toolId,
-            name: toolName,
-            args,
-          });
+        {
+          onToolCall: (toolId, args, toolName) => {
+            send("event", {
+              type: "tool_call",
+              tool: toolId,
+              name: toolName,
+              args,
+            });
+          },
         }
       );
       send("status", { status: "completed" });

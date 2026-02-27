@@ -4,6 +4,7 @@ import { db } from "../client";
 import { providerCatalog } from "../schema";
 
 export interface CreateProviderParams {
+  config: Record<string, unknown>;
   orgId: string;
   name: string;
   providerType: string;
@@ -16,6 +17,7 @@ export interface CreateProviderParams {
 }
 
 export interface UpdateProviderParams {
+  config?: Record<string, unknown> | null;
   orgId: string;
   providerId: string;
   name?: string | null;
@@ -40,6 +42,7 @@ export async function createProvider(params: CreateProviderParams) {
     secretRef: params.secretRef,
     gatewayAccountId: params.gatewayAccountId,
     gatewayId: params.gatewayId,
+    config: params.config,
     createdBy: params.createdBy ?? null,
     createdAt: now,
     updatedAt: now,
@@ -75,6 +78,7 @@ export async function updateProvider(params: UpdateProviderParams) {
       secretRef: params.secretRef ?? undefined,
       gatewayAccountId: params.gatewayAccountId ?? undefined,
       gatewayId: params.gatewayId ?? undefined,
+      config: params.config ?? undefined,
       updatedAt: now,
     })
     .where(

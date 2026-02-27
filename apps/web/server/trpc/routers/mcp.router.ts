@@ -11,16 +11,25 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { createTRPCRouter, orgProcedure } from "../trpc";
 
-const mcpServerInput = z
-  .object({
-    name: z.string().min(1),
+const mcpServerInput = z.object({
+  name: z.string().min(1),
+  config: z.object({
     url: z.string().url(),
-    secretRef: z.string().min(1).optional(),
-    token: z.string().min(1).optional(),
-  })
-  .refine((value) => Boolean(value.secretRef || value.token), {
-    message: "Secret reference or token is required.",
-  });
+    auth: z.object({
+      type: z.literal("bearer"),
+      credentials_ref: z.object({
+        secret_id: z.string().uuid(),
+        version: z.string().default("latest"),
+      }),
+    }),
+    validation: z
+      .object({
+        tools_path: z.string().default("/tools"),
+        health_path: z.string().optional(),
+      })
+      .optional(),
+  }).strict(),
+}).strict();
 
 type McpToolPayload = {
   id: string;
@@ -29,9 +38,9 @@ type McpToolPayload = {
   input_schema?: Record<string, unknown>;
 };
 
-async function fetchMcpTools(url: string, token: string): Promise<McpToolPayload[]> {
+async function fetchMcpTools(url: string, token: string, toolsPath = "/tools"): Promise<McpToolPayload[]> {
   const normalized = url.replace(/\/$/, "");
-  const response = await fetch(`${normalized}/tools`, {
+  const response = await fetch(`${normalized}${toolsPath}`, {
     headers: {
       authorization: `Bearer ${token}`,
     },
@@ -59,6 +68,7 @@ export const mcpRouter = createTRPCRouter({
       url: server.url,
       status: server.status,
       errorMessage: server.errorMessage,
+      config: server.config,
       lastValidatedAt: server.lastValidatedAt,
       createdAt: server.createdAt,
       updatedAt: server.updatedAt,
@@ -68,35 +78,31 @@ export const mcpRouter = createTRPCRouter({
   add: orgProcedure
     .input(mcpServerInput)
     .mutation(async ({ ctx, input }) => {
-      let token = input.token ?? null;
-      if (input.secretRef) {
-        const secret = await getSecretValue({
-          orgId: ctx.auth.orgId,
-          secretId: input.secretRef,
-        });
-        if (!secret) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "Secret not found" });
-        }
-        token = secret.value;
+      const secret = await getSecretValue({
+        orgId: ctx.auth.orgId,
+        secretId: input.config.auth.credentials_ref.secret_id,
+      });
+      if (!secret) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Secret not found" });
       }
-      if (!token) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Missing MCP auth token",
-        });
-      }
+      const token = secret.value;
 
       const created = await createMcpServer({
         orgId: ctx.auth.orgId,
         name: input.name,
-        url: input.url,
-        secretRef: input.secretRef ?? null,
-        token: input.token ?? null,
+        url: input.config.url,
+        secretRef: input.config.auth.credentials_ref.secret_id,
+        token: "",
+        config: input.config,
         createdBy: ctx.auth.userId,
       });
 
       try {
-        const tools = await fetchMcpTools(input.url, token);
+        const tools = await fetchMcpTools(
+          input.config.url,
+          token,
+          input.config.validation?.tools_path
+        );
         await upsertMcpTools({
           serverId: created.serverId,
           tools: tools.map((tool) => ({
@@ -135,23 +141,27 @@ export const mcpRouter = createTRPCRouter({
       }
 
       try {
-        let token = server.token;
-        if (server.secretRef) {
-          const secret = await getSecretValue({
-            orgId: ctx.auth.orgId,
-            secretId: server.secretRef,
-          });
-          if (!secret) {
-            throw new Error("Secret not found for MCP server");
-          }
-          token = secret.value;
+        const config = (server.config as Record<string, any> | null) ?? {};
+        const secretId = config?.auth?.credentials_ref?.secret_id ?? server.secretRef;
+        if (!secretId || typeof secretId !== "string") {
+          throw new Error("Missing MCP credential reference");
         }
-
-        if (!token) {
-          throw new Error("Missing MCP auth token");
+        const secret = await getSecretValue({
+          orgId: ctx.auth.orgId,
+          secretId,
+        });
+        if (!secret) {
+          throw new Error("Secret not found for MCP server");
         }
+        const token = secret.value;
+        const url =
+          (typeof config.url === "string" ? config.url : undefined) ?? server.url;
+        const toolsPath =
+          typeof config?.validation?.tools_path === "string"
+            ? config.validation.tools_path
+            : undefined;
 
-        const tools = await fetchMcpTools(server.url, token);
+        const tools = await fetchMcpTools(url, token, toolsPath);
         await upsertMcpTools({
           serverId: server.id,
           tools: tools.map((tool) => ({

@@ -89,6 +89,9 @@ export const groups = pgTable(
     title: text("title").notNull(),
     status: text("status").notNull(), // 'active', 'idle', 'archived'
     isPrivate: boolean("is_private").notNull().default(false),
+    // Canonical workspace/group config payload (history mode, archive policy, agent policy, runtime flags).
+    config: jsonb("config").notNull(),
+    // Legacy projection kept for compatibility while group config converges on `config`.
     agentPolicy: jsonb("agent_policy").notNull(), // { auto_trigger, multi_agent, ... }
     createdBy: text("created_by").references(() => users.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
@@ -198,6 +201,8 @@ export const mcpServers = pgTable(
     url: text("url").notNull(),
     token: text("token").notNull(),
     secretRef: text("secret_ref"),
+    // Canonical MCP runtime config for this workspace record.
+    config: jsonb("config").notNull(),
     status: text("status").notNull().default("pending"), // 'pending' | 'valid' | 'error'
     errorMessage: text("error_message"),
     lastValidatedAt: timestamp("last_validated_at", { withTimezone: true }),
@@ -395,6 +400,8 @@ export const providerCatalog = pgTable(
       .references(() => secrets.id),
     gatewayAccountId: text("gateway_account_id").notNull(),
     gatewayId: text("gateway_id").notNull(),
+    // Canonical provider runtime config for this workspace record.
+    config: jsonb("config").notNull(),
     createdBy: text("created_by").references(() => users.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
