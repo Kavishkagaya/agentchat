@@ -15,3 +15,13 @@ bucket_name = "agentchat-archives"
 
 [vars]
 ENVIRONMENT = "dev"
+MAX_ACTIVE_GROUPS_PER_ORG = "25"
+GROUP_AUTO_ARCHIVE_DAYS = "7"
+APP_PUBLIC_KEY = ""
+GC_SERVICE_TOKEN = ""
+ORCHESTRATOR_PUBLIC_KEY = ""
+
+[[durable_objects.bindings]]
+name = "GROUP_CONTROLLER"
+class_name = "ChatController"
+script_name = "agentchat-chat-controller"

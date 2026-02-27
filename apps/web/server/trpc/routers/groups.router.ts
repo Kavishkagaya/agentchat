@@ -46,6 +46,12 @@ function buildDefaultGroupConfig() {
   };
 }
 
+function resolveOrchestratorHistoryMode(
+  mode: "compact" | "external" | "full"
+): "external" | "internal" {
+  return mode === "external" ? "external" : "internal";
+}
+
 export const groupsRouter = createTRPCRouter({
   list: orgProcedure.query(async ({ ctx }) => {
     return getOrgGroups(ctx.auth.orgId);
@@ -86,6 +92,7 @@ export const groupsRouter = createTRPCRouter({
         group_id: groupId,
         org_id: ctx.auth.orgId,
         user_id: ctx.auth.userId,
+        history_mode: resolveOrchestratorHistoryMode(config.history_mode),
       });
 
       return { groupId, status: "active" };

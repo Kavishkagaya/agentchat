@@ -3,20 +3,36 @@ export interface KeyPair {
   publicKey: string;
 }
 
-export interface SessionCertPayload {
-  capabilities?: string[];
-  exp: number;
-  group_id: string; // "chat" mapped to group_id
-  iat: number;
-  session_public_key: string;
-}
-
 export interface RoutingTokenPayload {
   exp: number;
   group_id: string;
   iat: number;
   role: string;
   user_id: string;
+  jti: string;
+}
+
+export interface AppInfraTokenPayload {
+  aud: "orchestrator";
+  exp: number;
+  iat: number;
+  iss: "app";
+  jti: string;
+  method: string;
+  org_id?: string;
+  path: string;
+  sub: string;
+}
+
+export interface AgentAccessTokenPayload {
+  agent_id: string;
+  exp: number;
+  group_id: string;
+  iat: number;
+  jti: string;
+  org_id: string;
+  scope: "agent:invoke";
+  sub: "group-controller";
 }
 
 // Check for global crypto availability
@@ -83,55 +99,6 @@ export async function verify(
   );
 }
 
-// --- Session Certificate (Group Controller -> Agents Worker) ---
-
-export async function createSessionCert(
-  orchestratorPrivateKey: string,
-  groupId: string,
-  sessionPublicKey: string,
-  expiresInSeconds = 3600
-): Promise<string> {
-  const now = Math.floor(Date.now() / 1000);
-  const payload: SessionCertPayload = {
-    group_id: groupId,
-    session_public_key: sessionPublicKey,
-    exp: now + expiresInSeconds,
-    iat: now,
-  };
-
-  const encodedPayload = btoa(JSON.stringify(payload));
-  const signature = await sign(orchestratorPrivateKey, encodedPayload);
-  return `${encodedPayload}.${signature}`;
-}
-
-export async function verifySessionCert(
-  orchestratorPublicKey: string,
-  cert: string
-): Promise<SessionCertPayload> {
-  const [encodedPayload, signature] = cert.split(".");
-  if (!(encodedPayload && signature)) {
-    throw new Error("Invalid certificate format");
-  }
-
-  const isValid = await verify(
-    orchestratorPublicKey,
-    encodedPayload,
-    signature
-  );
-  if (!isValid) {
-    throw new Error("Invalid certificate signature");
-  }
-
-  const payload = JSON.parse(atob(encodedPayload)) as SessionCertPayload;
-  const now = Math.floor(Date.now() / 1000);
-
-  if (payload.exp < now) {
-    throw new Error("Certificate expired");
-  }
-
-  return payload;
-}
-
 // --- Routing Token (User -> Orchestrator) ---
 
 export async function createRoutingToken(
@@ -148,6 +115,7 @@ export async function createRoutingToken(
     role,
     exp: now + expiresInSeconds,
     iat: now,
+    jti: crypto.randomUUID(),
   };
 
   const encodedPayload = btoa(JSON.stringify(payload));
@@ -180,6 +148,131 @@ export async function verifyRoutingToken(
     throw new Error("Token expired");
   }
 
+  return payload;
+}
+
+// --- App -> Orchestrator Infra Token ---
+
+export async function createAppInfraToken(
+  appPrivateKey: string,
+  claims: {
+    method: string;
+    path: string;
+    org_id?: string;
+    sub: string;
+  },
+  expiresInSeconds = 60
+): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  const payload: AppInfraTokenPayload = {
+    aud: "orchestrator",
+    iss: "app",
+    sub: claims.sub,
+    method: claims.method.toUpperCase(),
+    path: claims.path,
+    org_id: claims.org_id,
+    iat: now,
+    exp: now + expiresInSeconds,
+    jti: crypto.randomUUID(),
+  };
+  const encodedPayload = btoa(JSON.stringify(payload));
+  const signature = await sign(appPrivateKey, encodedPayload);
+  return `${encodedPayload}.${signature}`;
+}
+
+export async function verifyAppInfraToken(
+  appPublicKey: string,
+  token: string,
+  expected: {
+    method: string;
+    path: string;
+  }
+): Promise<AppInfraTokenPayload> {
+  const [encodedPayload, signature] = token.split(".");
+  if (!(encodedPayload && signature)) {
+    throw new Error("Invalid app token format");
+  }
+
+  const isValid = await verify(appPublicKey, encodedPayload, signature);
+  if (!isValid) {
+    throw new Error("Invalid app token signature");
+  }
+
+  const payload = JSON.parse(atob(encodedPayload)) as AppInfraTokenPayload;
+  const now = Math.floor(Date.now() / 1000);
+  if (payload.exp < now) {
+    throw new Error("App token expired");
+  }
+  if (payload.aud !== "orchestrator" || payload.iss !== "app") {
+    throw new Error("Invalid app token issuer/audience");
+  }
+  if (payload.method !== expected.method.toUpperCase()) {
+    throw new Error("App token method mismatch");
+  }
+  if (payload.path !== expected.path) {
+    throw new Error("App token path mismatch");
+  }
+  return payload;
+}
+
+// --- Group Controller -> Agents Worker Token ---
+
+export async function createAgentAccessToken(
+  gcPrivateKey: string,
+  claims: {
+    agent_id: string;
+    group_id: string;
+    org_id: string;
+    scope?: "agent:invoke";
+  },
+  expiresInSeconds = 60
+): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  const payload: AgentAccessTokenPayload = {
+    sub: "group-controller",
+    scope: claims.scope ?? "agent:invoke",
+    agent_id: claims.agent_id,
+    group_id: claims.group_id,
+    org_id: claims.org_id,
+    iat: now,
+    exp: now + expiresInSeconds,
+    jti: crypto.randomUUID(),
+  };
+  const encodedPayload = btoa(JSON.stringify(payload));
+  const signature = await sign(gcPrivateKey, encodedPayload);
+  return `${encodedPayload}.${signature}`;
+}
+
+export async function verifyAgentAccessToken(
+  gcPublicKey: string,
+  token: string,
+  expected?: {
+    group_id?: string;
+    agent_id?: string;
+  }
+): Promise<AgentAccessTokenPayload> {
+  const [encodedPayload, signature] = token.split(".");
+  if (!(encodedPayload && signature)) {
+    throw new Error("Invalid agent token format");
+  }
+  const isValid = await verify(gcPublicKey, encodedPayload, signature);
+  if (!isValid) {
+    throw new Error("Invalid agent token signature");
+  }
+  const payload = JSON.parse(atob(encodedPayload)) as AgentAccessTokenPayload;
+  const now = Math.floor(Date.now() / 1000);
+  if (payload.exp < now) {
+    throw new Error("Agent token expired");
+  }
+  if (payload.sub !== "group-controller" || payload.scope !== "agent:invoke") {
+    throw new Error("Invalid agent token scope");
+  }
+  if (expected?.group_id && expected.group_id !== payload.group_id) {
+    throw new Error("Agent token group mismatch");
+  }
+  if (expected?.agent_id && expected.agent_id !== payload.agent_id) {
+    throw new Error("Agent token agent mismatch");
+  }
   return payload;
 }
 

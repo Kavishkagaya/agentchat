@@ -5,3 +5,4 @@ compatibility_date = "2025-02-01"
 [vars]
 ENVIRONMENT = "dev"
 CLOUDFLARE_AIG_TOKEN = ""
+GC_PUBLIC_KEY = ""

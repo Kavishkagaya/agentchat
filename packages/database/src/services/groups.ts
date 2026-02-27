@@ -1,6 +1,14 @@
-import { desc, eq } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { and, desc, eq, inArray, lte, ne, or, sql } from "drizzle-orm";
 import { db } from "../client";
-import { groupAgents, groupMembers, groupRuntime, groups } from "../schema";
+import {
+  groupAgents,
+  groupArchives,
+  groupMembers,
+  groupRuntime,
+  groupSnapshots,
+  groups,
+} from "../schema";
 
 export interface CreateGroupParams {
   agentIds: string[];
@@ -96,7 +104,7 @@ export async function getGroupRuntime(groupId: string) {
 export async function initializeGroupRuntime(
   groupId: string,
   controllerId: string,
-  publicKey: string
+  publicKey?: string | null
 ) {
   const now = new Date();
   const existing = await getGroupRuntime(groupId);
@@ -107,7 +115,7 @@ export async function initializeGroupRuntime(
       .set({
         groupControllerId: controllerId,
         status: "active",
-        publicKey,
+        publicKey: publicKey ?? null,
         lastActiveAt: now,
         updatedAt: now,
       })
@@ -117,20 +125,151 @@ export async function initializeGroupRuntime(
       groupId,
       groupControllerId: controllerId,
       status: "active",
-      publicKey,
+      publicKey: publicKey ?? null,
       lastActiveAt: now,
       updatedAt: now,
     });
   }
 }
 
-export async function updateGroupRuntimeStatus(
-  groupId: string,
-  status: string
-) {
+export async function updateGroupRuntimeStatus(groupId: string, status: string) {
   const now = new Date();
+
+  const groupUpdate: {
+    status: string;
+    updatedAt: Date;
+    lastActiveAt?: Date;
+    archivedAt?: Date;
+  } = {
+    status,
+    updatedAt: now,
+  };
+  if (status === "active") {
+    groupUpdate.lastActiveAt = now;
+  }
+  if (status === "archived") {
+    groupUpdate.archivedAt = now;
+  }
+
+  await db
+    .update(groups)
+    .set(groupUpdate)
+    .where(eq(groups.id, groupId));
+
   await db
     .update(groupRuntime)
-    .set({ status, updatedAt: now })
+    .set({
+      status,
+      updatedAt: now,
+      ...(status === "active" ? { lastActiveAt: now } : {}),
+      ...(status === "idle" ? { idleAt: now } : {}),
+    })
     .where(eq(groupRuntime.groupId, groupId));
+}
+
+export async function countOrgActiveGroups(orgId: string, excludeGroupId?: string) {
+  const activePredicate = and(
+    eq(groups.orgId, orgId),
+    inArray(groups.status, ["active", "idle"])
+  );
+  const wherePredicate =
+    excludeGroupId && excludeGroupId.length > 0
+      ? and(activePredicate, ne(groups.id, excludeGroupId))
+      : activePredicate;
+
+  const rows = await db
+    .select({
+      value: sql<number>`count(*)`,
+    })
+    .from(groups)
+    .where(wherePredicate);
+  return Number(rows[0]?.value ?? 0);
+}
+
+export async function touchGroupActivity(groupId: string, at = new Date()) {
+  await db
+    .update(groups)
+    .set({
+      status: "active",
+      lastActiveAt: at,
+      updatedAt: at,
+    })
+    .where(eq(groups.id, groupId));
+
+  await db
+    .update(groupRuntime)
+    .set({
+      status: "active",
+      lastActiveAt: at,
+      updatedAt: at,
+    })
+    .where(eq(groupRuntime.groupId, groupId));
+}
+
+export async function markGroupArchived(groupId: string, at = new Date()) {
+  await db
+    .update(groups)
+    .set({
+      status: "archived",
+      archivedAt: at,
+      updatedAt: at,
+    })
+    .where(eq(groups.id, groupId));
+
+  await db
+    .update(groupRuntime)
+    .set({
+      status: "archived",
+      updatedAt: at,
+    })
+    .where(eq(groupRuntime.groupId, groupId));
+}
+
+export async function listGroupsForAutoArchive(
+  inactiveDays: number,
+  now = new Date()
+) {
+  const cutoff = new Date(now.getTime() - inactiveDays * 24 * 60 * 60 * 1000);
+  return await db.query.groups.findMany({
+    where: and(
+      inArray(groups.status, ["active", "idle"]),
+      or(lte(groups.lastActiveAt, cutoff), lte(groups.updatedAt, cutoff))
+    ),
+    columns: {
+      id: true,
+      orgId: true,
+      status: true,
+      lastActiveAt: true,
+      updatedAt: true,
+    },
+  });
+}
+
+export async function recordGroupArchive(params: {
+  groupId: string;
+  r2Path: string;
+  sizeBytes?: number;
+  at?: Date;
+}) {
+  const now = params.at ?? new Date();
+  const snapshotId = `snapshot_${randomUUID()}`;
+  const archiveId = `archive_${randomUUID()}`;
+
+  await db.insert(groupSnapshots).values({
+    id: snapshotId,
+    groupId: params.groupId,
+    r2Path: params.r2Path,
+    sizeBytes: params.sizeBytes ?? null,
+    createdAt: now,
+  });
+
+  await db.insert(groupArchives).values({
+    id: archiveId,
+    groupId: params.groupId,
+    snapshotId,
+    r2Path: params.r2Path,
+    createdAt: now,
+  });
+
+  return { archiveId, snapshotId };
 }

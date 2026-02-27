@@ -3,6 +3,7 @@ export interface Env {
   AGENTS_KV?: KVNamespace;
   CLOUDFLARE_AIG_TOKEN?: string;
   ENVIRONMENT: string;
+  GC_PUBLIC_KEY: string;
   NEON_DATABASE_URL?: string;
   OPENAI_API_KEY?: string;
   OPENAI_BASE_URL?: string;

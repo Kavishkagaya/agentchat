@@ -13,6 +13,7 @@
   "dependencies": {
     "@ai-sdk/openai": "^3.0.30",
     "@axon/database": "workspace:*",
+    "@axon/shared": "workspace:*",
     "@clerk/backend": "^2.32.0",
     "@clerk/nextjs": "^6.38.1",
     "@radix-ui/react-avatar": "^1.1.11",

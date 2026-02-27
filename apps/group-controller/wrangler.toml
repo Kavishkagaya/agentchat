@@ -4,6 +4,9 @@ compatibility_date = "2025-02-01"
 
 [vars]
 ENVIRONMENT = "dev"
+AGENTS_BASE_URL = "http://localhost:8789"
+ORCHESTRATOR_SERVICE_TOKEN = ""
+GC_PRIVATE_KEY = ""
 
 [[durable_objects.bindings]]
 name = "CHAT_CONTROLLER"

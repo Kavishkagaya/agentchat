@@ -1,45 +1,167 @@
-import { initializeGroupRuntime } from "@axon/database";
 import {
-  createRoutingToken,
-  createSessionCert,
-  generateKeyPair,
-  verifyRoutingToken,
-} from "@axon/shared";
+  countOrgActiveGroups,
+  getGroupRuntime,
+  initializeGroupRuntime,
+  listGroupsForAutoArchive,
+  markGroupArchived,
+  recordGroupArchive,
+  touchGroupActivity,
+  updateGroupRuntimeStatus,
+} from "@axon/database";
+import { createRoutingToken, verifyAppInfraToken, verifyRoutingToken } from "@axon/shared";
 import type { Env } from "./env";
 
-// --- Types ---
+type HistoryMode = "internal" | "external";
 
-export interface GroupActivateRequest {
+interface GroupActivateRequest {
   group_id: string;
+  history_mode?: HistoryMode;
   org_id: string;
 }
 
-export interface RoutingTokenRequest {
+interface RoutingTokenRequest {
   group_id: string;
+  role?: string;
   user_id: string;
 }
 
-// --- Helpers ---
+interface CleanupRequest {
+  group_id: string;
+  status?: "active" | "idle" | "archived";
+}
 
-function json(data: any, status = 200): Response {
+interface GroupArchiveResponse {
+  ok: boolean;
+  snapshot?: Record<string, unknown>;
+}
+
+function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: { "content-type": "application/json" },
   });
 }
 
+function errorResponse(status: number, code: string, message: string): Response {
+  return json(
+    {
+      ok: false,
+      error: {
+        code,
+        message,
+      },
+    },
+    status
+  );
+}
+
 async function readJson<T>(request: Request): Promise<T> {
-  return await request.json();
-}
-
-function badRequest(message: string): Response {
-  return json({ error: message }, 400);
-}
-
-function requireString(value: any, name: string) {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`missing required field: ${name}`);
+  const text = await request.text();
+  if (!text) {
+    throw new Error("missing JSON body");
   }
+  return JSON.parse(text) as T;
+}
+
+function requireString(value: unknown, field: string): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(`missing required field: ${field}`);
+  }
+  return value;
+}
+
+function getBearerToken(request: Request): string {
+  const raw = request.headers.get("authorization");
+  if (!raw) {
+    throw new Error("missing authorization header");
+  }
+  const [scheme, token] = raw.split(" ");
+  if (scheme !== "Bearer" || !token) {
+    throw new Error("invalid authorization header");
+  }
+  return token;
+}
+
+function parseCleanupStatus(value: unknown): "active" | "archived" | "idle" {
+  if (value === undefined) {
+    return "idle";
+  }
+  if (value === "active" || value === "idle" || value === "archived") {
+    return value;
+  }
+  throw new Error("invalid status");
+}
+
+async function requireAppSignature(
+  request: Request,
+  env: Env,
+  path: string
+): Promise<void> {
+  const token = getBearerToken(request);
+  await verifyAppInfraToken(env.APP_PUBLIC_KEY, token, {
+    method: request.method,
+    path,
+  });
+}
+
+function resolveActiveGroupLimit(env: Env) {
+  const configured = Number(env.MAX_ACTIVE_GROUPS_PER_ORG);
+  return Number.isFinite(configured) && configured > 0 ? configured : 25;
+}
+
+function createGroupControllerHeaders(env: Env, headers?: HeadersInit) {
+  const next = new Headers(headers);
+  if (env.GC_SERVICE_TOKEN) {
+    next.set("x-orchestrator-service-token", env.GC_SERVICE_TOKEN);
+  }
+  return next;
+}
+
+function archiveR2Path(groupId: string, at: Date) {
+  return `groups/${groupId}/archives/${at.toISOString()}.json`;
+}
+
+async function archiveGroup(
+  env: Env,
+  groupId: string,
+  reason: "manual" | "auto"
+): Promise<void> {
+  const archivedAt = new Date();
+  const id = env.GROUP_CONTROLLER.idFromName(groupId);
+  const stub = env.GROUP_CONTROLLER.get(id);
+  const res = await stub.fetch("http://internal/archive", {
+    method: "POST",
+    headers: createGroupControllerHeaders(env, {
+      "content-type": "application/json",
+    }),
+    body: JSON.stringify({ reason }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`group archive failed: ${res.status} ${body}`);
+  }
+
+  const archivePayload = (await res.json()) as GroupArchiveResponse;
+  if (!archivePayload.ok || !archivePayload.snapshot) {
+    throw new Error("group archive failed: missing snapshot payload");
+  }
+
+  const snapshotBody = JSON.stringify(archivePayload.snapshot);
+  const key = archiveR2Path(groupId, archivedAt);
+  await env.ARCHIVES_BUCKET.put(key, snapshotBody, {
+    httpMetadata: {
+      contentType: "application/json",
+    },
+  });
+
+  await recordGroupArchive({
+    groupId,
+    r2Path: key,
+    sizeBytes: snapshotBody.length,
+    at: archivedAt,
+  });
+  await markGroupArchived(groupId);
 }
 
 export async function handleRequest(
@@ -48,183 +170,288 @@ export async function handleRequest(
 ): Promise<Response> {
   const url = new URL(request.url);
 
-  // Health Check
   if (url.pathname === "/health") {
     return json({ ok: true, service: "orchestrator", env: env.ENVIRONMENT });
   }
 
-  // 1. Activate Group Session (App -> Orchestrator)
   if (request.method === "POST" && url.pathname === "/infra/groups") {
-    let body: GroupActivateRequest;
     try {
-      body = await readJson<GroupActivateRequest>(request);
-      requireString(body.group_id, "group_id");
-      requireString(body.org_id, "org_id");
+      await requireAppSignature(request, env, "/infra/groups");
     } catch (error) {
-      return badRequest(
-        error instanceof Error ? error.message : "invalid request"
+      return errorResponse(
+        401,
+        "unauthorized",
+        error instanceof Error ? error.message : "invalid authentication"
       );
-    }
-
-    // 1. Generate Session Keys
-    const sessionKeys = await generateKeyPair();
-
-    // 2. Create Session Certificate
-    if (!env.ORCHESTRATOR_PRIVATE_KEY) {
-      return json({ error: "Orchestrator private key not configured" }, 500);
-    }
-
-    const sessionCert = await createSessionCert(
-      env.ORCHESTRATOR_PRIVATE_KEY,
-      body.group_id,
-      sessionKeys.publicKey
-    );
-
-    // 3. Determine Group Controller ID
-    const doId = env.GROUP_CONTROLLER.idFromName(body.group_id);
-    const doIdString = doId.toString();
-
-    // 4. Update Database (Store Public Key for verification)
-    await initializeGroupRuntime(
-      body.group_id,
-      doIdString,
-      sessionKeys.publicKey
-    );
-
-    // 5. Initialize DO (Push keys)
-    const stub = env.GROUP_CONTROLLER.get(doId);
-    const initRes = await stub.fetch("http://internal/init", {
-      method: "POST",
-      body: JSON.stringify({
-        session_private_key: sessionKeys.privateKey,
-        session_certificate: sessionCert,
-      }),
-      headers: { "Content-Type": "application/json" },
-    });
-
-    if (!initRes.ok) {
-      return json({ error: "Failed to initialize Group Controller" }, 500);
-    }
-
-    return json({
-      group_controller_id: doIdString,
-      session_certificate: sessionCert,
-    });
-  }
-
-  // 2. Issue Routing Token (App -> Orchestrator)
-  if (request.method === "POST" && url.pathname === "/infra/routing-token") {
-    let body: RoutingTokenRequest;
-    try {
-      body = await readJson<RoutingTokenRequest>(request);
-      requireString(body.group_id, "group_id");
-      requireString(body.user_id, "user_id");
-    } catch (error) {
-      return badRequest(
-        error instanceof Error ? error.message : "invalid request"
-      );
-    }
-
-    // Check Membership in DB (assume App checked or use a service if available)
-    const role = "member";
-
-    if (!env.ORCHESTRATOR_PRIVATE_KEY) {
-      return json({ error: "Orchestrator private key not configured" }, 500);
-    }
-
-    const token = await createRoutingToken(
-      env.ORCHESTRATOR_PRIVATE_KEY,
-      body.user_id,
-      body.group_id,
-      role
-    );
-
-    return json({ routing_token: token });
-  }
-
-  // 3. WebSocket Gateway (User -> Group Controller)
-  if (url.pathname.startsWith("/groups/") && url.pathname.endsWith("/ws")) {
-    const groupId = url.pathname.split("/")[2];
-    const token = url.searchParams.get("token");
-
-    if (!token) {
-      return new Response("Missing token", { status: 401 });
-    }
-
-    if (!env.ORCHESTRATOR_PUBLIC_KEY) {
-      return new Response("Orchestrator public key not configured", {
-        status: 500,
-      });
     }
 
     try {
-      const payload = await verifyRoutingToken(
-        env.ORCHESTRATOR_PUBLIC_KEY,
-        token
-      );
+      const body = await readJson<GroupActivateRequest>(request);
+      const groupId = requireString(body.group_id, "group_id");
+      const orgId = requireString(body.org_id, "org_id");
+      const historyMode: HistoryMode =
+        body.history_mode === "external" ? "external" : "internal";
 
-      if (payload.group_id !== groupId) {
-        return new Response("Token mismatch", { status: 403 });
-      }
+      const existing = await getGroupRuntime(groupId);
+      const activeCount = await countOrgActiveGroups(orgId, groupId);
+      const activeLimit = resolveActiveGroupLimit(env);
+      const alreadyActive =
+        existing?.status === "active" || existing?.status === "idle";
 
-      if (request.headers.get("Upgrade") !== "websocket") {
-        return new Response("Expected Upgrade: websocket", { status: 426 });
+      if (!alreadyActive && activeCount >= activeLimit) {
+        return errorResponse(
+          429,
+          "active_group_limit_exceeded",
+          `org reached active group limit (${activeLimit})`
+        );
       }
 
       const doId = env.GROUP_CONTROLLER.idFromName(groupId);
-      const stub = env.GROUP_CONTROLLER.get(doId);
+      const doIdString = doId.toString();
+      await initializeGroupRuntime(groupId, doIdString, null);
 
-      return stub.fetch(request);
-    } catch (e) {
-      return new Response("Invalid token", { status: 403 });
+      const stub = env.GROUP_CONTROLLER.get(doId);
+      const initResponse = await stub.fetch("http://internal/init", {
+        method: "POST",
+        headers: createGroupControllerHeaders(env, {
+          "content-type": "application/json",
+        }),
+        body: JSON.stringify({
+          group_id: groupId,
+          org_id: orgId,
+          history_mode: historyMode,
+        }),
+      });
+
+      if (!initResponse.ok) {
+        const bodyText = await initResponse.text();
+        return errorResponse(
+          502,
+          "group_controller_init_failed",
+          bodyText || "failed to initialize group controller"
+        );
+      }
+
+      await touchGroupActivity(groupId);
+
+      return json({
+        ok: true,
+        group_controller_id: doIdString,
+        history_mode: historyMode,
+      });
+    } catch (error) {
+      return errorResponse(
+        400,
+        "invalid_request",
+        error instanceof Error ? error.message : "invalid request"
+      );
     }
   }
 
-  // 4. HTTP Proxy (History) (User -> Group Controller)
+  if (request.method === "POST" && url.pathname === "/infra/routing-token") {
+    try {
+      await requireAppSignature(request, env, "/infra/routing-token");
+    } catch (error) {
+      return errorResponse(
+        401,
+        "unauthorized",
+        error instanceof Error ? error.message : "invalid authentication"
+      );
+    }
+
+    try {
+      const body = await readJson<RoutingTokenRequest>(request);
+      const groupId = requireString(body.group_id, "group_id");
+      const userId = requireString(body.user_id, "user_id");
+      const role = typeof body.role === "string" ? body.role : "member";
+
+      const token = await createRoutingToken(
+        env.ORCHESTRATOR_PRIVATE_KEY,
+        userId,
+        groupId,
+        role
+      );
+
+      return json({ ok: true, routing_token: token });
+    } catch (error) {
+      return errorResponse(
+        400,
+        "invalid_request",
+        error instanceof Error ? error.message : "invalid request"
+      );
+    }
+  }
+
+  if (
+    request.method === "POST" &&
+    url.pathname.startsWith("/infra/groups/") &&
+    url.pathname.endsWith("/archive")
+  ) {
+    const parts = url.pathname.split("/").filter(Boolean);
+    const groupId = parts[2];
+    if (!groupId) {
+      return errorResponse(400, "invalid_request", "missing group id");
+    }
+
+    try {
+      await requireAppSignature(request, env, url.pathname);
+    } catch (error) {
+      return errorResponse(
+        401,
+        "unauthorized",
+        error instanceof Error ? error.message : "invalid authentication"
+      );
+    }
+
+    try {
+      await archiveGroup(env, groupId, "manual");
+      return json({ ok: true, group_id: groupId, status: "archived" });
+    } catch (error) {
+      return errorResponse(
+        500,
+        "archive_failed",
+        error instanceof Error ? error.message : "archive failed"
+      );
+    }
+  }
+
+  if (request.method === "POST" && url.pathname === "/infra/cleanup") {
+    try {
+      await requireAppSignature(request, env, "/infra/cleanup");
+    } catch (error) {
+      return errorResponse(
+        401,
+        "unauthorized",
+        error instanceof Error ? error.message : "invalid authentication"
+      );
+    }
+
+    try {
+      const body = await readJson<CleanupRequest>(request);
+      const groupId = requireString(body.group_id, "group_id");
+      const status = parseCleanupStatus(body.status);
+
+      await updateGroupRuntimeStatus(groupId, status);
+
+      return json({ ok: true, group_id: groupId, status });
+    } catch (error) {
+      return errorResponse(
+        400,
+        "cleanup_failed",
+        error instanceof Error ? error.message : "cleanup request failed"
+      );
+    }
+  }
+
+  if (url.pathname.startsWith("/groups/") && url.pathname.endsWith("/ws")) {
+    const groupId = url.pathname.split("/")[2];
+    if (!groupId) {
+      return new Response("Invalid group id", { status: 400 });
+    }
+
+    try {
+      await requireAppSignature(request, env, url.pathname);
+    } catch (error) {
+      return new Response(
+        error instanceof Error ? error.message : "Unauthorized",
+        { status: 401 }
+      );
+    }
+
+    const token =
+      request.headers.get("x-routing-token") ?? url.searchParams.get("token");
+    if (!token) {
+      return new Response("Missing routing token", { status: 401 });
+    }
+
+    let payload: Awaited<ReturnType<typeof verifyRoutingToken>>;
+    try {
+      payload = await verifyRoutingToken(env.ORCHESTRATOR_PUBLIC_KEY, token);
+    } catch {
+      return new Response("Invalid routing token", { status: 403 });
+    }
+
+    if (payload.group_id !== groupId) {
+      return new Response("Routing token group mismatch", { status: 403 });
+    }
+
+    if (request.headers.get("Upgrade") !== "websocket") {
+      return new Response("Expected Upgrade: websocket", { status: 426 });
+    }
+
+    await touchGroupActivity(groupId);
+    const doId = env.GROUP_CONTROLLER.idFromName(groupId);
+    const stub = env.GROUP_CONTROLLER.get(doId);
+    const forwardRequest = new Request(request, {
+      headers: createGroupControllerHeaders(env, request.headers),
+    });
+    return stub.fetch(forwardRequest);
+  }
+
   if (
     request.method === "GET" &&
     url.pathname.startsWith("/groups/") &&
     url.pathname.endsWith("/history")
   ) {
     const groupId = url.pathname.split("/")[2];
-    const token =
-      request.headers.get("X-Routing-Token") || url.searchParams.get("token");
-
-    if (!token) {
-      return new Response("Missing token", { status: 401 });
-    }
-    if (!env.ORCHESTRATOR_PUBLIC_KEY) {
-      return new Response("Config error", { status: 500 });
+    if (!groupId) {
+      return new Response("Invalid group id", { status: 400 });
     }
 
     try {
-      const payload = await verifyRoutingToken(
-        env.ORCHESTRATOR_PUBLIC_KEY,
-        token
+      await requireAppSignature(request, env, url.pathname);
+    } catch (error) {
+      return new Response(
+        error instanceof Error ? error.message : "Unauthorized",
+        { status: 401 }
       );
-      if (payload.group_id !== groupId) {
-        return new Response("Token mismatch", { status: 403 });
-      }
-
-      const doId = env.GROUP_CONTROLLER.idFromName(groupId);
-      const stub = env.GROUP_CONTROLLER.get(doId);
-      return stub.fetch(request);
-    } catch (e) {
-      return new Response("Invalid token", { status: 403 });
     }
-  }
 
-  // 5. Cleanup Callback (Group Controller -> Orchestrator)
-  if (request.method === "POST" && url.pathname === "/infra/cleanup") {
-    return json({ status: "cleaned" });
+    const token =
+      request.headers.get("x-routing-token") ?? url.searchParams.get("token");
+    if (!token) {
+      return new Response("Missing routing token", { status: 401 });
+    }
+
+    let payload: Awaited<ReturnType<typeof verifyRoutingToken>>;
+    try {
+      payload = await verifyRoutingToken(env.ORCHESTRATOR_PUBLIC_KEY, token);
+    } catch {
+      return new Response("Invalid routing token", { status: 403 });
+    }
+
+    if (payload.group_id !== groupId) {
+      return new Response("Routing token group mismatch", { status: 403 });
+    }
+
+    await touchGroupActivity(groupId);
+    const doId = env.GROUP_CONTROLLER.idFromName(groupId);
+    const stub = env.GROUP_CONTROLLER.get(doId);
+    const forwardRequest = new Request(request, {
+      headers: createGroupControllerHeaders(env, request.headers),
+    });
+    return stub.fetch(forwardRequest);
   }
 
   return new Response("Not Found", { status: 404 });
 }
 
 export async function handleScheduled(
-  controller: ScheduledController,
+  _controller: ScheduledController,
   env: Env
 ): Promise<void> {
-  // Periodic cleanup logic
+  const inactiveDays = Number(env.GROUP_AUTO_ARCHIVE_DAYS ?? "7");
+  const thresholdDays = Number.isFinite(inactiveDays) && inactiveDays > 0 ? inactiveDays : 7;
+  const candidates = await listGroupsForAutoArchive(thresholdDays);
+
+  for (const group of candidates) {
+    try {
+      await archiveGroup(env, group.id, "auto");
+    } catch (error) {
+      console.warn("auto_archive_failed", {
+        group_id: group.id,
+        error: error instanceof Error ? error.message : "unknown",
+      });
+    }
+  }
 }

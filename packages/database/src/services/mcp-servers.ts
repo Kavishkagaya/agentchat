@@ -3,6 +3,15 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../client";
 import { mcpServerTools, mcpServers } from "../schema";
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function assertSecretId(secretId: string) {
+  if (!UUID_PATTERN.test(secretId)) {
+    throw new Error("secret_id must be a UUID");
+  }
+}
+
 export type McpServerStatus = "pending" | "valid" | "error";
 
 export interface CreateMcpServerParams {
@@ -23,6 +32,10 @@ export type McpToolInput = {
 };
 
 export async function createMcpServer(params: CreateMcpServerParams) {
+  if (params.secretRef) {
+    assertSecretId(params.secretRef);
+  }
+
   const now = new Date();
   const id = `mcp_${randomUUID()}`;
 

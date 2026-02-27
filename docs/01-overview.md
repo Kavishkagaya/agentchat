@@ -2,31 +2,44 @@
 
 ## Executive Summary
 
-The **Agentic Cloud OS** is a platform where AI agents collaborate in a professional development environment. The architecture solves the "Context Bloat" and "Infrastructure Latency" problems by strictly separating **Reasoning (Agents Worker)**, **Coordination (Durable Objects)**, and **Execution (Sandboxes)**. The Agents Worker is a single shared stateless service that loads agent configs on demand (cached) and executes LLM calls.
+The platform uses a strict runtime chain and split responsibilities:
+- **App** is the only public client entrypoint.
+- **Orchestrator** is the global control plane for activation, routing tokens, lifecycle, and archive orchestration.
+- **Group Controller (Durable Object)** owns active group history/runtime state.
+- **Agents Worker** is shared and stateless; it executes agent requests per call.
 
-## System Architecture Diagram
+A group is the canonical long-lived chat unit (`group == chat`).
 
-The flow follows a **Star Topology**:
+## Runtime Flow
 
-1. **User** interacts with the **Group Controller**.
-2. **The Group Controller** hydrates state from **R2** and briefs the **Agents Worker (shared)**.
-3. **The Agents Worker** performs reasoning and executes tools (HTTP/Built-in).
-4. **The Agents Worker** streams results back to the Group Controller.
+1. Client connects to the app.
+2. App calls Orchestrator infra APIs with an app-signed token.
+3. Orchestrator activates/routs to deterministic Group Controller IDs from `group_id`.
+4. App requests a short-lived routing token from Orchestrator.
+5. App proxies runtime traffic through Orchestrator to Group Controller.
+6. Group Controller calls Agents Worker per request using short-lived GC-signed agent-access tokens.
 
-## Security & Performance
+## Security Model
 
-### Chain of Trust Authentication
-To secure communication between the persistent **Group Controller** and the stateless **Agents Worker**, we use a certificate-based approach:
-1.  **Orchestrator as CA:** When a group starts, the Orchestrator generates an ephemeral **Session Key Pair** and issues a signed **Session Certificate** (JWT) containing the session's public key.
-2.  **Group Controller Identity:** The Group Controller receives the private key and the certificate. It signs every request to the Agents Worker.
-3.  **Stateless Verification:** The Agents Worker verifies the certificate using the Orchestrator's public key, then verifies the request signature using the session key embedded in the certificate. This allows for secure, stateless auth without database lookups on every request.
+### Infra Authentication
+- `POST /infra/groups`, `POST /infra/routing-token`, and lifecycle infra endpoints require app-signed auth.
+- Auth failure returns an error and performs no state mutation.
 
-### User Access & WebSockets
-To secure real-time communication between users and the Group Controller:
-1.  **Stateless Routing Tokens:** The Orchestrator issues short-lived JWTs (`routing_token`) upon group entry, embedding user identity and group access rights.
-2.  **WebSocket Handshake:** Clients connect via `wss://api.agentchat.com/ws/groups/{id}?token={routing_token}`. The Orchestrator validates the token statelessly (CPU-only check) before upgrading the connection and proxying to the Group Controller Durable Object, avoiding database hits on every message.
+### User Routing Tokens
+- Orchestrator issues short-lived routing tokens with claims:
+  - `user_id`
+  - `group_id`
+  - `role`
+  - `exp`
+- Proxy routes validate signature, expiry, and `group_id` match before upgrade/forward.
 
-### High-Performance Caching
-The Agents Worker utilizes a **Read-Through Caching** strategy with **Cloudflare KV**:
-*   **Agent Configs:** System prompts, tools, and model configs are cached in KV.
-*   **Active Invalidation:** Updates to agents (via API) write to both the database and KV, ensuring the worker always fetches the latest version without hitting the database for every run.
+### Group Controller -> Agents Worker Auth
+- Group Controller mints short-lived agent-access JWTs with static GC signing keys.
+- Agents Worker verifies signature, expiry, scope, and group/agent claims.
+- No persistent GC↔Worker socket is required; invocation is request-scoped.
+
+## History And Archive
+
+- `history_mode = "internal"`: history + compaction summary live in DO-local SQLite.
+- `history_mode = "external"`: persistence can be delegated while routing/runtime behavior is preserved.
+- R2 is used only during archive (manual or inactivity auto-archive), not for active history.

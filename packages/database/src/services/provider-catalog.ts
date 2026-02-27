@@ -3,6 +3,15 @@ import { and, desc, eq } from "drizzle-orm";
 import { db } from "../client";
 import { providerCatalog } from "../schema";
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function assertSecretId(secretId: string) {
+  if (!UUID_PATTERN.test(secretId)) {
+    throw new Error("secret_id must be a UUID");
+  }
+}
+
 export interface CreateProviderParams {
   config: Record<string, unknown>;
   orgId: string;
@@ -29,6 +38,7 @@ export interface UpdateProviderParams {
 }
 
 export async function createProvider(params: CreateProviderParams) {
+  assertSecretId(params.secretRef);
   const now = new Date();
   const id = `provider_${randomUUID()}`;
 
@@ -68,6 +78,10 @@ export async function getProvider(params: { orgId: string; providerId: string })
 }
 
 export async function updateProvider(params: UpdateProviderParams) {
+  if (params.secretRef !== undefined && params.secretRef !== null) {
+    assertSecretId(params.secretRef);
+  }
+
   const now = new Date();
   await db
     .update(providerCatalog)

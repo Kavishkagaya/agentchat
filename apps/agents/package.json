@@ -13,6 +13,7 @@
     "@ai-sdk/openai": "^3.0.30",
     "@axon/agent-factory": "workspace:*",
     "@axon/database": "workspace:*",
+    "@axon/shared": "workspace:*",
     "@neondatabase/serverless": "0.10.4",
     "drizzle-orm": "0.36.1",
     "zod": "^4.3.6"

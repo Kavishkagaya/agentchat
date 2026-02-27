@@ -1,19 +1,25 @@
+import { createAgentAccessToken } from "@axon/shared";
+
 interface Env {
+  AGENTS_BASE_URL?: string;
   CHAT_CONTROLLER: DurableObjectNamespace;
   ENVIRONMENT: string;
+  GC_PRIVATE_KEY: string;
+  ORCHESTRATOR_SERVICE_TOKEN?: string;
 }
 
-type AgentRuntimeRef = {
-  agent_id: string;
-  runtime_id: string;
-  base_url: string;
+type HistoryMode = "internal" | "external";
+
+type InitRequest = {
+  group_id: string;
+  history_mode?: HistoryMode;
+  org_id: string;
 };
 
 type PostMessageRequest = {
-  chat_id?: string;
+  agent_ids?: string[];
   message_id?: string;
   text?: string;
-  agent_runtimes?: AgentRuntimeRef[];
 };
 
 function json(data: unknown, status = 200): Response {
@@ -38,6 +44,30 @@ function requireString(value: unknown, field: string): string {
   return value;
 }
 
+function pathSuffix(pathname: string): string {
+  const chatsPrefix = /^\/chats\/[^/]+/;
+  const groupsPrefix = /^\/groups\/[^/]+/;
+  if (chatsPrefix.test(pathname)) {
+    const stripped = pathname.replace(chatsPrefix, "");
+    return stripped.length > 0 ? stripped : "/";
+  }
+  if (groupsPrefix.test(pathname)) {
+    const stripped = pathname.replace(groupsPrefix, "");
+    return stripped.length > 0 ? stripped : "/";
+  }
+  return pathname;
+}
+
+function hasOrchestratorToken(request: Request, env: Env) {
+  if (!env.ORCHESTRATOR_SERVICE_TOKEN) {
+    return true;
+  }
+  return (
+    request.headers.get("x-orchestrator-service-token") ===
+    env.ORCHESTRATOR_SERVICE_TOKEN
+  );
+}
+
 export class ChatController {
   constructor(private state: DurableObjectState) {}
 
@@ -49,9 +79,42 @@ export class ChatController {
     sql.exec(
       "CREATE TABLE IF NOT EXISTS messages (message_id TEXT PRIMARY KEY, role TEXT NOT NULL, text TEXT NOT NULL, created_at TEXT NOT NULL)"
     );
+    sql.exec(
+      "CREATE TABLE IF NOT EXISTS context_compaction (id INTEGER PRIMARY KEY CHECK(id=1), summary TEXT NOT NULL, updated_at TEXT NOT NULL)"
+    );
   }
 
-  private async insertMessage(messageId: string, role: string, text: string) {
+  private async upsertCompactionSummary(summary: string) {
+    const sql = this.state.storage.sql;
+    const now = new Date().toISOString();
+    sql.exec(
+      "INSERT INTO context_compaction (id, summary, updated_at) VALUES (1, ?1, ?2) ON CONFLICT (id) DO UPDATE SET summary = ?1, updated_at = ?2",
+      summary,
+      now
+    );
+  }
+
+  private async maybeCompactContext() {
+    const sql = this.state.storage.sql;
+    const rows = Array.from(
+      sql.exec("SELECT COUNT(*) AS count FROM messages")
+    ) as Array<{ count?: number }>;
+    const count = Number(rows[0]?.count ?? 0);
+    if (count < 100) {
+      return;
+    }
+    const latest = Array.from(
+      sql.exec("SELECT text FROM messages ORDER BY created_at DESC LIMIT 20")
+    ) as Array<{ text: string }>;
+    const summary = latest.map((row) => row.text).reverse().join("\n");
+    await this.upsertCompactionSummary(summary);
+  }
+
+  private async insertMessage(
+    messageId: string,
+    role: "assistant" | "system" | "user",
+    text: string
+  ) {
     const sql = this.state.storage.sql;
     const createdAt = new Date().toISOString();
     sql.exec(
@@ -66,108 +129,156 @@ export class ChatController {
 
   private listMessages() {
     const sql = this.state.storage.sql;
-    const rows: Array<{
+    const rows = Array.from(
+      sql.exec(
+        "SELECT message_id, role, text, created_at FROM messages ORDER BY created_at ASC"
+      )
+    ) as Array<{
+      created_at: string;
       message_id: string;
       role: string;
       text: string;
-      created_at: string;
-    }> = [];
-    const result = sql.exec(
-      "SELECT message_id, role, text, created_at FROM messages ORDER BY created_at ASC"
-    );
-    for (const row of result) {
-      rows.push(
-        row as {
-          message_id: string;
-          role: string;
-          text: string;
-          created_at: string;
-        }
-      );
-    }
+    }>;
     return rows;
   }
 
-  private async runAgents(
-    messageText: string,
-    agentRuntimes: AgentRuntimeRef[]
-  ) {
-    const agentMessages: Array<{
-      message_id: string;
-      role: string;
-      text: string;
-    }> = [];
-    for (const runtime of agentRuntimes) {
-      const response = await fetch(
-        `${runtime.base_url.replace(/\/$/, "")}/agents/run`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            runtime_id: runtime.runtime_id,
-            prompt: messageText,
-          }),
-        }
-      );
-      if (!response.ok) {
-        continue;
-      }
-      const payload = (await response.json()) as {
-        role?: string;
-        text?: string;
-      };
-      const agentMessageId = `msg_${crypto.randomUUID()}`;
-      const role = payload.role ?? "assistant";
-      const text = payload.text ?? "";
-      await this.insertMessage(agentMessageId, role, text);
-      agentMessages.push({ message_id: agentMessageId, role, text });
+  private async runAgent(
+    env: Env,
+    groupId: string,
+    orgId: string,
+    agentId: string,
+    prompt: string
+  ): Promise<{ message_id: string; role: string; text: string } | null> {
+    const baseUrl = env.AGENTS_BASE_URL;
+    if (!baseUrl) {
+      return null;
     }
-    return agentMessages;
+
+    const token = await createAgentAccessToken(env.GC_PRIVATE_KEY, {
+      agent_id: agentId,
+      group_id: groupId,
+      org_id: orgId,
+    });
+
+    const response = await fetch(`${baseUrl.replace(/\/$/, "")}/agents/run`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${token}`,
+        "x-group-id": groupId,
+      },
+      body: JSON.stringify({
+        agent_id: agentId,
+        prompt,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const payload = (await response.json()) as { text?: string };
+    const messageId = `msg_${crypto.randomUUID()}`;
+    const text = typeof payload.text === "string" ? payload.text : "";
+    await this.insertMessage(messageId, "assistant", text);
+    return { message_id: messageId, role: "assistant", text };
   }
 
-  async fetch(request: Request): Promise<Response> {
+  async fetch(request: Request, env: Env): Promise<Response> {
     await this.ensureSchema();
+    if (!hasOrchestratorToken(request, env)) {
+      return json({ ok: false, error: "forbidden" }, 403);
+    }
+
     const url = new URL(request.url);
+    const route = pathSuffix(url.pathname);
 
-    if (request.method === "POST" && url.pathname === "/init") {
-      const body = (await request.json()) as {
-        session_private_key: string;
-        session_certificate: string;
-      };
-      await this.state.storage.put(
-        "session_private_key",
-        body.session_private_key
-      );
-      await this.state.storage.put(
-        "session_certificate",
-        body.session_certificate
-      );
-      return json({ ok: true });
+    if (request.method === "POST" && route === "/init") {
+      const body = (await request.json()) as InitRequest;
+      const groupId = requireString(body.group_id, "group_id");
+      const orgId = requireString(body.org_id, "org_id");
+      const historyMode: HistoryMode =
+        body.history_mode === "external" ? "external" : "internal";
+
+      await this.state.storage.put("group_id", groupId);
+      await this.state.storage.put("org_id", orgId);
+      await this.state.storage.put("history_mode", historyMode);
+      return json({ ok: true, group_id: groupId, history_mode: historyMode });
     }
 
-    if (request.method === "GET" && url.pathname === "/messages") {
+    if (request.method === "GET" && (route === "/messages" || route === "/history")) {
+      const historyMode =
+        ((await this.state.storage.get("history_mode")) as HistoryMode | undefined) ??
+        "internal";
+      if (historyMode === "external") {
+        return json({
+          messages: [],
+          history_mode: historyMode,
+          delegated: true,
+        });
+      }
       const messages = this.listMessages();
-      return json({ messages });
+      return json({ messages, history_mode: historyMode, delegated: false });
     }
 
-    if (request.method === "POST" && url.pathname === "/messages") {
+    if (request.method === "POST" && route === "/messages") {
       let body: PostMessageRequest;
       try {
         body = await readJson<PostMessageRequest>(request);
-      } catch (error) {
+      } catch {
         return json({ ok: false, error: "invalid JSON body" }, 400);
       }
 
       try {
         const messageId = requireString(body.message_id, "message_id");
         const text = requireString(body.text, "text");
-        await this.insertMessage(messageId, "user", text);
-        const agentRuntimes = body.agent_runtimes ?? [];
-        const agentMessages = await this.runAgents(text, agentRuntimes);
+        const groupId = (await this.state.storage.get("group_id")) as
+          | string
+          | undefined;
+        const orgId = (await this.state.storage.get("org_id")) as
+          | string
+          | undefined;
+        if (!groupId || !orgId) {
+          return json(
+            {
+              ok: false,
+              error: "group controller not initialized",
+            },
+            409
+          );
+        }
+
+        const historyMode =
+          ((await this.state.storage.get("history_mode")) as
+            | HistoryMode
+            | undefined) ?? "internal";
+        if (historyMode === "internal") {
+          await this.insertMessage(messageId, "user", text);
+          await this.maybeCompactContext();
+        }
+
+        const agentIds = Array.isArray(body.agent_ids) ? body.agent_ids : [];
+        const agentMessages: Array<{
+          message_id: string;
+          role: string;
+          text: string;
+        }> = [];
+        for (const agentId of agentIds) {
+          if (typeof agentId !== "string" || agentId.length === 0) {
+            continue;
+          }
+          const result = await this.runAgent(env, groupId, orgId, agentId, text);
+          if (result) {
+            agentMessages.push(result);
+          }
+        }
+
         return json({
           ok: true,
           message_id: messageId,
           agent_messages: agentMessages,
+          history_mode: historyMode,
         });
       } catch (error) {
         return json(
@@ -178,6 +289,62 @@ export class ChatController {
           400
         );
       }
+    }
+
+    if (request.method === "POST" && route === "/archive") {
+      const historyMode =
+        ((await this.state.storage.get("history_mode")) as HistoryMode | undefined) ??
+        "internal";
+      const groupId =
+        ((await this.state.storage.get("group_id")) as string | undefined) ?? "unknown";
+      const messages =
+        historyMode === "internal"
+          ? this.listMessages()
+          : ([] as Array<{
+              created_at: string;
+              message_id: string;
+              role: string;
+              text: string;
+            }>);
+      const compactionRows = Array.from(
+        this.state.storage.sql.exec(
+          "SELECT summary, updated_at FROM context_compaction WHERE id = 1 LIMIT 1"
+        )
+      ) as Array<{ summary?: string; updated_at?: string }>;
+      const compaction =
+        compactionRows.length > 0
+          ? {
+              summary: compactionRows[0].summary ?? "",
+              updated_at: compactionRows[0].updated_at ?? new Date().toISOString(),
+            }
+          : null;
+      const snapshot = {
+        group_id: groupId,
+        history_mode: historyMode,
+        archived_at: new Date().toISOString(),
+        compaction,
+        messages,
+      };
+      this.state.storage.sql.exec("DELETE FROM messages");
+      this.state.storage.sql.exec("DELETE FROM context_compaction");
+      return json({ ok: true, snapshot });
+    }
+
+    if (route === "/ws" && request.headers.get("Upgrade") === "websocket") {
+      const pair = new WebSocketPair();
+      const client = pair[0];
+      const server = pair[1];
+      server.accept();
+      server.send(JSON.stringify({ type: "status", status: "connected" }));
+      server.addEventListener("message", (event) => {
+        server.send(
+          JSON.stringify({ type: "echo", payload: event.data?.toString() ?? "" })
+        );
+      });
+      return new Response(null, {
+        status: 101,
+        webSocket: client,
+      });
     }
 
     return new Response("Not Found", { status: 404 });
@@ -202,6 +369,10 @@ export default {
         service: "chat-controller",
         env: env.ENVIRONMENT,
       });
+    }
+
+    if (!hasOrchestratorToken(request, env)) {
+      return json({ ok: false, error: "forbidden" }, 403);
     }
 
     const chatId = parseChatId(url.pathname);

@@ -16,6 +16,7 @@
     "wrangler": "3.75.0"
   },
   "dependencies": {
+    "@axon/shared": "workspace:*",
     "@ai-sdk/openai": "^3.0.30",
     "zod": "^4.3.6"
   }

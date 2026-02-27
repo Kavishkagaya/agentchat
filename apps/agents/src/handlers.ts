@@ -1,4 +1,5 @@
 import type { AgentRunInput } from "@axon/agent-factory";
+import { verifyAgentAccessToken } from "@axon/shared";
 import { loadAgentConfig } from "./config";
 import type { Env } from "./env";
 import { runAgent } from "./runner";
@@ -11,15 +12,63 @@ export type AgentRunRequest = {
   messages?: Array<{ role: "user" | "assistant" | "system"; content: string }>;
 };
 
+function structuredError(code: string, message: string) {
+  return { ok: false, error: { code, message } };
+}
+
+async function authorizeRequest(
+  request: Request,
+  env: Env,
+  requestedAgentId?: string
+) {
+  const header = request.headers.get("authorization");
+  if (!header) {
+    throw new Error("missing authorization header");
+  }
+  const [scheme, token] = header.split(" ");
+  if (scheme !== "Bearer" || !token) {
+    throw new Error("invalid authorization header");
+  }
+
+  const expectedGroupId = request.headers.get("x-group-id") ?? undefined;
+  return await verifyAgentAccessToken(env.GC_PUBLIC_KEY, token, {
+    group_id: expectedGroupId,
+    agent_id: requestedAgentId,
+  });
+}
+
 export async function handleAgentRun(
   request: Request,
   env: Env
 ): Promise<Response> {
-  const body = (await request.json()) as AgentRunRequest;
+  let body: AgentRunRequest;
+  try {
+    body = (await request.json()) as AgentRunRequest;
+  } catch {
+    return Response.json(
+      structuredError("invalid_json", "invalid JSON body"),
+      { status: 400 }
+    );
+  }
+
+  let authPayload: Awaited<ReturnType<typeof authorizeRequest>>;
+  try {
+    authPayload = await authorizeRequest(request, env, body.agent_id);
+  } catch (error) {
+    return Response.json(
+      structuredError(
+        "unauthorized",
+        error instanceof Error ? error.message : "authorization failed"
+      ),
+      { status: 401 }
+    );
+  }
+
+  const agentId = body.agent_id ?? authPayload.agent_id;
   const events: Array<Record<string, unknown>> = [];
   events.push({ type: "status", status: "thinking" });
 
-  const record = await loadAgentConfig(env, body.agent_id, body.runtime_id);
+  const record = await loadAgentConfig(env, agentId, body.runtime_id);
   events.push({ type: "status", status: "running" });
 
   const input: AgentRunInput = { prompt: body.prompt, messages: body.messages };
@@ -39,6 +88,7 @@ export async function handleAgentRun(
     JSON.stringify({
       ok: true,
       agent_id: record.agentId,
+      group_id: authPayload.group_id,
       runtime_id: body.runtime_id,
       role: "assistant",
       text: result.text,
@@ -70,15 +120,31 @@ export async function handleAgentRunStream(
     try {
       body = (await request.json()) as AgentRunRequest;
     } catch {
-      send("error", { ok: false, error: "invalid JSON body" });
+      send("error", structuredError("invalid_json", "invalid JSON body"));
       await close();
       return;
     }
 
+    let authPayload: Awaited<ReturnType<typeof authorizeRequest>>;
+    try {
+      authPayload = await authorizeRequest(request, env, body.agent_id);
+    } catch (error) {
+      send(
+        "error",
+        structuredError(
+          "unauthorized",
+          error instanceof Error ? error.message : "authorization failed"
+        )
+      );
+      await close();
+      return;
+    }
+
+    const agentId = body.agent_id ?? authPayload.agent_id;
     send("status", { status: "thinking" });
 
     try {
-      const record = await loadAgentConfig(env, body.agent_id, body.runtime_id);
+      const record = await loadAgentConfig(env, agentId, body.runtime_id);
       send("status", { status: "running" });
       const input: AgentRunInput = {
         prompt: body.prompt,
@@ -103,6 +169,7 @@ export async function handleAgentRunStream(
       send("final", {
         ok: true,
         agent_id: record.agentId,
+        group_id: authPayload.group_id,
         runtime_id: body.runtime_id,
         role: "assistant",
         text: result.text,
@@ -110,10 +177,13 @@ export async function handleAgentRunStream(
         usage: result.usage,
       });
     } catch (error) {
-      send("error", {
-        ok: false,
-        error: error instanceof Error ? error.message : "agent error",
-      });
+      send(
+        "error",
+        structuredError(
+          "agent_error",
+          error instanceof Error ? error.message : "agent error"
+        )
+      );
     } finally {
       await close();
     }
