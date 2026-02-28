@@ -5,6 +5,8 @@ const VERSION_PREFIX = "v1:";
 const IV_LENGTH = 12;
 const TAG_LENGTH = 16;
 
+const HEX_REGEX = /^[0-9a-fA-F]+$/;
+
 function loadKey(): Buffer {
   const raw = process.env[KEY_ENV];
   if (!raw) {
@@ -12,7 +14,7 @@ function loadKey(): Buffer {
   }
 
   let key: Buffer;
-  if (/^[0-9a-fA-F]{64}$/.test(raw)) {
+  if (HEX_REGEX.test(raw)) {
     key = Buffer.from(raw, "hex");
   } else {
     key = Buffer.from(raw, "base64");
@@ -29,7 +31,10 @@ export function encryptSecretValue(value: string): string {
   const key = loadKey();
   const iv = randomBytes(IV_LENGTH);
   const cipher = createCipheriv("aes-256-gcm", key, iv);
-  const ciphertext = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
+  const ciphertext = Buffer.concat([
+    cipher.update(value, "utf8"),
+    cipher.final(),
+  ]);
   const tag = cipher.getAuthTag();
   const payload = Buffer.concat([iv, tag, ciphertext]).toString("base64");
   return `${VERSION_PREFIX}${payload}`;
@@ -41,7 +46,10 @@ export function decryptSecretValue(ciphertext: string): string {
   }
 
   const key = loadKey();
-  const payload = Buffer.from(ciphertext.slice(VERSION_PREFIX.length), "base64");
+  const payload = Buffer.from(
+    ciphertext.slice(VERSION_PREFIX.length),
+    "base64"
+  );
   const iv = payload.subarray(0, IV_LENGTH);
   const tag = payload.subarray(IV_LENGTH, IV_LENGTH + TAG_LENGTH);
   const data = payload.subarray(IV_LENGTH + TAG_LENGTH);

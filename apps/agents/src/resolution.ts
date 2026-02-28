@@ -123,6 +123,8 @@ async function loadSecretCached(
   }
   const version = secret.version?.toString() ?? "1";
   secretCache.set(cacheKey, secret, ttlMs, version);
+  // NOTE: secret.value is already decrypted plaintext. L2 cache stores plaintext intentionally
+  // for agent runtime performance. Do NOT call decryptSecretValue() on values read from cache.
   await writeVersionedCache(env, cacheKey, version, secret, Math.ceil(ttlMs / 1000));
   recordResolutionMetric("secret", Date.now() - started, true);
   return secret;

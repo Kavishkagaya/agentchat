@@ -71,6 +71,7 @@ export const orgProcedure = protectedProcedure.use(enforceOrg);
 
 /**
  * Enforces Org Admin role.
+ * Accepts: admin (mapped from Clerk's org:admin)
  */
 const enforceOrgAdmin = t.middleware(({ ctx, next }) => {
   if (!(ctx.auth.orgId && ctx.auth.userId)) {
@@ -79,7 +80,7 @@ const enforceOrgAdmin = t.middleware(({ ctx, next }) => {
 
   const role = ctx.auth.role;
 
-  if (role !== "owner" && role !== "admin") {
+  if (role !== "admin") {
     throw new TRPCError({
       code: "FORBIDDEN",
       message: "Org Admin access required",
@@ -90,29 +91,6 @@ const enforceOrgAdmin = t.middleware(({ ctx, next }) => {
 });
 
 export const orgAdminProcedure = orgProcedure.use(enforceOrgAdmin);
-
-/**
- * Enforces Org Owner role.
- */
-
-const enforceOrgOwner = t.middleware(({ ctx, next }) => {
-  if (!(ctx.auth.orgId && ctx.auth.userId)) {
-    throw new TRPCError({ code: "UNAUTHORIZED" });
-  }
-
-  const role = ctx.auth.role;
-
-  if (role !== "owner") {
-    throw new TRPCError({
-      code: "FORBIDDEN",
-      message: "Org Owner access required",
-    });
-  }
-
-  return next({ ctx });
-});
-
-export const orgOwnerProcedure = orgProcedure.use(enforceOrgOwner);
 
 /**
  * Enforces Super Admin role (System wide).

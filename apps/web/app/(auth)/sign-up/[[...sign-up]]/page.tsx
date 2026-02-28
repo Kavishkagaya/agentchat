@@ -1,5 +1,10 @@
 import { SignUp } from "@clerk/nextjs";
 
 export default function SignUpPage() {
-  return <SignUp />;
+  return (
+    <SignUp
+      fallbackRedirectUrl="/"
+      signInUrl="/sign-in"
+    />
+  );
 }

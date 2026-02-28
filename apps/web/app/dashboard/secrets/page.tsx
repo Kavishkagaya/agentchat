@@ -1,14 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { Eye, EyeOff, Trash2, Edit2 } from "lucide-react";
 import { api } from "@/app/trpc/client";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -20,6 +15,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 type SecretRow = {
   id: string;
@@ -49,7 +52,7 @@ function formatDate(value: string | Date | null | undefined) {
   return date.toLocaleString();
 }
 
-function SecretCard({
+function SecretRow({
   secret,
   onEdit,
   onDelete,
@@ -58,74 +61,77 @@ function SecretCard({
   onEdit: (secret: SecretRow) => void;
   onDelete: (secretId: string) => void;
 }) {
-  const revealQuery = api.secrets.reveal.useQuery(
-    { secretId: secret.id },
-    { enabled: false }
-  );
+  const revealMutation = api.secrets.reveal.useMutation();
   const [revealedValue, setRevealedValue] = useState<string | null>(null);
   const [revealError, setRevealError] = useState<string | null>(null);
 
   const handleReveal = async () => {
     setRevealError(null);
-    const result = await revealQuery.refetch();
-    if (result.error) {
-      setRevealError(result.error.message);
-      return;
+    try {
+      const result = await revealMutation.mutateAsync({ secretId: secret.id });
+      setRevealedValue(result.value ?? null);
+    } catch (error) {
+      setRevealError(error instanceof Error ? error.message : "Failed to reveal secret");
     }
-    setRevealedValue(result.data?.value ?? null);
   };
 
   return (
-    <Card>
-      <CardHeader className="space-y-2">
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <CardTitle className="text-lg">{secret.name}</CardTitle>
-            <CardDescription>{secret.namespace}</CardDescription>
-          </div>
-          <span className="rounded-full bg-muted px-2 py-1 text-xs">
-            v{secret.version}
-          </span>
+    <TableRow>
+      <TableCell className="font-medium">
+        <div>
+          <div>{secret.name}</div>
+          <div className="text-xs text-muted-foreground">v{secret.version}</div>
         </div>
-        <div className="text-xs text-muted-foreground">
-          Created: {formatDate(secret.createdAt)}
-        </div>
-        <div className="text-xs text-muted-foreground">
-          Rotated: {formatDate(secret.rotatedAt ?? null)}
-        </div>
-        <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
-          {revealedValue ? (
-            <span className="break-all">{revealedValue}</span>
-          ) : (
-            <span className="text-muted-foreground">••••••••••••</span>
-          )}
-        </div>
-        {revealError && (
-          <p className="text-xs text-destructive">{revealError}</p>
-        )}
-        <div className="flex flex-wrap gap-2">
+      </TableCell>
+      <TableCell className="text-sm text-muted-foreground">
+        {secret.namespace}
+      </TableCell>
+      <TableCell className="text-sm">{formatDate(secret.createdAt)}</TableCell>
+      <TableCell className="text-sm">
+        {formatDate(secret.rotatedAt ?? null)}
+      </TableCell>
+      <TableCell>
+        <div className="flex items-center gap-2">
+          <code className="rounded bg-muted px-2 py-1 text-xs font-mono">
+            {revealedValue ? revealedValue : "••••••••••••"}
+          </code>
           <Button
             size="sm"
-            variant="outline"
+            variant="ghost"
             onClick={() =>
               revealedValue ? setRevealedValue(null) : handleReveal()
             }
           >
-            {revealedValue ? "Hide" : "Reveal"}
+            {revealedValue ? (
+              <EyeOff className="h-4 w-4" />
+            ) : (
+              <Eye className="h-4 w-4" />
+            )}
           </Button>
-          <Button size="sm" variant="secondary" onClick={() => onEdit(secret)}>
-            Edit
+          {revealError && (
+            <span className="text-xs text-destructive">{revealError}</span>
+          )}
+        </div>
+      </TableCell>
+      <TableCell>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => onEdit(secret)}
+          >
+            <Edit2 className="h-4 w-4" />
           </Button>
           <Button
             size="sm"
-            variant="destructive"
+            variant="ghost"
             onClick={() => onDelete(secret.id)}
           >
-            Delete
+            <Trash2 className="h-4 w-4 text-destructive" />
           </Button>
         </div>
-      </CardHeader>
-    </Card>
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -219,23 +225,70 @@ export default function SecretsPage() {
       </div>
 
       {secretsQuery.isLoading ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {[...Array(3)].map((_, i) => (
-            <Skeleton className="h-[200px] w-full rounded-xl" key={i} />
-          ))}
+        <div className="overflow-x-auto rounded-lg border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead>Rotated</TableHead>
+                <TableHead>Secret</TableHead>
+                <TableHead>Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {Array.from({ length: 3 }, (_, i) => (
+                <TableRow key={`skeleton-${i}`}>
+                  <TableCell>
+                    <Skeleton className="h-4 w-32" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-24" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-40" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-40" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-32" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-20" />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {secretsQuery.data?.map((secret) => (
-            <SecretCard
-              key={secret.id}
-              secret={secret}
-              onEdit={openEdit}
-              onDelete={handleDelete}
-            />
-          ))}
+        <div className="overflow-x-auto rounded-lg border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead>Rotated</TableHead>
+                <TableHead>Secret</TableHead>
+                <TableHead>Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {secretsQuery.data?.map((secret) => (
+                <SecretRow
+                  key={secret.id}
+                  onDelete={handleDelete}
+                  onEdit={openEdit}
+                  secret={secret}
+                />
+              ))}
+            </TableBody>
+          </Table>
           {secretsQuery.data?.length === 0 && (
-            <div className="col-span-full rounded-xl border-2 border-dashed py-12 text-center text-muted-foreground">
+            <div className="py-12 text-center text-muted-foreground">
               No secrets yet.
             </div>
           )}

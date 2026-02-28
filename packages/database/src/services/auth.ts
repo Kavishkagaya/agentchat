@@ -11,6 +11,21 @@ export interface SyncUserParams {
   password?: string | null;
 }
 
+export interface AxonUser {
+  clerkUserId: string;
+  email: string;
+  firstName?: string | null;
+  imageUrl?: string | null;
+  lastName?: string | null;
+  organization?: {
+    orgId: string;
+    clerkOrgId: string;
+    name: string;
+    role: string;
+  } | null;
+  userId: string;
+}
+
 export async function syncUser(params: SyncUserParams) {
   const now = new Date();
   const existing = await db.query.users.findFirst({
@@ -81,19 +96,27 @@ export async function syncOrgMember(
 ) {
   const now = new Date();
 
+  // Map Clerk roles to internal roles
+  // org:admin -> admin, org:member -> user, anything else -> user
+  const internalRole = mapClerkRoleToInternal(role);
+
   // Resolve internal IDs
   const user = await db.query.users.findFirst({
     where: eq(users.clerkId, clerkUserId),
   });
+
+  if (!user) {
+    throw new Error(
+      `Could not sync membership: User(${clerkUserId}) not found`
+    );
+  }
+
   const org = await db.query.orgs.findFirst({
     where: eq(orgs.clerkId, clerkOrgId),
   });
 
-  if (!(user && org)) {
-    console.error(
-      `Could not sync membership: User(${clerkUserId}) or Org(${clerkOrgId}) not found`
-    );
-    return;
+  if (!org) {
+    throw new Error(`Could not sync membership: Org(${clerkOrgId}) not found`);
   }
 
   const existing = await db.query.orgMembers.findFirst({
@@ -104,7 +127,7 @@ export async function syncOrgMember(
     await db
       .update(orgMembers)
       .set({
-        role,
+        role: internalRole,
         clerkOrgId,
         clerkUserId,
       })
@@ -116,9 +139,25 @@ export async function syncOrgMember(
       userId: user.id,
       clerkOrgId,
       clerkUserId,
-      role,
+      role: internalRole,
       createdAt: now,
     });
+  }
+}
+
+/**
+ * Map Clerk organization roles to internal role representation
+ * Clerk roles: org:admin, org:member
+ * Internal roles: admin, user
+ */
+function mapClerkRoleToInternal(clerkRole: string): string {
+  switch (clerkRole) {
+    case "org:admin":
+      return "admin";
+    case "org:member":
+      return "user";
+    default:
+      return "user";
   }
 }
 
@@ -192,4 +231,60 @@ export async function isSuperAdmin(userId: string): Promise<boolean> {
     throw new Error("User not found");
   }
   return user.role === "admin";
+}
+
+// Get me
+export async function getMe(
+  userId: string,
+  orgId: string | null
+): Promise<AxonUser | null> {
+  const user = await db.query.users.findFirst({
+    where: eq(users.id, userId),
+  });
+  if (!user) {
+    return null;
+  }
+
+  if (!orgId) {
+    return {
+      clerkUserId: user.clerkId,
+      email: user.email,
+      firstName: user.firstName,
+      imageUrl: user.imageUrl,
+      lastName: user.lastName,
+      userId: user.id,
+    };
+  }
+
+  const organization = await db.query.orgs.findFirst({
+    where: eq(orgs.id, orgId),
+  });
+
+  const role = await getUserOrgRole(user.id, orgId);
+
+  if (!(organization && role)) {
+    return {
+      clerkUserId: user.clerkId,
+      email: user.email,
+      firstName: user.firstName,
+      imageUrl: user.imageUrl,
+      lastName: user.lastName,
+      userId: user.id,
+    };
+  }
+
+  return {
+    clerkUserId: user.clerkId,
+    email: user.email,
+    firstName: user.firstName,
+    imageUrl: user.imageUrl,
+    lastName: user.lastName,
+    userId: user.id,
+    organization: {
+      orgId: organization.id,
+      name: organization.name,
+      role,
+      clerkOrgId: organization.clerkId,
+    },
+  };
 }
