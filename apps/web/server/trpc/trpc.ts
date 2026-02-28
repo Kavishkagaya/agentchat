@@ -1,4 +1,3 @@
-import { getUserOrgRole } from "@axon/database";
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import { ZodError } from "zod";
@@ -30,11 +29,12 @@ const enforceUserIsAuthed = t.middleware(({ ctx, next }) => {
   }
   return next({
     ctx: {
+      ...ctx,
       auth: {
+        ...ctx.auth,
         clerkUserId: ctx.auth.clerkUserId,
-        clerkOrgId: ctx.auth.clerkOrgId,
         userId: ctx.auth.userId,
-        orgId: ctx.auth.orgId,
+        isSuperAdmin: ctx.auth.isSuperAdmin,
       },
     },
   });
@@ -54,11 +54,14 @@ const enforceOrg = t.middleware(({ ctx, next }) => {
   }
   return next({
     ctx: {
+      ...ctx,
       auth: {
-        clerkUserId: ctx.auth.clerkUserId!,
-        clerkOrgId: ctx.auth.clerkOrgId!,
-        userId: ctx.auth.userId!,
+        ...ctx.auth,
+        clerkUserId: ctx.auth.clerkUserId,
+        clerkOrgId: ctx.auth.clerkOrgId,
+        userId: ctx.auth.userId,
         orgId: ctx.auth.orgId,
+        role: ctx.auth.role,
       },
     },
   });
@@ -69,12 +72,12 @@ export const orgProcedure = protectedProcedure.use(enforceOrg);
 /**
  * Enforces Org Admin role.
  */
-const enforceOrgAdmin = t.middleware(async ({ ctx, next }) => {
+const enforceOrgAdmin = t.middleware(({ ctx, next }) => {
   if (!(ctx.auth.orgId && ctx.auth.userId)) {
     throw new TRPCError({ code: "UNAUTHORIZED" });
   }
 
-  const role = await getUserOrgRole(ctx.auth.userId, ctx.auth.orgId);
+  const role = ctx.auth.role;
 
   if (role !== "owner" && role !== "admin") {
     throw new TRPCError({
@@ -89,15 +92,38 @@ const enforceOrgAdmin = t.middleware(async ({ ctx, next }) => {
 export const orgAdminProcedure = orgProcedure.use(enforceOrgAdmin);
 
 /**
+ * Enforces Org Owner role.
+ */
+
+const enforceOrgOwner = t.middleware(({ ctx, next }) => {
+  if (!(ctx.auth.orgId && ctx.auth.userId)) {
+    throw new TRPCError({ code: "UNAUTHORIZED" });
+  }
+
+  const role = ctx.auth.role;
+
+  if (role !== "owner") {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Org Owner access required",
+    });
+  }
+
+  return next({ ctx });
+});
+
+export const orgOwnerProcedure = orgProcedure.use(enforceOrgOwner);
+
+/**
  * Enforces Super Admin role (System wide).
  */
-const enforceSuperAdmin = t.middleware(async ({ ctx, next }) => {
+const enforceSuperAdmin = t.middleware(({ ctx, next }) => {
   if (!ctx.auth.userId) {
     throw new TRPCError({ code: "UNAUTHORIZED" });
   }
 
   // Placeholder: Check against a hardcoded ID or a special flag in DB
-  const isSuperAdmin = ctx.auth.userId === process.env.SUPER_ADMIN_ID;
+  const isSuperAdmin = ctx.auth.isSuperAdmin;
 
   if (!isSuperAdmin) {
     throw new TRPCError({

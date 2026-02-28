@@ -26,7 +26,7 @@ export default function DashboardPage() {
 
       {isLoading ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {[...Array(3)].map((_, i) => (
+          {[...new Array(3)].map((_, i) => (
             <Skeleton className="h-[120px] w-full rounded-xl" key={i} />
           ))}
         </div>

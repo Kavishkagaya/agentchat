@@ -25,6 +25,7 @@ export const users = pgTable(
     imageUrl: text("image_url"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+    role: text("role").notNull().default("user"), // 'user' , 'admin'
   },
   (table) => ({
     clerkIdIdx: uniqueIndex("users_clerk_id_idx").on(table.clerkId),

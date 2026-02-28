@@ -4,30 +4,32 @@ import { z } from "zod";
 import { getOrchestratorClient } from "../../workers/orchestrator";
 import { createTRPCRouter, orgProcedure } from "../trpc";
 
-const groupConfigSchema = z.object({
-  history_mode: z.enum(["full", "compact", "external"]).default("full"),
-  archive: z
-    .object({
-      auto_archive_after_days: z.number().int().min(1).max(365).default(7),
-      r2_snapshot_on_archive_only: z.boolean().default(true),
-      allow_restore: z.boolean().default(true),
-    })
-    .optional(),
-  agent_policy: z
-    .object({
-      auto_trigger: z.boolean().default(false),
-      multi_agent_enabled: z.boolean().default(true),
-      max_agent_rounds: z.number().int().min(1).max(10).default(2),
-      agent_cooldown_seconds: z.number().int().min(0).max(3600).default(15),
-    })
-    .optional(),
-  runtime: z
-    .object({
-      max_active_users: z.number().int().min(1).max(500).optional(),
-      max_stream_minutes: z.number().int().min(1).max(240).optional(),
-    })
-    .optional(),
-}).strict();
+const groupConfigSchema = z
+  .object({
+    history_mode: z.enum(["full", "compact", "external"]).default("full"),
+    archive: z
+      .object({
+        auto_archive_after_days: z.number().int().min(1).max(365).default(7),
+        r2_snapshot_on_archive_only: z.boolean().default(true),
+        allow_restore: z.boolean().default(true),
+      })
+      .optional(),
+    agent_policy: z
+      .object({
+        auto_trigger: z.boolean().default(false),
+        multi_agent_enabled: z.boolean().default(true),
+        max_agent_rounds: z.number().int().min(1).max(10).default(2),
+        agent_cooldown_seconds: z.number().int().min(0).max(3600).default(15),
+      })
+      .optional(),
+    runtime: z
+      .object({
+        max_active_users: z.number().int().min(1).max(500).optional(),
+        max_stream_minutes: z.number().int().min(1).max(240).optional(),
+      })
+      .optional(),
+  })
+  .strict();
 
 function buildDefaultGroupConfig() {
   return {
@@ -54,7 +56,8 @@ function resolveOrchestratorHistoryMode(
 
 export const groupsRouter = createTRPCRouter({
   list: orgProcedure.query(async ({ ctx }) => {
-    return getOrgGroups(ctx.auth.orgId);
+    const groups = await getOrgGroups(ctx.auth.orgId);
+    return groups;
   }),
 
   create: orgProcedure

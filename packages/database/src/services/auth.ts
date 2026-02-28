@@ -182,3 +182,14 @@ export async function getInternalOrgId(clerkId: string) {
   });
   return org?.id ?? null;
 }
+
+// Get is super admin
+export async function isSuperAdmin(userId: string): Promise<boolean> {
+  const user = await db.query.users.findFirst({
+    where: eq(users.id, userId),
+  });
+  if (!user) {
+    throw new Error("User not found");
+  }
+  return user.role === "admin";
+}
