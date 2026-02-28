@@ -217,33 +217,7 @@ export const mcpServers = pgTable(
   })
 );
 
-export const mcpServerTools = pgTable(
-  "mcp_server_tools",
-  {
-    serverId: text("server_id")
-      .notNull()
-      .references(() => mcpServers.id),
-    toolId: text("tool_id").notNull(),
-    name: text("name").notNull(),
-    description: text("description"),
-    inputSchema: jsonb("input_schema"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
-  },
-  (table) => ({
-    pk: primaryKey({ columns: [table.serverId, table.toolId] }),
-    serverIdIdx: index("mcp_server_tools_server_id_idx").on(table.serverId),
-  })
-);
-
-export const mcpServerToolsRelations = relations(mcpServerTools, ({ one }) => ({
-  server: one(mcpServers, {
-    fields: [mcpServerTools.serverId],
-    references: [mcpServers.id],
-  }),
-}));
-
-export const mcpServersRelations = relations(mcpServers, ({ one, many }) => ({
+export const mcpServersRelations = relations(mcpServers, ({ one }) => ({
   org: one(orgs, {
     fields: [mcpServers.orgId],
     references: [orgs.id],
@@ -252,7 +226,6 @@ export const mcpServersRelations = relations(mcpServers, ({ one, many }) => ({
     fields: [mcpServers.createdBy],
     references: [users.id],
   }),
-  tools: many(mcpServerTools),
 }));
 
 // --- Runtime Routing ---
@@ -466,6 +439,14 @@ export const subscriptions = pgTable("subscriptions", {
   status: text("status"),
   currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+});
+
+// --- System Configuration ---
+
+export const systemConfigs = pgTable("system_configs", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
 });
 

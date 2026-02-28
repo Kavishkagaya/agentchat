@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { db } from "../client";
-import { mcpServerTools, mcpServers } from "../schema";
+import { mcpServers } from "../schema";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -16,20 +16,13 @@ export type McpServerStatus = "pending" | "valid" | "error";
 
 export interface CreateMcpServerParams {
   config: Record<string, unknown>;
-  orgId: string;
-  name: string;
-  url: string;
-  token?: string | null;
-  secretRef?: string | null;
   createdBy: string;
-}
-
-export type McpToolInput = {
-  toolId: string;
   name: string;
-  description?: string | null;
-  inputSchema?: Record<string, unknown> | null;
-};
+  orgId: string;
+  secretRef?: string | null;
+  token?: string | null;
+  url: string;
+}
 
 export async function createMcpServer(params: CreateMcpServerParams) {
   if (params.secretRef) {
@@ -71,7 +64,46 @@ export async function updateMcpServerStatus(params: {
       lastValidatedAt: now,
       updatedAt: now,
     })
-    .where(and(eq(mcpServers.id, params.serverId), eq(mcpServers.orgId, params.orgId)));
+    .where(
+      and(
+        eq(mcpServers.id, params.serverId),
+        eq(mcpServers.orgId, params.orgId)
+      )
+    );
+
+  return { updatedAt: now };
+}
+
+export interface UpdateMcpServerParams {
+  config: Record<string, unknown>;
+  name: string;
+  orgId: string;
+  secretRef?: string | null;
+  serverId: string;
+  url: string;
+}
+
+export async function updateMcpServer(params: UpdateMcpServerParams) {
+  if (params.secretRef) {
+    assertSecretId(params.secretRef);
+  }
+
+  const now = new Date();
+  await db
+    .update(mcpServers)
+    .set({
+      name: params.name,
+      url: params.url,
+      secretRef: params.secretRef ?? null,
+      config: params.config,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(mcpServers.id, params.serverId),
+        eq(mcpServers.orgId, params.orgId)
+      )
+    );
 
   return { updatedAt: now };
 }
@@ -83,47 +115,30 @@ export async function listMcpServers(orgId: string) {
   });
 }
 
-export async function getMcpServer(params: { serverId: string; orgId: string }) {
-  return await db.query.mcpServers.findFirst({
-    where: and(eq(mcpServers.id, params.serverId), eq(mcpServers.orgId, params.orgId)),
-  });
-}
-
-export async function upsertMcpTools(params: {
+export async function getMcpServer(params: {
   serverId: string;
-  tools: McpToolInput[];
+  orgId: string;
 }) {
-  const now = new Date();
-
-  for (const tool of params.tools) {
-    await db
-      .insert(mcpServerTools)
-      .values({
-        serverId: params.serverId,
-        toolId: tool.toolId,
-        name: tool.name,
-        description: tool.description ?? null,
-        inputSchema: tool.inputSchema ?? null,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: [mcpServerTools.serverId, mcpServerTools.toolId],
-        set: {
-          name: tool.name,
-          description: tool.description ?? null,
-          inputSchema: tool.inputSchema ?? null,
-          updatedAt: now,
-        },
-      });
-  }
-
-  return { updatedAt: now };
+  return await db.query.mcpServers.findFirst({
+    where: and(
+      eq(mcpServers.id, params.serverId),
+      eq(mcpServers.orgId, params.orgId)
+    ),
+  });
 }
 
-export async function listMcpTools(serverId: string) {
-  return await db.query.mcpServerTools.findMany({
-    where: eq(mcpServerTools.serverId, serverId),
-    orderBy: (tools, { asc }) => [asc(tools.name)],
-  });
+export async function deleteMcpServer(params: {
+  serverId: string;
+  orgId: string;
+}) {
+  await db
+    .delete(mcpServers)
+    .where(
+      and(
+        eq(mcpServers.id, params.serverId),
+        eq(mcpServers.orgId, params.orgId)
+      )
+    );
+
+  return { ok: true };
 }

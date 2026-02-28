@@ -14,27 +14,27 @@ function assertSecretId(secretId: string) {
 
 export interface CreateProviderParams {
   config: Record<string, unknown>;
-  orgId: string;
-  name: string;
-  providerType: string;
-  kind: string;
-  modelId: string;
-  secretRef: string;
+  createdBy?: string | null;
   gatewayAccountId: string;
   gatewayId: string;
-  createdBy?: string | null;
+  kind: string;
+  modelId: string;
+  name: string;
+  orgId: string;
+  providerType: string;
+  secretRef: string;
 }
 
 export interface UpdateProviderParams {
   config?: Record<string, unknown> | null;
-  orgId: string;
-  providerId: string;
-  name?: string | null;
-  kind?: string | null;
-  modelId?: string | null;
-  secretRef?: string | null;
   gatewayAccountId?: string | null;
   gatewayId?: string | null;
+  kind?: string | null;
+  modelId?: string | null;
+  name?: string | null;
+  orgId: string;
+  providerId: string;
+  secretRef?: string | null;
 }
 
 export async function createProvider(params: CreateProviderParams) {
@@ -68,7 +68,10 @@ export async function listProviders(orgId: string) {
   });
 }
 
-export async function getProvider(params: { orgId: string; providerId: string }) {
+export async function getProvider(params: {
+  orgId: string;
+  providerId: string;
+}) {
   return await db.query.providerCatalog.findFirst({
     where: and(
       eq(providerCatalog.orgId, params.orgId),
@@ -105,7 +108,10 @@ export async function updateProvider(params: UpdateProviderParams) {
   return { updatedAt: now };
 }
 
-export async function deleteProvider(params: { orgId: string; providerId: string }) {
+export async function deleteProvider(params: {
+  orgId: string;
+  providerId: string;
+}) {
   await db
     .delete(providerCatalog)
     .where(

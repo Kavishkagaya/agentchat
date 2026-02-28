@@ -6,3 +6,4 @@ export * from "./services/groups";
 export * from "./services/mcp-servers";
 export * from "./services/provider-catalog";
 export * from "./services/secrets";
+export * from "./services/system-config";

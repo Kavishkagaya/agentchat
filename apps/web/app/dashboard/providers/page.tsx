@@ -1,14 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { Edit2, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
 import { api } from "@/app/trpc/client";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -19,49 +14,78 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-
-const EMPTY_FORM = {
-  name: "",
-  providerType: "cloudflare_ai_gateway",
-  kind: "",
-  modelId: "",
-  secretRef: "",
-  gatewayAccountId: "",
-  gatewayId: "",
-};
-
-type ProviderForm = typeof EMPTY_FORM;
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 type ProviderRow = {
   id: string;
   name: string;
-  providerType: string;
   kind: string;
   modelId: string;
   secretRef?: string | null;
-  gatewayAccountId: string;
-  gatewayId: string;
 };
 
+type CatalogProvider = {
+  kind: string;
+  label: string;
+  models: string[];
+};
+
+const EMPTY_FORM = {
+  name: "",
+  providerKind: "",
+  modelId: "",
+  secretRef: "",
+  customSlug: "",
+  customBaseUrl: "",
+};
+
+type ProviderForm = typeof EMPTY_FORM;
+
+function getProviderLabel(kind: string, providers: CatalogProvider[]): string {
+  if (kind.startsWith("custom-")) {
+    return "Custom";
+  }
+  const provider = providers.find((p) => p.kind === kind);
+  return provider?.label ?? kind;
+}
+
 function buildProviderConfig(form: ProviderForm) {
-  return {
-    provider_type: form.providerType,
-    kind: form.kind,
+  const config = {
+    provider_type: "cloudflare_ai_gateway",
+    kind: form.customSlug ? `custom-${form.customSlug}` : form.providerKind,
     model_id: form.modelId,
     credentials_ref: {
       secret_id: form.secretRef,
       version: "latest",
     },
-    gateway: {
-      account_id: form.gatewayAccountId,
-      gateway_id: form.gatewayId,
-    },
     enabled: true,
   };
+
+  // Store custom base URL if provided
+  if (form.customSlug && form.customBaseUrl) {
+    (config as Record<string, unknown>).custom_base_url = form.customBaseUrl;
+  }
+
+  return config;
 }
 
 export default function ProvidersPage() {
+  const catalogQuery = api.providers.getCatalog.useQuery();
   const providersQuery = api.providers.list.useQuery();
   const secretsQuery = api.secrets.list.useQuery();
   const createProvider = api.providers.create.useMutation();
@@ -76,6 +100,14 @@ export default function ProvidersPage() {
   );
   const [formError, setFormError] = useState<string | null>(null);
 
+  const catalog =
+    (catalogQuery.data as { providers: CatalogProvider[] } | undefined)
+      ?.providers ?? [];
+  const selectedProvider = useMemo(
+    () => catalog.find((p) => p.kind === form.providerKind),
+    [catalog, form.providerKind]
+  );
+
   const resetForm = () => {
     setForm({ ...EMPTY_FORM });
     setFormError(null);
@@ -83,26 +115,24 @@ export default function ProvidersPage() {
 
   const handleCreate = async () => {
     setFormError(null);
-    if (
-      !form.name ||
-      !form.providerType ||
-      !form.kind ||
-      !form.modelId ||
-      !form.secretRef ||
-      !form.gatewayAccountId ||
-      !form.gatewayId
-    ) {
-      setFormError("All fields are required.");
+    if (!(form.name && form.providerKind && form.modelId && form.secretRef)) {
+      setFormError("Name, provider, model, and API key are required.");
       return;
     }
 
-    await createProvider.mutateAsync({
-      name: form.name,
-      config: buildProviderConfig(form),
-    });
-    await providersQuery.refetch();
-    setCreateOpen(false);
-    resetForm();
+    try {
+      await createProvider.mutateAsync({
+        name: form.name,
+        config: buildProviderConfig(form),
+      });
+      await providersQuery.refetch();
+      setCreateOpen(false);
+      resetForm();
+    } catch (error) {
+      setFormError(
+        error instanceof Error ? error.message : "Failed to create provider"
+      );
+    }
   };
 
   const handleEdit = async () => {
@@ -110,40 +140,59 @@ export default function ProvidersPage() {
       return;
     }
     setFormError(null);
-    if (!form.name || !form.kind || !form.modelId) {
-      setFormError("Name, kind, and model are required.");
+    if (!(form.name && form.providerKind && form.modelId)) {
+      setFormError("Name, provider, and model are required.");
       return;
     }
 
-    await updateProvider.mutateAsync({
-      providerId: editingProvider.id,
-      name: form.name,
-      config: buildProviderConfig(form),
-    });
-    await providersQuery.refetch();
-    setEditOpen(false);
-    setEditingProvider(null);
-    resetForm();
+    try {
+      await updateProvider.mutateAsync({
+        providerId: editingProvider.id,
+        name: form.name,
+        config: buildProviderConfig(form),
+      });
+      await providersQuery.refetch();
+      setEditOpen(false);
+      setEditingProvider(null);
+      resetForm();
+    } catch (error) {
+      setFormError(
+        error instanceof Error ? error.message : "Failed to update provider"
+      );
+    }
   };
 
   const handleDelete = async (providerId: string) => {
-    await deleteProvider.mutateAsync({ providerId });
-    await providersQuery.refetch();
+    try {
+      await deleteProvider.mutateAsync({ providerId });
+      await providersQuery.refetch();
+    } catch (error) {
+      console.error("Failed to delete provider:", error);
+    }
   };
 
   const openEdit = (provider: ProviderRow) => {
     setEditingProvider(provider);
+    const kind = provider.kind;
+    let providerKind = kind;
+    let customSlug = "";
+    if (kind.startsWith("custom-")) {
+      providerKind = "custom";
+      customSlug = kind.substring(7); // Remove "custom-" prefix
+    }
     setForm({
       name: provider.name,
-      providerType: provider.providerType,
-      kind: provider.kind,
+      providerKind,
       modelId: provider.modelId,
       secretRef: provider.secretRef ?? "",
-      gatewayAccountId: provider.gatewayAccountId,
-      gatewayId: provider.gatewayId,
+      customSlug,
+      customBaseUrl: "",
     });
     setEditOpen(true);
   };
+
+  const isCustomProvider = form.providerKind === "custom";
+  const providerModels = selectedProvider?.models ?? [];
 
   return (
     <div className="space-y-6">
@@ -151,7 +200,7 @@ export default function ProvidersPage() {
         <div>
           <h1 className="font-bold text-3xl tracking-tight">Providers</h1>
           <p className="text-muted-foreground">
-            Manage provider catalog entries for your org.
+            Manage AI model providers for your organization.
           </p>
         </div>
         <Button
@@ -165,60 +214,105 @@ export default function ProvidersPage() {
       </div>
 
       {providersQuery.isLoading ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {[...Array(3)].map((_, i) => (
-            <Skeleton className="h-[160px] w-full rounded-xl" key={i} />
-          ))}
+        <div className="overflow-x-auto rounded-lg border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Provider</TableHead>
+                <TableHead>Model</TableHead>
+                <TableHead>API Key</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {Array.from({ length: 3 }, (_, i) => (
+                <TableRow key={`skeleton-${i}`}>
+                  <TableCell>
+                    <Skeleton className="h-4 w-32" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-24" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-40" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-32" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-20" />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {providersQuery.data?.map((provider) => (
-            <Card key={provider.id}>
-              <CardHeader className="space-y-2">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <CardTitle className="text-lg">{provider.name}</CardTitle>
-                    <CardDescription>
-                      {provider.providerType} · {provider.kind}/{provider.modelId}
-                    </CardDescription>
-                  </div>
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  Gateway: {provider.gatewayAccountId}/{provider.gatewayId}
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => openEdit(provider)}
-                  >
-                    Edit
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={() => handleDelete(provider.id)}
-                  >
-                    Delete
-                  </Button>
-                </div>
-              </CardHeader>
-            </Card>
-          ))}
+        <div className="overflow-x-auto rounded-lg border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Provider</TableHead>
+                <TableHead>Model</TableHead>
+                <TableHead>API Key</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {providersQuery.data?.map((provider) => {
+                const kind = provider.kind;
+                const providerLabel = getProviderLabel(kind, catalog);
+                return (
+                  <TableRow key={provider.id}>
+                    <TableCell className="font-medium">
+                      {provider.name}
+                    </TableCell>
+                    <TableCell className="text-sm">{providerLabel}</TableCell>
+                    <TableCell className="text-sm">
+                      {provider.modelId}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-sm">
+                      {provider.secretRef ? "•••••" : "—"}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          onClick={() => openEdit(provider)}
+                          size="sm"
+                          variant="ghost"
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          onClick={() => handleDelete(provider.id)}
+                          size="sm"
+                          variant="ghost"
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
           {providersQuery.data?.length === 0 && (
-            <div className="col-span-full rounded-xl border-2 border-dashed py-12 text-center text-muted-foreground">
+            <div className="py-12 text-center text-muted-foreground">
               No providers yet.
             </div>
           )}
         </div>
       )}
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+      <Dialog onOpenChange={setCreateOpen} open={createOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Add provider</DialogTitle>
             <DialogDescription>
-              Configure a provider entry backed by AI Gateway.
+              Configure a provider to access AI models through your account.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
@@ -226,93 +320,148 @@ export default function ProvidersPage() {
               <Label htmlFor="provider-name">Name</Label>
               <Input
                 id="provider-name"
-                value={form.name}
                 onChange={(event) =>
                   setForm({ ...form, name: event.target.value })
                 }
+                placeholder="e.g., My OpenAI Account"
+                value={form.name}
               />
             </div>
+
             <div className="grid gap-2">
-              <Label htmlFor="provider-type">Provider Type</Label>
-              <Input id="provider-type" value={form.providerType} disabled />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="provider-kind">Provider Kind</Label>
-              <Input
-                id="provider-kind"
-                value={form.kind}
-                onChange={(event) =>
-                  setForm({ ...form, kind: event.target.value })
+              <Label htmlFor="provider-select">Provider</Label>
+              <Select
+                onValueChange={(value) =>
+                  setForm({ ...form, providerKind: value, modelId: "" })
                 }
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="provider-model">Default Model</Label>
-              <Input
-                id="provider-model"
-                value={form.modelId}
-                onChange={(event) =>
-                  setForm({ ...form, modelId: event.target.value })
-                }
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="provider-secret">Provider Secret</Label>
-              <select
-                id="provider-secret"
-                className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-                value={form.secretRef}
-                onChange={(event) =>
-                  setForm({ ...form, secretRef: event.target.value })
-                }
+                value={form.providerKind}
               >
-                <option value="">Select a secret</option>
-                {secretsQuery.data?.map((secret) => (
-                  <option key={secret.id} value={secret.id}>
-                    {secret.name} ({secret.namespace})
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger id="provider-select">
+                  <SelectValue placeholder="Select a provider" />
+                </SelectTrigger>
+                <SelectContent>
+                  {catalog.map((provider) => (
+                    <SelectItem key={provider.kind} value={provider.kind}>
+                      {provider.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
+
+            {isCustomProvider ? (
+              <>
+                <div className="grid gap-2">
+                  <Label htmlFor="custom-slug">Custom Provider Slug</Label>
+                  <Input
+                    className="text-sm"
+                    id="custom-slug"
+                    onChange={(event) =>
+                      setForm({ ...form, customSlug: event.target.value })
+                    }
+                    placeholder="e.g., my-local-llm"
+                    value={form.customSlug}
+                  />
+                  <p className="text-muted-foreground text-xs">
+                    Unique identifier for your custom provider
+                  </p>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="custom-base-url">Base URL (Optional)</Label>
+                  <Input
+                    className="text-sm"
+                    id="custom-base-url"
+                    onChange={(event) =>
+                      setForm({ ...form, customBaseUrl: event.target.value })
+                    }
+                    placeholder="e.g., https://ml.internal.example.com"
+                    type="url"
+                    value={form.customBaseUrl}
+                  />
+                  <p className="text-muted-foreground text-xs">
+                    Endpoint URL for your self-hosted model (optional)
+                  </p>
+                </div>
+              </>
+            ) : null}
+
+            {isCustomProvider ? (
+              <div className="grid gap-2">
+                <Label htmlFor="custom-model">Model Name</Label>
+                <Input
+                  id="custom-model"
+                  onChange={(event) =>
+                    setForm({ ...form, modelId: event.target.value })
+                  }
+                  placeholder="e.g., my-model"
+                  value={form.modelId}
+                />
+              </div>
+            ) : form.providerKind ? (
+              <div className="grid gap-2">
+                <Label htmlFor="model-select">Model</Label>
+                <Select
+                  onValueChange={(value) =>
+                    setForm({ ...form, modelId: value })
+                  }
+                  value={form.modelId}
+                >
+                  <SelectTrigger id="model-select">
+                    <SelectValue placeholder="Select a model" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {providerModels.map((model) => (
+                      <SelectItem key={model} value={model}>
+                        {model}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+
             <div className="grid gap-2">
-              <Label htmlFor="provider-account">Gateway Account ID</Label>
-              <Input
-                id="provider-account"
-                value={form.gatewayAccountId}
-                onChange={(event) =>
-                  setForm({ ...form, gatewayAccountId: event.target.value })
+              <Label htmlFor="provider-secret">API Key (BYOK)</Label>
+              <Select
+                onValueChange={(value) =>
+                  setForm({ ...form, secretRef: value })
                 }
-              />
+                value={form.secretRef}
+              >
+                <SelectTrigger id="provider-secret">
+                  <SelectValue placeholder="Select an API key" />
+                </SelectTrigger>
+                <SelectContent>
+                  {secretsQuery.data?.map((secret) => (
+                    <SelectItem key={secret.id} value={secret.id}>
+                      {secret.name} ({secret.namespace})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="provider-gateway">Gateway ID</Label>
-              <Input
-                id="provider-gateway"
-                value={form.gatewayId}
-                onChange={(event) =>
-                  setForm({ ...form, gatewayId: event.target.value })
-                }
-              />
-            </div>
+
             {formError && (
-              <p className="text-sm text-destructive">{formError}</p>
+              <p className="text-destructive text-sm">{formError}</p>
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>
+            <Button onClick={() => setCreateOpen(false)} variant="outline">
               Cancel
             </Button>
-            <Button onClick={handleCreate}>Create provider</Button>
+            <Button disabled={createProvider.isPending} onClick={handleCreate}>
+              Create provider
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+      <Dialog onOpenChange={setEditOpen} open={editOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit provider</DialogTitle>
             <DialogDescription>
-              Update provider metadata and secrets.
+              Update provider configuration and settings.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
@@ -320,85 +469,142 @@ export default function ProvidersPage() {
               <Label htmlFor="provider-edit-name">Name</Label>
               <Input
                 id="provider-edit-name"
-                value={form.name}
                 onChange={(event) =>
                   setForm({ ...form, name: event.target.value })
                 }
+                value={form.name}
               />
             </div>
+
             <div className="grid gap-2">
-              <Label htmlFor="provider-edit-kind">Provider Kind</Label>
-              <Input
-                id="provider-edit-kind"
-                value={form.kind}
-                onChange={(event) =>
-                  setForm({ ...form, kind: event.target.value })
+              <Label htmlFor="provider-edit-select">Provider</Label>
+              <Select
+                onValueChange={(value) =>
+                  setForm({ ...form, providerKind: value, modelId: "" })
                 }
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="provider-edit-model">Default Model</Label>
-              <Input
-                id="provider-edit-model"
-                value={form.modelId}
-                onChange={(event) =>
-                  setForm({ ...form, modelId: event.target.value })
-                }
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="provider-edit-secret">Provider Secret</Label>
-              <select
-                id="provider-edit-secret"
-                className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-                value={form.secretRef}
-                onChange={(event) =>
-                  setForm({ ...form, secretRef: event.target.value })
-                }
+                value={form.providerKind}
               >
-                <option value="">Select a secret</option>
-                {secretsQuery.data?.map((secret) => (
-                  <option key={secret.id} value={secret.id}>
-                    {secret.name} ({secret.namespace})
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger id="provider-edit-select">
+                  <SelectValue placeholder="Select a provider" />
+                </SelectTrigger>
+                <SelectContent>
+                  {catalog.map((provider) => (
+                    <SelectItem key={provider.kind} value={provider.kind}>
+                      {provider.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
+
+            {isCustomProvider ? (
+              <>
+                <div className="grid gap-2">
+                  <Label htmlFor="custom-slug-edit">Custom Provider Slug</Label>
+                  <Input
+                    className="text-sm"
+                    id="custom-slug-edit"
+                    onChange={(event) =>
+                      setForm({ ...form, customSlug: event.target.value })
+                    }
+                    placeholder="e.g., my-local-llm"
+                    value={form.customSlug}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="custom-base-url-edit">
+                    Base URL (Optional)
+                  </Label>
+                  <Input
+                    className="text-sm"
+                    id="custom-base-url-edit"
+                    onChange={(event) =>
+                      setForm({ ...form, customBaseUrl: event.target.value })
+                    }
+                    placeholder="e.g., https://ml.internal.example.com"
+                    type="url"
+                    value={form.customBaseUrl}
+                  />
+                  <p className="text-muted-foreground text-xs">
+                    Endpoint URL for your self-hosted model (optional)
+                  </p>
+                </div>
+              </>
+            ) : null}
+
+            {isCustomProvider ? (
+              <div className="grid gap-2">
+                <Label htmlFor="custom-model-edit">Model Name</Label>
+                <Input
+                  id="custom-model-edit"
+                  onChange={(event) =>
+                    setForm({ ...form, modelId: event.target.value })
+                  }
+                  placeholder="e.g., my-model"
+                  value={form.modelId}
+                />
+              </div>
+            ) : form.providerKind ? (
+              <div className="grid gap-2">
+                <Label htmlFor="model-edit-select">Model</Label>
+                <Select
+                  onValueChange={(value) =>
+                    setForm({ ...form, modelId: value })
+                  }
+                  value={form.modelId}
+                >
+                  <SelectTrigger id="model-edit-select">
+                    <SelectValue placeholder="Select a model" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {providerModels.map((model) => (
+                      <SelectItem key={model} value={model}>
+                        {model}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+
             <div className="grid gap-2">
-              <Label htmlFor="provider-edit-account">Gateway Account ID</Label>
-              <Input
-                id="provider-edit-account"
-                value={form.gatewayAccountId}
-                onChange={(event) =>
-                  setForm({ ...form, gatewayAccountId: event.target.value })
+              <Label htmlFor="provider-edit-secret">API Key (BYOK)</Label>
+              <Select
+                onValueChange={(value) =>
+                  setForm({ ...form, secretRef: value })
                 }
-              />
+                value={form.secretRef}
+              >
+                <SelectTrigger id="provider-edit-secret">
+                  <SelectValue placeholder="Select an API key" />
+                </SelectTrigger>
+                <SelectContent>
+                  {secretsQuery.data?.map((secret) => (
+                    <SelectItem key={secret.id} value={secret.id}>
+                      {secret.name} ({secret.namespace})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="provider-edit-gateway">Gateway ID</Label>
-              <Input
-                id="provider-edit-gateway"
-                value={form.gatewayId}
-                onChange={(event) =>
-                  setForm({ ...form, gatewayId: event.target.value })
-                }
-              />
-            </div>
+
             {formError && (
-              <p className="text-sm text-destructive">{formError}</p>
+              <p className="text-destructive text-sm">{formError}</p>
             )}
           </div>
           <DialogFooter>
             <Button
-              variant="outline"
               onClick={() => {
                 setEditOpen(false);
                 setEditingProvider(null);
               }}
+              variant="outline"
             >
               Cancel
             </Button>
-            <Button onClick={handleEdit}>Save changes</Button>
+            <Button disabled={updateProvider.isPending} onClick={handleEdit}>
+              Save changes
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

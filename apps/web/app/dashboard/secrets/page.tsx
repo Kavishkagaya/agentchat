@@ -1,7 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { Eye, EyeOff, Trash2, Edit2 } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Edit2,
+  Eye,
+  EyeOff,
+  Trash2,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/app/trpc/client";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,14 +31,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-type SecretRow = {
+interface SecretRow {
+  createdAt: Date;
   id: string;
   name: string;
   namespace: string;
+  rotatedAt: Date | null;
   version: number;
-  createdAt: string | Date;
-  rotatedAt?: string | Date | null;
-};
+}
 
 const EMPTY_SECRET = {
   name: "",
@@ -50,6 +57,22 @@ function formatDate(value: string | Date | null | undefined) {
     return "—";
   }
   return date.toLocaleString();
+}
+
+function groupSecretsByNamespace(
+  secrets: SecretRow[]
+): [string, SecretRow[]][] {
+  const grouped = secrets.reduce(
+    (acc, secret) => {
+      if (!acc[secret.namespace]) {
+        acc[secret.namespace] = [];
+      }
+      acc[secret.namespace].push(secret);
+      return acc;
+    },
+    {} as Record<string, SecretRow[]>
+  );
+  return Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b));
 }
 
 function SecretRow({
@@ -71,7 +94,9 @@ function SecretRow({
       const result = await revealMutation.mutateAsync({ secretId: secret.id });
       setRevealedValue(result.value ?? null);
     } catch (error) {
-      setRevealError(error instanceof Error ? error.message : "Failed to reveal secret");
+      setRevealError(
+        error instanceof Error ? error.message : "Failed to reveal secret"
+      );
     }
   };
 
@@ -80,11 +105,8 @@ function SecretRow({
       <TableCell className="font-medium">
         <div>
           <div>{secret.name}</div>
-          <div className="text-xs text-muted-foreground">v{secret.version}</div>
+          <div className="text-muted-foreground text-xs">v{secret.version}</div>
         </div>
-      </TableCell>
-      <TableCell className="text-sm text-muted-foreground">
-        {secret.namespace}
       </TableCell>
       <TableCell className="text-sm">{formatDate(secret.createdAt)}</TableCell>
       <TableCell className="text-sm">
@@ -92,15 +114,15 @@ function SecretRow({
       </TableCell>
       <TableCell>
         <div className="flex items-center gap-2">
-          <code className="rounded bg-muted px-2 py-1 text-xs font-mono">
+          <code className="rounded bg-muted px-2 py-1 font-mono text-xs">
             {revealedValue ? revealedValue : "••••••••••••"}
           </code>
           <Button
-            size="sm"
-            variant="ghost"
             onClick={() =>
               revealedValue ? setRevealedValue(null) : handleReveal()
             }
+            size="sm"
+            variant="ghost"
           >
             {revealedValue ? (
               <EyeOff className="h-4 w-4" />
@@ -109,24 +131,16 @@ function SecretRow({
             )}
           </Button>
           {revealError && (
-            <span className="text-xs text-destructive">{revealError}</span>
+            <span className="text-destructive text-xs">{revealError}</span>
           )}
         </div>
       </TableCell>
       <TableCell>
         <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => onEdit(secret)}
-          >
+          <Button onClick={() => onEdit(secret)} size="sm" variant="ghost">
             <Edit2 className="h-4 w-4" />
           </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => onDelete(secret.id)}
-          >
+          <Button onClick={() => onDelete(secret.id)} size="sm" variant="ghost">
             <Trash2 className="h-4 w-4 text-destructive" />
           </Button>
         </div>
@@ -146,6 +160,34 @@ export default function SecretsPage() {
   const [form, setForm] = useState<SecretForm>({ ...EMPTY_SECRET });
   const [editingSecret, setEditingSecret] = useState<SecretRow | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [expandedNamespaces, setExpandedNamespaces] = useState<Set<string>>(
+    new Set()
+  );
+  const initialized = useRef(false);
+
+  const toggleNamespace = (namespace: string) => {
+    const next = new Set(expandedNamespaces);
+    if (next.has(namespace)) {
+      next.delete(namespace);
+    } else {
+      next.add(namespace);
+    }
+    setExpandedNamespaces(next);
+  };
+
+  useEffect(() => {
+    if (
+      !initialized.current &&
+      secretsQuery.data &&
+      secretsQuery.data.length > 0
+    ) {
+      const grouped = groupSecretsByNamespace(secretsQuery.data);
+      if (grouped.length > 0) {
+        setExpandedNamespaces(new Set([grouped[0][0]]));
+        initialized.current = true;
+      }
+    }
+  }, [secretsQuery.data]);
 
   const resetForm = () => {
     setForm({ ...EMPTY_SECRET });
@@ -154,7 +196,7 @@ export default function SecretsPage() {
 
   const handleCreate = async () => {
     setFormError(null);
-    if (!form.name || !form.namespace || !form.value) {
+    if (!(form.name && form.namespace && form.value)) {
       setFormError("Name, namespace, and value are required.");
       return;
     }
@@ -174,7 +216,7 @@ export default function SecretsPage() {
       return;
     }
     setFormError(null);
-    if (!form.name && !form.value) {
+    if (!(form.name || form.value)) {
       setFormError("Provide a new name or value to update.");
       return;
     }
@@ -230,7 +272,6 @@ export default function SecretsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
-                <TableHead>Description</TableHead>
                 <TableHead>Created</TableHead>
                 <TableHead>Rotated</TableHead>
                 <TableHead>Secret</TableHead>
@@ -242,9 +283,6 @@ export default function SecretsPage() {
                 <TableRow key={`skeleton-${i}`}>
                   <TableCell>
                     <Skeleton className="h-4 w-32" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-4 w-24" />
                   </TableCell>
                   <TableCell>
                     <Skeleton className="h-4 w-40" />
@@ -264,38 +302,64 @@ export default function SecretsPage() {
           </Table>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead>Rotated</TableHead>
-                <TableHead>Secret</TableHead>
-                <TableHead>Action</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {secretsQuery.data?.map((secret) => (
-                <SecretRow
-                  key={secret.id}
-                  onDelete={handleDelete}
-                  onEdit={openEdit}
-                  secret={secret}
-                />
-              ))}
-            </TableBody>
-          </Table>
-          {secretsQuery.data?.length === 0 && (
-            <div className="py-12 text-center text-muted-foreground">
+        <div className="space-y-4">
+          {secretsQuery.data && secretsQuery.data.length > 0 ? (
+            groupSecretsByNamespace(secretsQuery.data).map(
+              ([namespace, secrets]) => (
+                <div
+                  className="overflow-x-auto rounded-lg border"
+                  key={namespace}
+                >
+                  <button
+                    className="flex w-full items-center gap-2 bg-muted/50 px-4 py-3 hover:bg-muted"
+                    onClick={() => toggleNamespace(namespace)}
+                    type="button"
+                  >
+                    {expandedNamespaces.has(namespace) ? (
+                      <ChevronDown className="h-4 w-4" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4" />
+                    )}
+                    <span className="font-medium">{namespace}</span>
+                    <span className="text-muted-foreground text-xs">
+                      ({secrets.length})
+                    </span>
+                  </button>
+                  {expandedNamespaces.has(namespace) && (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Created</TableHead>
+                          <TableHead>Rotated</TableHead>
+                          <TableHead>Secret</TableHead>
+                          <TableHead>Action</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {secrets.map((secret) => (
+                          <SecretRow
+                            key={secret.id}
+                            onDelete={handleDelete}
+                            onEdit={openEdit}
+                            secret={secret}
+                          />
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </div>
+              )
+            )
+          ) : (
+            <div className="rounded-lg border py-12 text-center text-muted-foreground">
               No secrets yet.
             </div>
           )}
         </div>
       )}
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+      <Dialog onOpenChange={setCreateOpen} open={createOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Add secret</DialogTitle>
@@ -308,39 +372,39 @@ export default function SecretsPage() {
               <Label htmlFor="secret-name">Name</Label>
               <Input
                 id="secret-name"
-                value={form.name}
                 onChange={(event) =>
                   setForm({ ...form, name: event.target.value })
                 }
+                value={form.name}
               />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="secret-namespace">Namespace</Label>
               <Input
                 id="secret-namespace"
-                value={form.namespace}
                 onChange={(event) =>
                   setForm({ ...form, namespace: event.target.value })
                 }
+                value={form.namespace}
               />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="secret-value">Value</Label>
               <Input
                 id="secret-value"
-                type="password"
-                value={form.value}
                 onChange={(event) =>
                   setForm({ ...form, value: event.target.value })
                 }
+                type="password"
+                value={form.value}
               />
             </div>
             {formError && (
-              <p className="text-sm text-destructive">{formError}</p>
+              <p className="text-destructive text-sm">{formError}</p>
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>
+            <Button onClick={() => setCreateOpen(false)} variant="outline">
               Cancel
             </Button>
             <Button onClick={handleCreate}>Create secret</Button>
@@ -348,7 +412,7 @@ export default function SecretsPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+      <Dialog onOpenChange={setEditOpen} open={editOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit secret</DialogTitle>
@@ -361,38 +425,42 @@ export default function SecretsPage() {
               <Label htmlFor="secret-edit-name">Name</Label>
               <Input
                 id="secret-edit-name"
-                value={form.name}
                 onChange={(event) =>
                   setForm({ ...form, name: event.target.value })
                 }
+                value={form.name}
               />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="secret-edit-namespace">Namespace</Label>
-              <Input id="secret-edit-namespace" value={form.namespace} disabled />
+              <Input
+                disabled
+                id="secret-edit-namespace"
+                value={form.namespace}
+              />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="secret-edit-value">New Value (optional)</Label>
               <Input
                 id="secret-edit-value"
-                type="password"
-                value={form.value}
                 onChange={(event) =>
                   setForm({ ...form, value: event.target.value })
                 }
+                type="password"
+                value={form.value}
               />
             </div>
             {formError && (
-              <p className="text-sm text-destructive">{formError}</p>
+              <p className="text-destructive text-sm">{formError}</p>
             )}
           </div>
           <DialogFooter>
             <Button
-              variant="outline"
               onClick={() => {
                 setEditOpen(false);
                 setEditingSecret(null);
               }}
+              variant="outline"
             >
               Cancel
             </Button>

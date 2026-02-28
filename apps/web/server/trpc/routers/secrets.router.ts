@@ -36,7 +36,7 @@ export const secretsRouter = createTRPCRouter({
         name: input.name,
         namespace: input.namespace,
         value: input.value,
-        createdBy: ctx.auth.userId,
+        createdBy: ctx.auth.userId || "system",
       });
 
       await logAuditEvent({
