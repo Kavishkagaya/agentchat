@@ -65,7 +65,7 @@ export async function handleAgentRun(
   }
 
   const agentId = body.agent_id ?? authPayload.agent_id;
-  const events: Array<Record<string, unknown>> = [];
+  const events: Record<string, unknown>[] = [];
   events.push({ type: "status", status: "thinking" });
 
   const record = await loadAgentConfig(env, agentId, body.runtime_id);
@@ -163,6 +163,13 @@ export async function handleAgentRunStream(
               args,
             });
           },
+          onToolError: (toolId, error) => {
+            send("event", {
+              type: "tool_error",
+              tool: toolId,
+              error,
+            });
+          },
         }
       );
       send("status", { status: "completed" });
@@ -190,4 +197,88 @@ export async function handleAgentRunStream(
   })();
 
   return response;
+}
+
+export async function handleAgentRunDev(
+  request: Request,
+  env: Env
+): Promise<Response> {
+  // Hard block in production — runs before any other logic
+  if (env.ENVIRONMENT === "production") {
+    return Response.json(
+      structuredError("forbidden", "dev endpoint is not available in production"),
+      { status: 403 }
+    );
+  }
+
+  let body: AgentRunRequest;
+  try {
+    body = (await request.json()) as AgentRunRequest;
+  } catch {
+    return Response.json(
+      structuredError("invalid_json", "invalid JSON body"),
+      { status: 400 }
+    );
+  }
+
+  const agentId = body.agent_id;
+  if (!agentId) {
+    return Response.json(
+      structuredError("missing_agent_id", "agent_id is required"),
+      { status: 400 }
+    );
+  }
+
+  const events: Record<string, unknown>[] = [];
+  events.push({ type: "status", status: "thinking" });
+
+  let record: Awaited<ReturnType<typeof loadAgentConfig>>;
+  try {
+    record = await loadAgentConfig(env, agentId, body.runtime_id);
+  } catch (error) {
+    return Response.json(
+      structuredError(
+        "agent_not_found",
+        error instanceof Error ? error.message : "agent config not found"
+      ),
+      { status: 404 }
+    );
+  }
+
+  events.push({ type: "status", status: "running" });
+  const input: AgentRunInput = { prompt: body.prompt, messages: body.messages };
+
+  let result: Awaited<ReturnType<typeof runAgent>>;
+  try {
+    result = await runAgent(record, env, input, {
+      onToolCall: (toolId, args, toolName) => {
+        events.push({ type: "tool_call", tool: toolId, name: toolName, args });
+      },
+      onToolError: (toolId, error) => {
+        events.push({ type: "tool_error", tool: toolId, error });
+      },
+    });
+  } catch (error) {
+    return Response.json(
+      structuredError(
+        "agent_error",
+        error instanceof Error ? error.message : "agent error"
+      ),
+      { status: 500 }
+    );
+  }
+
+  events.push({ type: "status", status: "completed" });
+
+  return Response.json({
+    ok: true,
+    agent_id: record.agentId,
+    group_id: null,
+    runtime_id: body.runtime_id,
+    role: "assistant",
+    text: result.text,
+    finish_reason: result.finish_reason,
+    usage: result.usage,
+    events,
+  });
 }

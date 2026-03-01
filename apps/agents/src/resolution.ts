@@ -295,6 +295,15 @@ export async function resolveTooling(
   return { toolRefs, mcpTools: resolvedTools };
 }
 
+function resolveApiKeyEnvVar(kind: string | null | undefined): string {
+  switch (kind) {
+    case "openai":
+      return "OPENAI_API_KEY";
+    default:
+      return "PROVIDER_API_KEY";
+  }
+}
+
 export async function resolveModelEnv(
   env: Env,
   orgId: string,
@@ -331,9 +340,10 @@ export async function resolveModelEnv(
       CLOUDFLARE_PROVIDER_KIND: model.kind,
     };
   } else {
+    const apiKeyVar = resolveApiKeyEnvVar(model.kind);
     modelEnv = {
       ...modelEnv,
-      PROVIDER_API_KEY: secret.value,
+      [apiKeyVar]: secret.value,
     };
   }
 

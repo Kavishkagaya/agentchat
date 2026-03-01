@@ -38,7 +38,7 @@ export async function buildAgentRunner(
     config.model = modelId;
   }
 
-  const { toolRefs, mcpTools } = await resolveTooling(env, record.orgId, config.tools);
+  const { toolRefs, mcpTools } = await resolveTooling(env, record.orgId, record.config);
   config.tools = toolRefs;
 
   const toolRegistry = createToolRegistry({

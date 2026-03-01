@@ -1,8 +1,10 @@
 name = "agentchat-agents"
 main = "src/index.ts"
 compatibility_date = "2025-02-01"
+compatibility_flags = ["nodejs_compat"]
 
 [vars]
 ENVIRONMENT = "dev"
 CLOUDFLARE_AIG_TOKEN = ""
 GC_PUBLIC_KEY = ""
+NEON_DATABASE_URL = ""

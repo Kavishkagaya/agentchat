@@ -33,6 +33,9 @@ importers:
       '@axon/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.27.1
+        version: 1.27.1(zod@4.3.6)
       '@neondatabase/serverless':
         specifier: 0.10.4
         version: 0.10.4
