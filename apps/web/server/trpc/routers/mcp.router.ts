@@ -7,6 +7,8 @@ import {
   updateMcpServer,
   updateMcpServerStatus,
 } from "@axon/database";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { createTRPCRouter, orgProcedure } from "../trpc";
@@ -15,72 +17,44 @@ const mcpAddInput = z.object({
   name: z.string().min(1),
   url: z.string().url(),
   secretId: z.string().uuid().nullable().optional(),
-  enabledTools: z.array(z.string()).nullable().optional(),
 });
-
-type McpToolPayload = {
-  name: string;
-  title?: string;
-  description?: string;
-  inputSchema?: Record<string, unknown>;
-  input_schema?: Record<string, unknown>;
-};
 
 async function fetchMcpTools(
   url: string,
   token?: string | null
-): Promise<McpToolPayload[]> {
-  const normalized = url.replace(/\/$/, "");
-
-  // MCP uses JSON-RPC 2.0 protocol
-  const jsonRpcRequest = {
-    jsonrpc: "2.0",
-    id: "tools-list-request",
-    method: "tools/list",
-    params: {},
-  };
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Accept: "application/json, text/event-stream",
-  };
-
-  if (token) {
-    headers.authorization = `Bearer ${token}`;
-  }
-
-  const response = await fetch(normalized, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(jsonRpcRequest),
+): Promise<Array<{ name: string; description?: string | null; inputSchema?: Record<string, unknown> | null }>> {
+  const client = new Client({
+    name: "AgentChat",
+    version: "1.0.0",
   });
 
-  if (!response.ok) {
-    const message = await response.text();
-    console.error(`[MCP] Request to ${normalized} failed`, {
-      status: response.status,
-      headers: Object.fromEntries(response.headers),
-      body: message,
-    });
-    throw new Error(`MCP fetch failed: ${response.status} ${message}`);
+  const transport = new StreamableHTTPClientTransport(
+    new URL(url),
+    token
+      ? {
+          requestInit: {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            } as HeadersInit,
+          },
+        }
+      : undefined
+  );
+
+  try {
+    await client.connect(transport);
+
+    // List available tools
+    const toolsResult = await client.listTools();
+
+    return toolsResult.tools.map((tool) => ({
+      name: tool.name,
+      description: tool.description ?? null,
+      inputSchema: tool.inputSchema ?? null,
+    }));
+  } finally {
+    await transport.close();
   }
-
-  const payload = (await response.json()) as {
-    result?: { tools?: McpToolPayload[] };
-  };
-
-  console.log("[MCP] Response payload:", JSON.stringify(payload, null, 2));
-
-  if (!payload.result?.tools) {
-    console.error("[MCP] Tools not found in response. Payload structure:", {
-      hasResult: !!payload.result,
-      resultKeys: payload.result ? Object.keys(payload.result) : null,
-      tools: payload.result?.tools,
-    });
-    throw new Error("MCP response missing tools");
-  }
-
-  return payload.result.tools;
 }
 
 export const mcpRouter = createTRPCRouter({
@@ -119,9 +93,6 @@ export const mcpRouter = createTRPCRouter({
 
     const config: Record<string, unknown> = {
       url: input.url,
-      masking: {
-        enabledTools: input.enabledTools ?? null,
-      },
     };
 
     if (input.secretId) {
@@ -250,7 +221,7 @@ export const mcpRouter = createTRPCRouter({
         return tools.map((tool) => ({
           name: tool.name,
           description: tool.description ?? null,
-          inputSchema: tool.inputSchema ?? tool.input_schema ?? null,
+          inputSchema: tool.inputSchema ?? null,
         }));
       } catch (error) {
         throw new TRPCError({
@@ -270,7 +241,6 @@ export const mcpRouter = createTRPCRouter({
         name: z.string().min(1),
         url: z.string().url(),
         secretId: z.string().uuid().nullable().optional(),
-        enabledTools: z.array(z.string()).nullable().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -304,9 +274,6 @@ export const mcpRouter = createTRPCRouter({
       const newConfig: Record<string, unknown> = {
         ...existingConfig,
         url: input.url,
-        masking: {
-          enabledTools: input.enabledTools ?? null,
-        },
       };
 
       if (input.secretId) {
@@ -408,28 +375,12 @@ export const mcpRouter = createTRPCRouter({
       try {
         const tools = await fetchMcpTools(url, token);
 
-        // Apply masking filter based on enabledTools configuration
-        const maskingConfig = config.masking as
-          | Record<string, unknown>
-          | undefined;
-        const enabledTools = maskingConfig?.enabledTools as
-          | string[]
-          | null
-          | undefined;
-
-        let filteredTools = tools;
-        if (enabledTools && enabledTools.length > 0) {
-          filteredTools = tools.filter((tool) =>
-            enabledTools.includes(tool.name)
-          );
-        }
-
-        return filteredTools.map((tool) => ({
+        return tools.map((tool) => ({
           serverId: input.serverId,
           toolId: tool.name,
           name: tool.name,
           description: tool.description ?? null,
-          inputSchema: tool.inputSchema ?? tool.input_schema ?? null,
+          inputSchema: tool.inputSchema ?? null,
         }));
       } catch (error) {
         throw new TRPCError({

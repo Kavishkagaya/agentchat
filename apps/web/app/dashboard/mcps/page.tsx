@@ -2,6 +2,7 @@
 
 import { Edit2, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { api } from "@/app/trpc/client";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,153 +14,78 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { McpDialog } from "./mcp-dialog";
 
-type McpServer = {
-  id: string;
-  name: string;
-  url: string;
-  status: string;
-  errorMessage: string | null | undefined;
+interface McpServer {
   config: unknown;
-  secretRef: string | null | undefined;
-  lastValidatedAt: Date | null | undefined;
   createdAt: Date;
-  updatedAt: Date;
-};
-
-type PreviewedTool = {
+  errorMessage: string | null | undefined;
+  id: string;
+  lastValidatedAt: Date | null | undefined;
   name: string;
-  description: string | null;
-  inputSchema: Record<string, unknown> | null;
-};
+  secretRef: string | null | undefined;
+  status: string;
+  updatedAt: Date;
+  url: string;
+}
 
 export default function McpsPage() {
-  const mcpQuery = api.mcp.list.useQuery();
-  const previewToolsMutation = api.mcp.previewTools.useMutation();
-  const addMcp = api.mcp.add.useMutation();
-  const updateMcp = api.mcp.update.useMutation();
-  const deleteMcp = api.mcp.delete.useMutation();
-  const secretsQuery = api.secrets.list.useQuery();
+  const utils = api.useUtils();
+  const {
+    data: mcpServers,
+    isLoading: mcpLoading,
+    error: mcpError,
+  } = api.mcp.list.useQuery();
+  const { mutateAsync: deleteMcp, isPending: deleteMcpLoading } =
+    api.mcp.delete.useMutation();
 
-  // Dialog lifecycle
+  // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [dialogStep, setDialogStep] = useState<"form" | "tools">("form");
-  const [editingServer, setEditingServer] = useState<McpServer | null>(null);
+  const [selectedServer, setSelectedServer] = useState<McpServer | null>(null);
 
-  // Form state
-  const [formError, setFormError] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: "", url: "", secretId: "" });
-
-  // Tool preview state
-  const [previewedTools, setPreviewedTools] = useState<PreviewedTool[]>([]);
-  const [selectedTools, setSelectedTools] = useState<Set<string>>(new Set());
-
-  const resetDialog = () => {
-    setEditingServer(null);
-    setDialogStep("form");
-    setForm({ name: "", url: "", secretId: "" });
-    setPreviewedTools([]);
-    setSelectedTools(new Set());
-    setFormError(null);
+  const getStatusClassName = (status: string): string => {
+    switch (status) {
+      case "valid":
+        return "bg-green-100 text-green-800";
+      case "error":
+        return "bg-red-100 text-red-800";
+      default:
+        return "bg-muted text-muted-foreground";
+    }
   };
 
-  const handleOpenDialog = () => {
-    resetDialog();
+  const handleOpenAdd = () => {
+    setSelectedServer(null);
     setDialogOpen(true);
   };
 
-  const handleEdit = async (server: McpServer) => {
-    setEditingServer(server);
-    setForm({
-      name: server.name,
-      url: server.url,
-      secretId: server.secretRef || "",
-    });
-
-    // Auto-fetch tools for this server
-    try {
-      const tools = await previewToolsMutation.mutateAsync({
-        url: server.url,
-        secretId: server.secretRef || "",
-      });
-      setPreviewedTools(tools);
-
-      // Get enabled tools from config if available
-      const config = server.config as Record<string, unknown> | null;
-      const maskingConfig = config?.masking as
-        | Record<string, unknown>
-        | undefined;
-      const enabledTools =
-        (maskingConfig?.enabledTools as string[] | null | undefined) ?? [];
-      setSelectedTools(
-        new Set(
-          enabledTools.length > 0 ? enabledTools : tools.map((t) => t.name)
-        )
-      );
-
-      setDialogStep("tools");
-    } catch (error) {
-      setFormError(
-        error instanceof Error ? error.message : "Failed to fetch tools"
-      );
-      setDialogStep("form");
-    }
-
+  const handleEdit = (server: McpServer) => {
+    setSelectedServer(server);
     setDialogOpen(true);
   };
 
   const handleDelete = async (serverId: string) => {
-    if (!confirm("Are you sure you want to delete this MCP server?")) {
-      return;
-    }
-    await deleteMcp.mutateAsync({ serverId });
-    await mcpQuery.refetch();
-  };
-
-  const handleContinue = async () => {
-    setFormError(null);
-    if (!(form.name && form.url && form.secretId)) {
-      setFormError("Name, URL, and secret are required.");
-      return;
-    }
-
-    try {
-      const tools = await previewToolsMutation.mutateAsync({
-        url: form.url,
-        secretId: form.secretId,
-      });
-      setPreviewedTools(tools);
-      setSelectedTools(new Set(tools.map((t) => t.name)));
-      setDialogStep("tools");
-    } catch (error) {
-      setFormError(
-        error instanceof Error ? error.message : "Failed to fetch tools"
-      );
-    }
-  };
-
-  const handleSubmit = async () => {
-    const enabledTools = Array.from(selectedTools);
-
-    if (editingServer) {
-      await updateMcp.mutateAsync({
-        serverId: editingServer.id,
-        name: form.name,
-        url: form.url,
-        secretId: form.secretId,
-        enabledTools: enabledTools.length > 0 ? enabledTools : null,
-      });
-    } else {
-      await addMcp.mutateAsync({
-        name: form.name,
-        url: form.url,
-        secretId: form.secretId,
-        enabledTools: enabledTools.length > 0 ? enabledTools : null,
-      });
-    }
-
-    await mcpQuery.refetch();
-    setDialogOpen(false);
-    resetDialog();
+    toast("Delete MCP Server?", {
+      description: "This action cannot be undone.",
+      action: {
+        label: "Delete",
+        onClick: async () => {
+          try {
+            await deleteMcp({ serverId });
+            await utils.mcp.list.invalidate();
+            toast.success("MCP server deleted successfully");
+          } catch (error) {
+            toast.error(
+              error instanceof Error ? error.message : "Failed to delete MCP server"
+            );
+          }
+        },
+      },
+      cancel: {
+        label: "Cancel",
+        onClick: () => {
+          // Toast closes automatically
+        },
+      },
+    });
   };
 
   return (
@@ -171,10 +97,21 @@ export default function McpsPage() {
             Add and validate MCP servers for your organization.
           </p>
         </div>
-        <Button onClick={handleOpenDialog}>Add MCP</Button>
+        <Button onClick={handleOpenAdd}>Add MCP</Button>
       </div>
 
-      {mcpQuery.isLoading ? (
+      {mcpError && (
+        <div className="rounded-lg border border-destructive bg-destructive/10 p-4">
+          <p className="font-medium text-destructive text-sm">
+            Failed to load MCP servers
+          </p>
+          <p className="mt-1 text-destructive/80 text-xs">
+            {mcpError instanceof Error ? mcpError.message : "Unknown error"}
+          </p>
+        </div>
+      )}
+
+      {mcpLoading ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {[...Array(3)].map((_, i) => (
             <Skeleton className="h-[140px] w-full rounded-xl" key={i} />
@@ -182,18 +119,20 @@ export default function McpsPage() {
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {mcpQuery.data?.map((server) => (
+          {mcpServers?.map((server) => (
             <Card key={server.id}>
               <CardHeader className="space-y-2">
                 <div className="flex items-start justify-between gap-2">
                   <CardTitle className="text-lg">{server.name}</CardTitle>
-                  <span className="rounded-full bg-muted px-2 py-1 text-xs">
+                  <span
+                    className={`rounded-full px-2 py-1 font-medium text-xs ${getStatusClassName(server.status)}`}
+                  >
                     {server.status}
                   </span>
                 </div>
                 <CardDescription>{server.url}</CardDescription>
                 {server.errorMessage && (
-                  <p className="text-destructive text-xs">
+                  <p className="font-medium text-destructive text-xs">
                     {server.errorMessage}
                   </p>
                 )}
@@ -206,40 +145,41 @@ export default function McpsPage() {
                     <Edit2 className="h-4 w-4" />
                   </Button>
                   <Button
+                    disabled={deleteMcpLoading}
                     onClick={() => handleDelete(server.id)}
                     size="sm"
                     variant="outline"
                   >
-                    <Trash2 className="h-4 w-4" />
+                    {deleteMcpLoading ? (
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
                   </Button>
                 </div>
               </CardHeader>
             </Card>
           ))}
-          {mcpQuery.data?.length === 0 && (
+          {mcpServers?.length === 0 && (
             <div className="col-span-full rounded-xl border-2 border-dashed py-12 text-center text-muted-foreground">
-              No MCP servers yet.
+              No MCP servers yet. Click "Add MCP" to create one.
             </div>
           )}
         </div>
       )}
 
       <McpDialog
-        dialogStep={dialogStep}
-        editingServer={editingServer}
-        form={form}
-        formError={formError}
-        onContinue={handleContinue}
-        onOpenChange={setDialogOpen}
-        onSubmit={handleSubmit}
+        initialServer={selectedServer}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) {
+            setSelectedServer(null);
+          }
+        }}
+        onSuccess={async () => {
+          await utils.mcp.list.invalidate();
+        }}
         open={dialogOpen}
-        previewedTools={previewedTools}
-        previewToolsLoading={previewToolsMutation.isPending}
-        secretsData={secretsQuery.data}
-        selectedTools={selectedTools}
-        setDialogStep={setDialogStep}
-        setForm={setForm}
-        setSelectedTools={setSelectedTools}
       />
     </div>
   );

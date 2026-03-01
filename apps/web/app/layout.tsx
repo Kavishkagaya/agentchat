@@ -1,6 +1,7 @@
 import "./globals.css";
 
 import { ClerkProvider } from "@clerk/nextjs";
+import { Toaster } from "sonner";
 
 import { AxonAuthProvider } from "./providers/axon-auth-provider";
 import { TrpcProvider } from "./trpc/provider";
@@ -22,6 +23,7 @@ export default function RootLayout({
           <TrpcProvider>
             <AxonAuthProvider>{children}</AxonAuthProvider>
           </TrpcProvider>
+          <Toaster />
         </body>
       </html>
     </ClerkProvider>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/app/trpc/client";
 import { Button } from "@/components/ui/button";
@@ -64,6 +64,19 @@ export default function AgentCreatePage() {
     () => providersQuery.data?.find((provider) => provider.id === form.providerId),
     [providersQuery.data, form.providerId]
   );
+
+  // Auto-select all tools when they load
+  useEffect(() => {
+    if (toolOptions.length > 0 && selectedTools.length === 0) {
+      setSelectedTools(
+        toolOptions.map((tool) => ({
+          serverId: tool.serverId,
+          toolId: tool.toolId,
+          name: tool.name,
+        }))
+      );
+    }
+  }, [toolOptions, selectedTools.length]);
 
   const toggleTool = (tool: ToolRef) => {
     setSelectedTools((prev) => {
