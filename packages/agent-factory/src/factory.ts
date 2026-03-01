@@ -1,4 +1,4 @@
-import { generateText, type LanguageModel, type ToolSet, tool } from "ai";
+import { ToolLoopAgent, type LanguageModel, type ToolSet, tool } from "ai";
 import { z } from "zod";
 import { ModelRegistry } from "./models/registry";
 import type {
@@ -42,11 +42,14 @@ function resolveTools(
       description: toolRef.description ?? implementation.description ?? "",
       inputSchema: implementation.schema ?? z.record(z.string(), z.any()),
       execute: async (args) => {
+        console.log(`[Tool Execute] ${toolName} called with:`, args);
         options?.onToolCall?.(toolRef.id, args, toolName);
-        return implementation.execute(args, {
+        const result = await implementation.execute(args, {
           agent_id: agentId,
           tool: toolRef,
         });
+        console.log(`[Tool Execute] ${toolName} returned:`, result);
+        return result;
       },
     });
     return acc;
@@ -91,36 +94,24 @@ export function createAgentRunner(params: {
         throw new Error("missing prompt or messages");
       }
 
-      const options: any = {
+      const agentSettings = {
         model,
-        system: params.config.system_prompt,
+        instructions: params.config.system_prompt,
         tools,
-        messages,
+        temperature: params.config.temperature,
+        maxTokens: params.config.max_tokens,
+        topP: params.config.top_p,
+        presencePenalty: params.config.presence_penalty,
+        frequencyPenalty: params.config.frequency_penalty,
+        stopSequences: params.config.stop,
+        seed: params.config.seed,
       };
 
-      if (params.config.temperature !== undefined) {
-        options.temperature = params.config.temperature;
-      }
-      if (params.config.max_tokens !== undefined) {
-        options.maxTokens = params.config.max_tokens;
-      }
-      if (params.config.top_p !== undefined) {
-        options.topP = params.config.top_p;
-      }
-      if (params.config.presence_penalty !== undefined) {
-        options.presencePenalty = params.config.presence_penalty;
-      }
-      if (params.config.frequency_penalty !== undefined) {
-        options.frequencyPenalty = params.config.frequency_penalty;
-      }
-      if (params.config.stop !== undefined) {
-        options.stopSequences = params.config.stop;
-      }
-      if (params.config.seed !== undefined) {
-        options.seed = params.config.seed;
-      }
+      const agent = new ToolLoopAgent(agentSettings);
+      const result = await agent.generate({
+        messages,
+      });
 
-      const result = await generateText(options);
       return {
         text: result.text,
         finish_reason: result.finishReason,

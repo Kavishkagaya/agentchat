@@ -3,6 +3,8 @@ import {
   DefaultToolRegistry,
   type ToolImplementation,
 } from "@axon/agent-factory";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { z } from "zod";
 import type { ResolvedMcpTool } from "./resolution";
 import { recordToolError } from "./telemetry";
@@ -13,41 +15,30 @@ type ToolRegistryOptions = {
 };
 
 async function invokeMcpTool(tool: ResolvedMcpTool, args: unknown) {
-  const requestBody = { input: args, args };
-  const endpoint = `${tool.serverUrl.replace(/\/$/, "")}/tools/${tool.toolId}`;
-
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${tool.token}`,
+  const client = new Client({ name: "AgentChat", version: "1.0.0" });
+  const transport = new StreamableHTTPClientTransport(new URL(tool.serverUrl), {
+    requestInit: {
+      headers: {
+        Authorization: `Bearer ${tool.token}`,
+      } as HeadersInit,
     },
-    body: JSON.stringify(requestBody),
   });
 
-  const contentType = response.headers.get("content-type") ?? "";
-  let payload: unknown;
-  if (contentType.includes("json")) {
-    payload = await response.json();
-  } else {
-    payload = await response.text();
-  }
+  try {
+    await client.connect(transport);
+    const result = await client.callTool({
+      name: tool.toolId,
+      arguments: args as Record<string, unknown>,
+    });
 
-  if (!response.ok) {
     return {
-      ok: false,
-      error: "mcp_tool_error",
-      status: response.status,
+      ok: true,
       tool: tool.id,
-      details: payload,
+      data: result.content?.[0]?.text ?? result,
     };
+  } finally {
+    await transport.close();
   }
-
-  return {
-    ok: true,
-    tool: tool.id,
-    data: payload,
-  };
 }
 
 function buildMcpToolImpl(
@@ -62,7 +53,8 @@ function buildMcpToolImpl(
       try {
         return await invokeMcpTool(tool, args);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "mcp invoke failed";
+        const message =
+          error instanceof Error ? error.message : "mcp invoke failed";
         onToolError?.(tool.id, message);
         recordToolError(tool.id, message);
         return {
