@@ -51,6 +51,7 @@ export async function buildAgentRunner(
     env: modelEnv,
     toolRegistry,
     options: {
+      maxSteps: 10,
       onToolCall: callbacks?.onToolCall,
     },
   });

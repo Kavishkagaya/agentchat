@@ -1,4 +1,4 @@
-import { db, schema } from "@axon/database";
+import { getDb, schema } from "@axon/database";
 import { eq } from "drizzle-orm";
 import { TtlCache } from "./cache";
 import { readLatestVersion, readVersionedCache, writeVersionedCache } from "./cache-store";
@@ -39,8 +39,9 @@ export async function loadAgentConfig(
   let targetAgentId = agentId;
 
   if (runtimeId) {
+    const db = getDb();
     const runtime = await db.query.agentRuntimes.findFirst({
-      where: eq(schema.agentRuntimes.id, runtimeId),
+      where: eq(agentRuntimes.id, runtimeId),
     });
     if (!runtime) {
       throw new Error("agent runtime not found");
@@ -73,6 +74,7 @@ export async function loadAgentConfig(
 
   recordCacheMetric("agent", false);
   const started = Date.now();
+  const db = getDb();
   const agent = await db.query.agents.findFirst({
     where: eq(schema.agents.id, targetAgentId),
   });

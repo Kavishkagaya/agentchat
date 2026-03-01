@@ -45,10 +45,9 @@ export async function handleAgentRun(
   try {
     body = (await request.json()) as AgentRunRequest;
   } catch {
-    return Response.json(
-      structuredError("invalid_json", "invalid JSON body"),
-      { status: 400 }
-    );
+    return Response.json(structuredError("invalid_json", "invalid JSON body"), {
+      status: 400,
+    });
   }
 
   let authPayload: Awaited<ReturnType<typeof authorizeRequest>>;
@@ -72,16 +71,11 @@ export async function handleAgentRun(
   events.push({ type: "status", status: "running" });
 
   const input: AgentRunInput = { prompt: body.prompt, messages: body.messages };
-  const result = await runAgent(
-    record,
-    env,
-    input,
-    {
-      onToolCall: (toolId, args, toolName) => {
-        events.push({ type: "tool_call", tool: toolId, name: toolName, args });
-      },
-    }
-  );
+  const result = await runAgent(record, env, input, {
+    onToolCall: (toolId, args, toolName) => {
+      events.push({ type: "tool_call", tool: toolId, name: toolName, args });
+    },
+  });
   events.push({ type: "status", status: "completed" });
 
   return new Response(
@@ -150,28 +144,23 @@ export async function handleAgentRunStream(
         prompt: body.prompt,
         messages: body.messages,
       };
-      const result = await runAgent(
-        record,
-        env,
-        input,
-        {
-          onToolCall: (toolId, args, toolName) => {
-            send("event", {
-              type: "tool_call",
-              tool: toolId,
-              name: toolName,
-              args,
-            });
-          },
-          onToolError: (toolId, error) => {
-            send("event", {
-              type: "tool_error",
-              tool: toolId,
-              error,
-            });
-          },
-        }
-      );
+      const result = await runAgent(record, env, input, {
+        onToolCall: (toolId, args, toolName) => {
+          send("event", {
+            type: "tool_call",
+            tool: toolId,
+            name: toolName,
+            args,
+          });
+        },
+        onToolError: (toolId, error) => {
+          send("event", {
+            type: "tool_error",
+            tool: toolId,
+            error,
+          });
+        },
+      });
       send("status", { status: "completed" });
       send("final", {
         ok: true,
@@ -206,7 +195,10 @@ export async function handleAgentRunDev(
   // Hard block in production — runs before any other logic
   if (env.ENVIRONMENT === "production") {
     return Response.json(
-      structuredError("forbidden", "dev endpoint is not available in production"),
+      structuredError(
+        "forbidden",
+        "dev endpoint is not available in production"
+      ),
       { status: 403 }
     );
   }
@@ -215,10 +207,9 @@ export async function handleAgentRunDev(
   try {
     body = (await request.json()) as AgentRunRequest;
   } catch {
-    return Response.json(
-      structuredError("invalid_json", "invalid JSON body"),
-      { status: 400 }
-    );
+    return Response.json(structuredError("invalid_json", "invalid JSON body"), {
+      status: 400,
+    });
   }
 
   const agentId = body.agent_id;

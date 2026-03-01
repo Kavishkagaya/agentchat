@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
-import { db } from "../client";
+import { getDb } from "../client";
 import { providerCatalog } from "../schema";
 
 const UUID_PATTERN =
@@ -38,6 +38,7 @@ export interface UpdateProviderParams {
 }
 
 export async function createProvider(params: CreateProviderParams) {
+  const db = getDb();
   assertSecretId(params.secretRef);
   const now = new Date();
   const id = `provider_${randomUUID()}`;
@@ -62,6 +63,7 @@ export async function createProvider(params: CreateProviderParams) {
 }
 
 export async function listProviders(orgId: string) {
+  const db = getDb();
   return await db.query.providerCatalog.findMany({
     where: eq(providerCatalog.orgId, orgId),
     orderBy: [desc(providerCatalog.updatedAt)],
@@ -72,6 +74,7 @@ export async function getProvider(params: {
   orgId: string;
   providerId: string;
 }) {
+  const db = getDb();
   return await db.query.providerCatalog.findFirst({
     where: and(
       eq(providerCatalog.orgId, params.orgId),
@@ -81,6 +84,7 @@ export async function getProvider(params: {
 }
 
 export async function updateProvider(params: UpdateProviderParams) {
+  const db = getDb();
   if (params.secretRef !== undefined && params.secretRef !== null) {
     assertSecretId(params.secretRef);
   }
@@ -112,6 +116,7 @@ export async function deleteProvider(params: {
   orgId: string;
   providerId: string;
 }) {
+  const db = getDb();
   await db
     .delete(providerCatalog)
     .where(

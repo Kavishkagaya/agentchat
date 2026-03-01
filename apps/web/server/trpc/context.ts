@@ -1,5 +1,5 @@
 import {
-  db,
+  getDb,
   getInternalOrgId,
   getInternalUserId,
   getUserOrgRole,
@@ -23,7 +23,7 @@ export async function createContext(opts: { req: Request | NextRequest }) {
   const isAdmin = userId ? await isSuperAdmin(userId) : false;
 
   return {
-    db,
+    db: getDb(),
     orchestrator: getOrchestratorClient(),
     auth: {
       clerkUserId,

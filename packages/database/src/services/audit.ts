@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { db } from "../client";
+import { getDb } from "../client";
 import { auditLog } from "../schema";
 
 export interface AuditLogParams {
@@ -12,6 +12,7 @@ export interface AuditLogParams {
 }
 
 export async function logAuditEvent(params: AuditLogParams) {
+  const db = getDb();
   const now = new Date();
   const id = `audit_${randomUUID()}`;
 

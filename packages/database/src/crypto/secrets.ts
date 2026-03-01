@@ -7,12 +7,7 @@ const TAG_LENGTH = 16;
 
 const HEX_REGEX = /^[0-9a-fA-F]+$/;
 
-function loadKey(): Buffer {
-  const raw = process.env[KEY_ENV];
-  if (!raw) {
-    throw new Error(`${KEY_ENV} is not configured`);
-  }
-
+function parseKey(raw: string): Buffer {
   let key: Buffer;
   if (HEX_REGEX.test(raw)) {
     key = Buffer.from(raw, "hex");
@@ -27,8 +22,16 @@ function loadKey(): Buffer {
   return key;
 }
 
-export function encryptSecretValue(value: string): string {
-  const key = loadKey();
+function loadKey(explicitKey?: string): Buffer {
+  const raw = explicitKey ?? process.env[KEY_ENV];
+  if (!raw) {
+    throw new Error(`${KEY_ENV} is not configured`);
+  }
+  return parseKey(raw);
+}
+
+export function encryptSecretValue(value: string, encryptionKey?: string): string {
+  const key = loadKey(encryptionKey);
   const iv = randomBytes(IV_LENGTH);
   const cipher = createCipheriv("aes-256-gcm", key, iv);
   const ciphertext = Buffer.concat([
@@ -40,12 +43,12 @@ export function encryptSecretValue(value: string): string {
   return `${VERSION_PREFIX}${payload}`;
 }
 
-export function decryptSecretValue(ciphertext: string): string {
+export function decryptSecretValue(ciphertext: string, encryptionKey?: string): string {
   if (!ciphertext.startsWith(VERSION_PREFIX)) {
     throw new Error("Unsupported secret ciphertext format");
   }
 
-  const key = loadKey();
+  const key = loadKey(encryptionKey);
   const payload = Buffer.from(
     ciphertext.slice(VERSION_PREFIX.length),
     "base64"

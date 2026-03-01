@@ -1,8 +1,9 @@
 import { eq } from "drizzle-orm";
-import { db } from "../client";
+import { getDb } from "../client";
 import { systemConfigs } from "../schema";
 
 export async function getSystemConfig(key: string): Promise<unknown | null> {
+  const db = getDb();
   const result = await db.query.systemConfigs.findFirst({
     where: eq(systemConfigs.key, key),
   });
@@ -13,6 +14,7 @@ export async function setSystemConfig(
   key: string,
   value: unknown
 ): Promise<void> {
+  const db = getDb();
   const now = new Date();
   await db
     .insert(systemConfigs)

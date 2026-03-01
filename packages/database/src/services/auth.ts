@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { db } from "../client";
+import { getDb } from "../client";
 import { groupMembers, orgMembers, orgs, users } from "../schema";
 
 export interface SyncUserParams {
@@ -27,6 +27,7 @@ export interface AxonUser {
 }
 
 export async function syncUser(params: SyncUserParams) {
+  const db = getDb();
   const now = new Date();
   const existing = await db.query.users.findFirst({
     where: eq(users.clerkId, params.clerkId),
@@ -62,6 +63,7 @@ export async function syncUser(params: SyncUserParams) {
 }
 
 export async function syncOrg(clerkOrgId: string, name: string) {
+  const db = getDb();
   const now = new Date();
   const existing = await db.query.orgs.findFirst({
     where: eq(orgs.clerkId, clerkOrgId),
@@ -94,6 +96,7 @@ export async function syncOrgMember(
   clerkUserId: string,
   role: string
 ) {
+  const db = getDb();
   const now = new Date();
 
   // Map Clerk roles to internal roles
@@ -162,6 +165,7 @@ function mapClerkRoleToInternal(clerkRole: string): string {
 }
 
 export async function deleteOrgMember(clerkOrgId: string, clerkUserId: string) {
+  const db = getDb();
   await db
     .delete(orgMembers)
     .where(
@@ -173,14 +177,17 @@ export async function deleteOrgMember(clerkOrgId: string, clerkUserId: string) {
 }
 
 export async function deleteUser(clerkId: string) {
+  const db = getDb();
   await db.delete(users).where(eq(users.clerkId, clerkId));
 }
 
 export async function deleteOrg(clerkId: string) {
+  const db = getDb();
   await db.delete(orgs).where(eq(orgs.clerkId, clerkId));
 }
 
 export async function verifyUserInGroup(userId: string, groupId: string) {
+  const db = getDb();
   const member = await db.query.groupMembers.findFirst({
     where: and(
       eq(groupMembers.groupId, groupId),
@@ -196,6 +203,7 @@ export async function verifyUserInGroup(userId: string, groupId: string) {
 }
 
 export async function getUserOrgRole(userId: string, orgId: string) {
+  const db = getDb();
   const member = await db.query.orgMembers.findFirst({
     where: and(eq(orgMembers.orgId, orgId), eq(orgMembers.userId, userId)),
   });
@@ -209,6 +217,7 @@ export async function getUserOrgRole(userId: string, orgId: string) {
 
 // Helpers to resolve IDs
 export async function getInternalUserId(clerkId: string) {
+  const db = getDb();
   const user = await db.query.users.findFirst({
     where: eq(users.clerkId, clerkId),
   });
@@ -216,6 +225,7 @@ export async function getInternalUserId(clerkId: string) {
 }
 
 export async function getInternalOrgId(clerkId: string) {
+  const db = getDb();
   const org = await db.query.orgs.findFirst({
     where: eq(orgs.clerkId, clerkId),
   });
@@ -224,6 +234,7 @@ export async function getInternalOrgId(clerkId: string) {
 
 // Get is super admin
 export async function isSuperAdmin(userId: string): Promise<boolean> {
+  const db = getDb();
   const user = await db.query.users.findFirst({
     where: eq(users.id, userId),
   });
@@ -238,6 +249,7 @@ export async function getMe(
   userId: string,
   orgId: string | null
 ): Promise<AxonUser | null> {
+  const db = getDb();
   const user = await db.query.users.findFirst({
     where: eq(users.id, userId),
   });

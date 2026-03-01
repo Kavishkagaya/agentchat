@@ -9,3 +9,4 @@ dist
 .DS_Store
 wrangler.toml.dev
 tsconfig.tsbuildinfo
+.wrangler

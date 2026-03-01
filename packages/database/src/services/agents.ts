@@ -1,5 +1,5 @@
 import { and, desc, eq } from "drizzle-orm";
-import { db } from "../client";
+import { getDb } from "../client";
 import { agents, modelCatalog } from "../schema";
 
 export interface CreateAgentParams {
@@ -12,6 +12,7 @@ export interface CreateAgentParams {
 }
 
 export async function createAgent(params: CreateAgentParams) {
+  const db = getDb();
   const now = new Date();
   const id = `agent_${crypto.randomUUID()}`;
 
@@ -32,6 +33,7 @@ export async function createAgent(params: CreateAgentParams) {
 }
 
 export async function getAgent(agentId: string, orgId: string) {
+  const db = getDb();
   const agent = await db.query.agents.findFirst({
     where: and(eq(agents.id, agentId), eq(agents.orgId, orgId)),
   });
@@ -54,6 +56,7 @@ export async function getAgent(agentId: string, orgId: string) {
 }
 
 export async function getAgents(orgId: string) {
+  const db = getDb();
   const agentList = await db.query.agents.findMany({
     where: eq(agents.orgId, orgId),
     orderBy: [desc(agents.updatedAt)],
@@ -78,6 +81,7 @@ export async function getAgents(orgId: string) {
 }
 
 export async function getPublicAgents() {
+  const db = getDb();
   return await db.query.agents.findMany({
     where: eq(agents.visibility, "public"),
     orderBy: [desc(agents.updatedAt)],
@@ -101,6 +105,7 @@ export async function publishAgent(params: {
   agentId: string;
   createdBy: string;
 }) {
+  const db = getDb();
   const agent = await db.query.agents.findFirst({
     where: and(eq(agents.id, params.agentId), eq(agents.orgId, params.orgId)),
   });
@@ -139,6 +144,7 @@ export interface UpdateAgentParams {
 }
 
 export async function updateAgent(params: UpdateAgentParams) {
+  const db = getDb();
   const now = new Date();
   const updates: Record<string, unknown> = { updatedAt: now };
 
@@ -168,6 +174,7 @@ export async function copyPublicAgent(params: {
   agentId: string;
   createdBy: string;
 }) {
+  const db = getDb();
   const agent = await db.query.agents.findFirst({
     where: and(eq(agents.id, params.agentId), eq(agents.visibility, "public")),
   });

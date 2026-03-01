@@ -110,7 +110,7 @@ async function loadSecretCached(
 
   recordCacheMetric("secret", false);
   const started = Date.now();
-  const secret = await getSecretValue({ orgId, secretId });
+  const secret = await getSecretValue({ orgId, secretId, encryptionKey: env.SECRETS_ENCRYPTION_KEY });
   if (!secret) {
     recordResolutionMetric("secret", Date.now() - started, false);
     return null;

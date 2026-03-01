@@ -19,14 +19,14 @@
     "@ai-sdk/openai": "^3.0.30",
     "@neondatabase/serverless": "0.10.4",
     "@types/pg": "^8.16.0",
-    "drizzle-orm": "0.36.1",
+    "drizzle-orm": "0.45.1",
     "postgres": "^3.4.8",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@axon/typescript-config": "workspace:^",
     "dotenv": "^17.3.1",
-    "drizzle-kit": "^0.31.0",
+    "drizzle-kit": "^0.31.9",
     "typescript": "5.6.3"
   }
 }

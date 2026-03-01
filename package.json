@@ -21,7 +21,8 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.4",
-    "ultracite": "^7.2.3"
+    "ultracite": "^7.2.3",
+    "wrangler": "4"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1"

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { db } from "../client";
+import { getDb } from "../client";
 import { mcpServers } from "../schema";
 
 const UUID_PATTERN =
@@ -25,6 +25,7 @@ export interface CreateMcpServerParams {
 }
 
 export async function createMcpServer(params: CreateMcpServerParams) {
+  const db = getDb();
   if (params.secretRef) {
     assertSecretId(params.secretRef);
   }
@@ -55,6 +56,7 @@ export async function updateMcpServerStatus(params: {
   status: McpServerStatus;
   errorMessage?: string | null;
 }) {
+  const db = getDb();
   const now = new Date();
   await db
     .update(mcpServers)
@@ -84,6 +86,7 @@ export interface UpdateMcpServerParams {
 }
 
 export async function updateMcpServer(params: UpdateMcpServerParams) {
+  const db = getDb();
   if (params.secretRef) {
     assertSecretId(params.secretRef);
   }
@@ -109,6 +112,7 @@ export async function updateMcpServer(params: UpdateMcpServerParams) {
 }
 
 export async function listMcpServers(orgId: string) {
+  const db = getDb();
   return await db.query.mcpServers.findMany({
     where: eq(mcpServers.orgId, orgId),
     orderBy: (servers, { desc }) => [desc(servers.updatedAt)],
@@ -119,6 +123,7 @@ export async function getMcpServer(params: {
   serverId: string;
   orgId: string;
 }) {
+  const db = getDb();
   return await db.query.mcpServers.findFirst({
     where: and(
       eq(mcpServers.id, params.serverId),
@@ -131,6 +136,7 @@ export async function deleteMcpServer(params: {
   serverId: string;
   orgId: string;
 }) {
+  const db = getDb();
   await db
     .delete(mcpServers)
     .where(

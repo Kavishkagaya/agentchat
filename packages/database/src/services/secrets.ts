@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
-import { db } from "../client";
+import { getDb } from "../client";
 import { decryptSecretValue, encryptSecretValue } from "../crypto/secrets";
 import { secrets } from "../schema";
 
 export interface CreateSecretParams {
   createdBy?: string | null;
+  encryptionKey?: string;
   name: string;
   namespace: string;
   orgId: string;
@@ -13,6 +14,7 @@ export interface CreateSecretParams {
 }
 
 export interface UpdateSecretParams {
+  encryptionKey?: string;
   name?: string | null;
   orgId: string;
   secretId: string;
@@ -20,9 +22,10 @@ export interface UpdateSecretParams {
 }
 
 export async function createSecret(params: CreateSecretParams) {
+  const db = getDb();
   const now = new Date();
   const id = randomUUID();
-  const ciphertext = encryptSecretValue(params.value);
+  const ciphertext = encryptSecretValue(params.value, params.encryptionKey);
 
   await db.insert(secrets).values({
     id,
@@ -40,6 +43,7 @@ export async function createSecret(params: CreateSecretParams) {
 }
 
 export async function listSecrets(orgId: string) {
+  const db = getDb();
   return await db.query.secrets.findMany({
     where: eq(secrets.orgId, orgId),
     orderBy: [desc(secrets.createdAt)],
@@ -59,6 +63,7 @@ export async function getSecretMetadata(params: {
   orgId: string;
   secretId: string;
 }) {
+  const db = getDb();
   return await db.query.secrets.findFirst({
     where: and(
       eq(secrets.id, params.secretId),
@@ -77,9 +82,11 @@ export async function getSecretMetadata(params: {
 }
 
 export async function getSecretValue(params: {
+  encryptionKey?: string;
   orgId: string;
   secretId: string;
 }) {
+  const db = getDb();
   const record = await db.query.secrets.findFirst({
     where: and(
       eq(secrets.id, params.secretId),
@@ -100,12 +107,13 @@ export async function getSecretValue(params: {
   return {
     secretId: record.id,
     orgId: record.orgId,
-    value: decryptSecretValue(record.ciphertext),
+    value: decryptSecretValue(record.ciphertext, params.encryptionKey),
     version: record.version,
   };
 }
 
 export async function updateSecret(params: UpdateSecretParams) {
+  const db = getDb();
   const now = new Date();
   const existing = await db.query.secrets.findFirst({
     where: and(
@@ -125,7 +133,7 @@ export async function updateSecret(params: UpdateSecretParams) {
   }
 
   if (params.value != null) {
-    nextValues.ciphertext = encryptSecretValue(params.value);
+    nextValues.ciphertext = encryptSecretValue(params.value, params.encryptionKey);
     nextValues.rotatedAt = now;
     nextValues.version = (existing.version ?? 0) + 1;
   }
@@ -151,6 +159,7 @@ export async function deleteSecret(params: {
   orgId: string;
   secretId: string;
 }) {
+  const db = getDb();
   await db
     .delete(secrets)
     .where(

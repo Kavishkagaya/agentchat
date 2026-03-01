@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, inArray, lte, ne, or, sql } from "drizzle-orm";
-import { db } from "../client";
+import { getDb } from "../client";
 import {
   groupAgents,
   groupArchives,
@@ -30,6 +30,7 @@ function extractAgentPolicy(config: Record<string, unknown>) {
 }
 
 export async function createGroup(params: CreateGroupParams) {
+  const db = getDb();
   const now = new Date();
 
   await db.insert(groups).values({
@@ -73,6 +74,7 @@ export async function createGroup(params: CreateGroupParams) {
 }
 
 export async function getGroup(groupId: string) {
+  const db = getDb();
   return await db.query.groups.findFirst({
     where: eq(groups.id, groupId),
     with: {
@@ -83,6 +85,7 @@ export async function getGroup(groupId: string) {
 }
 
 export async function getOrgGroups(orgId: string) {
+  const db = getDb();
   return await db.query.groups.findMany({
     where: eq(groups.orgId, orgId),
     orderBy: [desc(groups.lastActiveAt)],
@@ -90,12 +93,14 @@ export async function getOrgGroups(orgId: string) {
 }
 
 export async function getAllGroups() {
+  const db = getDb();
   return await db.query.groups.findMany({
     orderBy: [desc(groups.createdAt)],
   });
 }
 
 export async function getGroupRuntime(groupId: string) {
+  const db = getDb();
   return await db.query.groupRuntime.findFirst({
     where: eq(groupRuntime.groupId, groupId),
   });
@@ -106,6 +111,7 @@ export async function initializeGroupRuntime(
   controllerId: string,
   publicKey?: string | null
 ) {
+  const db = getDb();
   const now = new Date();
   const existing = await getGroupRuntime(groupId);
 
@@ -133,6 +139,7 @@ export async function initializeGroupRuntime(
 }
 
 export async function updateGroupRuntimeStatus(groupId: string, status: string) {
+  const db = getDb();
   const now = new Date();
 
   const groupUpdate: {
@@ -168,6 +175,7 @@ export async function updateGroupRuntimeStatus(groupId: string, status: string) 
 }
 
 export async function countOrgActiveGroups(orgId: string, excludeGroupId?: string) {
+  const db = getDb();
   const activePredicate = and(
     eq(groups.orgId, orgId),
     inArray(groups.status, ["active", "idle"])
@@ -187,6 +195,7 @@ export async function countOrgActiveGroups(orgId: string, excludeGroupId?: strin
 }
 
 export async function touchGroupActivity(groupId: string, at = new Date()) {
+  const db = getDb();
   await db
     .update(groups)
     .set({
@@ -207,6 +216,7 @@ export async function touchGroupActivity(groupId: string, at = new Date()) {
 }
 
 export async function markGroupArchived(groupId: string, at = new Date()) {
+  const db = getDb();
   await db
     .update(groups)
     .set({
@@ -229,6 +239,7 @@ export async function listGroupsForAutoArchive(
   inactiveDays: number,
   now = new Date()
 ) {
+  const db = getDb();
   const cutoff = new Date(now.getTime() - inactiveDays * 24 * 60 * 60 * 1000);
   return await db.query.groups.findMany({
     where: and(
@@ -251,6 +262,7 @@ export async function recordGroupArchive(params: {
   sizeBytes?: number;
   at?: Date;
 }) {
+  const db = getDb();
   const now = params.at ?? new Date();
   const snapshotId = `snapshot_${randomUUID()}`;
   const archiveId = `archive_${randomUUID()}`;

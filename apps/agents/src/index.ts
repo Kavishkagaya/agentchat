@@ -1,9 +1,15 @@
+import { initDb } from "@axon/database";
 import { validateEnv } from "./env";
 import type { Env } from "./env";
 import { handleAgentRun, handleAgentRunDev, handleAgentRunStream } from "./handlers";
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    // Initialize database with worker env
+    if (env.DATABASE_URL) {
+      initDb(env.DATABASE_URL);
+    }
+
     try {
       validateEnv(env);
     } catch (error) {

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
-import { db } from "../client";
+import { getDb } from "../client";
 import { modelCatalog } from "../schema";
 
 const UUID_PATTERN =
@@ -38,6 +38,7 @@ export interface UpdateModelParams {
 }
 
 export async function createModel(params: CreateModelParams) {
+  const db = getDb();
   assertSecretId(params.secretRef);
   const now = new Date();
   const id = `model_${randomUUID()}`;
@@ -62,6 +63,7 @@ export async function createModel(params: CreateModelParams) {
 }
 
 export async function listModels(orgId: string) {
+  const db = getDb();
   return await db.query.modelCatalog.findMany({
     where: eq(modelCatalog.orgId, orgId),
     orderBy: [desc(modelCatalog.updatedAt)],
@@ -72,6 +74,7 @@ export async function getModel(params: {
   id: string;
   orgId: string;
 }) {
+  const db = getDb();
   return await db.query.modelCatalog.findFirst({
     where: and(
       eq(modelCatalog.orgId, params.orgId),
@@ -81,6 +84,7 @@ export async function getModel(params: {
 }
 
 export async function updateModel(params: UpdateModelParams) {
+  const db = getDb();
   if (params.secretRef !== undefined && params.secretRef !== null) {
     assertSecretId(params.secretRef);
   }
@@ -112,6 +116,7 @@ export async function deleteModel(params: {
   id: string;
   orgId: string;
 }) {
+  const db = getDb();
   await db
     .delete(modelCatalog)
     .where(

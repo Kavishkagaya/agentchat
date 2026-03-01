@@ -2,12 +2,13 @@ export interface Env {
   AGENT_CONFIG_CACHE_TTL_SECONDS?: string;
   AGENTS_KV?: KVNamespace;
   CLOUDFLARE_AIG_TOKEN?: string;
+  DATABASE_URL?: string;
   ENVIRONMENT: string;
   GC_PUBLIC_KEY: string;
-  NEON_DATABASE_URL?: string;
   OPENAI_API_KEY?: string;
   OPENAI_BASE_URL?: string;
   ORCHESTRATOR_PUBLIC_KEY?: string;
+  SECRETS_ENCRYPTION_KEY: string;
 }
 
 export function getTtlMs(value: string | undefined, fallbackMs: number) {
@@ -25,10 +26,10 @@ export function validateEnv(env: Env): void {
       "Set this to the base64-encoded Ed25519 public key of the Group Controller."
     );
   }
-  if (!env.NEON_DATABASE_URL) {
+  if (!env.DATABASE_URL) {
     throw new Error(
-      "Missing required env var: NEON_DATABASE_URL. " +
-      "Set this to the Neon Postgres connection string."
+      "Missing required env var: DATABASE_URL. " +
+      "Set this to the Postgres connection string."
     );
   }
 }
