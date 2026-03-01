@@ -5,7 +5,7 @@ import {
 } from "@axon/agent-factory";
 import type { AgentConfigRecord } from "./config";
 import type { Env } from "./env";
-import { resolveProviderEnv, resolveTooling } from "./resolution";
+import { resolveModelEnv, resolveTooling } from "./resolution";
 import { createToolRegistry } from "./tools";
 
 export type RunResult = {
@@ -25,14 +25,14 @@ export async function buildAgentRunner(
   callbacks?: ToolEventCallbacks
 ) {
   const config = normalizeAgentConfig(record.agentId, record.config);
-  const { providerEnv, providerType, modelId } = await resolveProviderEnv(
+  const { modelEnv, modelType, modelId } = await resolveModelEnv(
     env,
     record.orgId,
-    record.providerId
+    record.modelId
   );
 
-  if (providerType) {
-    config.provider = providerType;
+  if (modelType) {
+    config.provider = modelType;
   }
   if (modelId) {
     config.model = modelId;
@@ -48,7 +48,7 @@ export async function buildAgentRunner(
 
   return createAgentRunner({
     config,
-    env: providerEnv,
+    env: modelEnv,
     toolRegistry,
     options: {
       onToolCall: callbacks?.onToolCall,

@@ -1,6 +1,6 @@
 import { createAiGateway } from "ai-gateway-provider";
 import { createUnified } from "ai-gateway-provider/providers/unified";
-import type { ProviderAdapter, ProviderEnv } from "../types";
+import type { ModelAdapter, ModelEnv } from "../types";
 
 const REQUIRED_KEYS = [
   "CLOUDFLARE_AIG_TOKEN",
@@ -10,7 +10,7 @@ const REQUIRED_KEYS = [
   "CLOUDFLARE_PROVIDER_KIND",
 ] as const;
 
-function requireEnv(env: ProviderEnv, key: (typeof REQUIRED_KEYS)[number]) {
+function requireEnv(env: ModelEnv, key: (typeof REQUIRED_KEYS)[number]) {
   const value = env[key];
   if (!value) {
     throw new Error(`${key} is not configured`);
@@ -25,9 +25,9 @@ function normalizeModelId(modelId: string, kind: string) {
   return `${kind}/${modelId}`;
 }
 
-export const cloudflareAiGatewayProvider: ProviderAdapter = {
+export const cloudflareAiGatewayModel: ModelAdapter = {
   name: "cloudflare_ai_gateway",
-  createModel(modelId: string, env: ProviderEnv) {
+  createModel(modelId: string, env: ModelEnv) {
     for (const key of REQUIRED_KEYS) {
       requireEnv(env, key);
     }

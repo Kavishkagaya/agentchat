@@ -1,9 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-
+import { Edit } from "lucide-react";
 import { useRouter } from "next/navigation";
-
+import { useParams } from "next/navigation";
 import { api } from "@/app/trpc/client";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,12 +32,15 @@ type McpServer = {
   errorMessage?: string | null;
 };
 
-export default function AgentCreatePage() {
+export default function AgentEditPage() {
   const router = useRouter();
+  const params = useParams();
+  const agentId = params.id as string;
+
+  const agentQuery = api.agents.get.useQuery({ agentId });
   const mcpQuery = api.mcp.list.useQuery();
   const modelsQuery = api.models.list.useQuery();
-  const createAgent = api.agents.create.useMutation();
-  const publishAgent = api.agents.publish.useMutation();
+  const updateAgent = api.agents.update.useMutation();
 
   const [form, setForm] = useState({
     name: "",
@@ -47,19 +50,43 @@ export default function AgentCreatePage() {
   });
   const [selectedServers, setSelectedServers] = useState<McpServer[]>([]);
   const [mcpDialogOpen, setMcpDialogOpen] = useState(false);
-  const [publishPrompt, setPublishPrompt] = useState<string | null>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  // Initialize form from agent data
+  useMemo(() => {
+    if (agentQuery.data && !isInitialized) {
+      const agent = agentQuery.data;
+      setForm({
+        name: agent.name,
+        description: agent.description || "",
+        systemPrompt: (agent.config?.systemPrompt as string) || "",
+        modelId: agent.modelId || "",
+      });
+      if (agent.config?.mcpServers && Array.isArray(agent.config.mcpServers)) {
+        const mcpIds = agent.config.mcpServers;
+        const servers = mcpQuery.data?.filter((mcp) =>
+          mcpIds.includes(mcp.id)
+        ) as McpServer[];
+        if (servers) {
+          setSelectedServers(servers);
+        }
+      }
+      setIsInitialized(true);
+    }
+  }, [agentQuery.data, isInitialized, mcpQuery.data]);
 
   const selectedModel = useMemo(
     () => modelsQuery.data?.find((model) => model.id === form.modelId),
     [modelsQuery.data, form.modelId]
   );
 
-  const handleCreate = async () => {
+  const handleUpdate = async () => {
     if (!form.name || !form.systemPrompt || !form.modelId || !selectedModel) {
       return;
     }
 
-    const result = await createAgent.mutateAsync({
+    await updateAgent.mutateAsync({
+      agentId,
       name: form.name,
       description: form.description || undefined,
       modelId: form.modelId,
@@ -69,25 +96,35 @@ export default function AgentCreatePage() {
         mcpServers: selectedServers.map((s) => s.id),
       },
     });
-
-    setPublishPrompt(result.agentId);
-  };
-
-  const handlePublish = async () => {
-    if (!publishPrompt) {
-      return;
-    }
-    await publishAgent.mutateAsync({ agentId: publishPrompt });
-    setPublishPrompt(null);
     router.push("/dashboard/agents");
   };
+
+  if (agentQuery.isLoading) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-12 w-1/2 rounded-xl" />
+        <Skeleton className="h-96 w-full rounded-xl" />
+      </div>
+    );
+  }
+
+  if (!agentQuery.data) {
+    return (
+      <div className="space-y-6">
+        <h1 className="font-bold text-3xl tracking-tight">Agent not found</h1>
+        <Button onClick={() => router.push("/dashboard/agents")}>
+          Back to agents
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-bold text-3xl tracking-tight">Create agent</h1>
+        <h1 className="font-bold text-3xl tracking-tight">Edit agent</h1>
         <p className="text-muted-foreground">
-          Define the agent system prompt, properties, and MCP tool access.
+          Update the agent system prompt, properties, and MCP tool access.
         </p>
       </div>
 
@@ -209,7 +246,7 @@ export default function AgentCreatePage() {
         <Button variant="outline" onClick={() => router.push("/dashboard/agents")}>
           Cancel
         </Button>
-        <Button onClick={handleCreate}>Create agent</Button>
+        <Button onClick={handleUpdate}>Update agent</Button>
       </div>
 
       <Dialog open={mcpDialogOpen} onOpenChange={setMcpDialogOpen}>
@@ -269,23 +306,6 @@ export default function AgentCreatePage() {
               Add new MCP
             </Button>
             <Button onClick={() => setMcpDialogOpen(false)}>Done</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={publishPrompt !== null} onOpenChange={() => setPublishPrompt(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Publish agent?</DialogTitle>
-            <DialogDescription>
-              Publish this agent to public. Org-specific data will be stripped.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => router.push("/dashboard/agents")}>
-              Not now
-            </Button>
-            <Button onClick={handlePublish}>Publish</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

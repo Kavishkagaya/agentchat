@@ -145,7 +145,7 @@ export const agents = pgTable(
     orgId: text("org_id")
       .notNull()
       .references(() => orgs.id),
-    providerId: text("provider_id"),
+    modelId: text("model_id"),
     name: text("name").notNull(),
     description: text("description"),
     config: jsonb("config").notNull(), // { system_prompt, model, tools... }
@@ -358,15 +358,15 @@ export const secrets = pgTable(
   })
 );
 
-export const providerCatalog = pgTable(
-  "provider_catalog",
+export const modelCatalog = pgTable(
+  "model_catalog",
   {
-    id: text("provider_id").primaryKey(),
+    id: text("id").primaryKey(),
     orgId: text("org_id")
       .notNull()
       .references(() => orgs.id),
     name: text("name").notNull(),
-    providerType: text("provider_type").notNull(), // e.g. 'cloudflare_ai_gateway'
+    modelType: text("model_type").notNull(), // e.g. 'cloudflare_ai_gateway'
     kind: text("kind").notNull(), // e.g. 'openai', 'gemini'
     modelId: text("model_id").notNull(),
     secretRef: text("secret_ref")
@@ -374,16 +374,16 @@ export const providerCatalog = pgTable(
       .references(() => secrets.id),
     gatewayAccountId: text("gateway_account_id").notNull(),
     gatewayId: text("gateway_id").notNull(),
-    // Canonical provider runtime config for this workspace record.
+    // Canonical model runtime config for this workspace record.
     config: jsonb("config").notNull(),
     createdBy: text("created_by").references(() => users.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
   },
   (table) => ({
-    orgIdIdx: index("provider_catalog_org_id_idx").on(table.orgId),
-    providerTypeIdx: index("provider_catalog_provider_type_idx").on(
-      table.providerType
+    orgIdIdx: index("model_catalog_org_id_idx").on(table.orgId),
+    modelTypeIdx: index("model_catalog_model_type_idx").on(
+      table.modelType
     ),
   })
 );

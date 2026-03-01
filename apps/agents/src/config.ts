@@ -7,9 +7,9 @@ import { recordCacheMetric, recordResolutionMetric } from "./telemetry";
 
 export type AgentConfigRecord = {
   agentId: string;
-  orgId: string;
-  providerId?: string | null;
   config: Record<string, unknown>;
+  modelId?: string | null;
+  orgId: string;
   updatedAt?: string;
 };
 
@@ -83,9 +83,9 @@ export async function loadAgentConfig(
 
   const record: AgentConfigRecord = {
     agentId: targetAgentId,
-    orgId: agent.orgId,
-    providerId: agent.providerId ?? null,
     config: agent.config as Record<string, unknown>,
+    modelId: agent.modelId ?? null,
+    orgId: agent.orgId,
     updatedAt: resolveUpdatedAt(agent.updatedAt),
   };
   const version = record.updatedAt ?? new Date().toISOString();

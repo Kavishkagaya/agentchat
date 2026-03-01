@@ -1,6 +1,6 @@
 export { createAgentRunner } from "./factory";
 export { normalizeAgentConfig } from "./normalize";
-export { ProviderRegistry } from "./providers/registry";
+export { ModelRegistry } from "./models/registry";
 export { createDefaultTools } from "./tools/defaults";
 export { DefaultToolRegistry } from "./tools/registry";
 export type {
@@ -9,8 +9,8 @@ export type {
   AgentRunInput,
   AgentRunResult,
   AgentToolRef,
-  ProviderAdapter,
-  ProviderEnv,
+  ModelAdapter,
+  ModelEnv,
   ToolExecutionContext,
   ToolImplementation,
   ToolRegistry,

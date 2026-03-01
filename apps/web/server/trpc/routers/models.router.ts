@@ -1,13 +1,13 @@
 import {
-  createProvider,
-  deleteProvider,
-  getProvider,
+  createModel,
+  deleteModel,
+  getModel,
   getSecretMetadata,
   getSystemConfig,
-  listProviders,
+  listModels,
   logAuditEvent,
   setSystemConfig,
-  updateProvider,
+  updateModel,
 } from "@axon/database";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -17,10 +17,14 @@ const secretIdSchema = z.string().uuid();
 
 async function fetchCatalog() {
   const stored = await getSystemConfig("provider_catalog");
-  return stored || { providers: [] };
+  // Transform old structure { providers } to new structure { models }
+  if (stored && "providers" in stored) {
+    return { models: stored.providers };
+  }
+  return { models: [] };
 }
 
-const providerConfigSchema = z.object({
+const modelConfigSchema = z.object({
   kind: z.string().min(1),
   model_id: z.string().min(1),
   credentials_ref: z.object({
@@ -30,21 +34,22 @@ const providerConfigSchema = z.object({
   enabled: z.boolean().default(true),
 });
 
-const providerCatalogEntrySchema = z.object({
+const modelCatalogEntrySchema = z.object({
   kind: z.string().min(1),
   label: z.string().min(1),
   models: z.array(z.string()),
 });
 
-export const providersRouter = createTRPCRouter({
+export const modelsRouter = createTRPCRouter({
   getCatalog: orgProcedure.query(async () => {
     return await fetchCatalog();
   }),
 
   updateCatalog: orgAdminProcedure
-    .input(z.object({ providers: z.array(providerCatalogEntrySchema) }))
+    .input(z.object({ models: z.array(modelCatalogEntrySchema) }))
     .mutation(async ({ input }) => {
-      await setSystemConfig("provider_catalog", { providers: input.providers });
+      // Keep storing as { providers } for backward compatibility
+      await setSystemConfig("provider_catalog", { providers: input.models });
       return { success: true };
     }),
 
@@ -52,17 +57,17 @@ export const providersRouter = createTRPCRouter({
     if (!ctx.auth.orgId) {
       throw new TRPCError({ code: "UNAUTHORIZED" });
     }
-    const providers = await listProviders(ctx.auth.orgId);
-    return providers.map((provider) => ({
-      id: provider.id,
-      name: provider.name,
-      providerType: provider.providerType,
-      kind: provider.kind,
-      modelId: provider.modelId,
-      secretRef: provider.secretRef,
-      gatewayAccountId: provider.gatewayAccountId,
-      gatewayId: provider.gatewayId,
-      config: provider.config,
+    const models = await listModels(ctx.auth.orgId);
+    return models.map((model) => ({
+      id: model.id,
+      name: model.name,
+      modelType: model.modelType,
+      kind: model.kind,
+      modelId: model.modelId,
+      secretRef: model.secretRef,
+      gatewayAccountId: model.gatewayAccountId,
+      gatewayId: model.gatewayId,
+      config: model.config,
     }));
   }),
 
@@ -70,7 +75,7 @@ export const providersRouter = createTRPCRouter({
     .input(
       z.object({
         name: z.string().min(1),
-        config: providerConfigSchema,
+        config: modelConfigSchema,
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -90,20 +95,20 @@ export const providersRouter = createTRPCRouter({
 
       const gatewayAccountId = process.env.CLOUDFLARE_AIG_ACCOUNT_ID ?? "";
       const gatewayId = process.env.CLOUDFLARE_AIG_GATEWAY_ID ?? "";
-      const providerType = "cloudflare_ai_gateway";
+      const modelType = "cloudflare_ai_gateway";
 
       const fullConfig = {
-        provider_type: providerType,
+        model_type: modelType,
         kind: input.config.kind,
         model_id: input.config.model_id,
         credentials_ref: input.config.credentials_ref,
         enabled: input.config.enabled,
       };
 
-      const result = await createProvider({
+      const result = await createModel({
         orgId: ctx.auth.orgId,
         name: input.name,
-        providerType,
+        modelType,
         kind: input.config.kind,
         modelId: input.config.model_id,
         secretRef: input.config.credentials_ref.secret_id,
@@ -116,10 +121,10 @@ export const providersRouter = createTRPCRouter({
       await logAuditEvent({
         orgId: ctx.auth.orgId,
         actorUserId: ctx.auth.userId,
-        action: "provider.create",
-        targetType: "provider",
-        targetId: result.providerId,
-        metadata: { name: input.name, providerType },
+        action: "model.create",
+        targetType: "model",
+        targetId: result.id,
+        metadata: { name: input.name, modelType },
       });
 
       return result;
@@ -128,18 +133,18 @@ export const providersRouter = createTRPCRouter({
   update: orgAdminProcedure
     .input(
       z.object({
-        providerId: z.string().min(1),
+        id: z.string().min(1),
         name: z.string().min(1).optional(),
-        config: providerConfigSchema.partial().optional(),
+        config: modelConfigSchema.partial().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       if (!(ctx.auth.orgId && ctx.auth.userId)) {
         throw new TRPCError({ code: "UNAUTHORIZED" });
       }
-      const existing = await getProvider({
+      const existing = await getModel({
         orgId: ctx.auth.orgId,
-        providerId: input.providerId,
+        id: input.id,
       });
       if (!existing) {
         throw new TRPCError({ code: "NOT_FOUND" });
@@ -164,7 +169,7 @@ export const providersRouter = createTRPCRouter({
         input.config?.credentials_ref?.secret_id ?? existing.secretRef;
 
       const nextConfig = {
-        provider_type: existing.providerType,
+        model_type: existing.modelType,
         kind,
         model_id: modelId,
         credentials_ref: {
@@ -174,9 +179,9 @@ export const providersRouter = createTRPCRouter({
         enabled: input.config?.enabled ?? true,
       };
 
-      await updateProvider({
+      await updateModel({
         orgId: ctx.auth.orgId,
-        providerId: input.providerId,
+        id: input.id,
         name: input.name,
         kind,
         modelId,
@@ -189,41 +194,41 @@ export const providersRouter = createTRPCRouter({
       await logAuditEvent({
         orgId: ctx.auth.orgId,
         actorUserId: ctx.auth.userId,
-        action: "provider.update",
-        targetType: "provider",
-        targetId: input.providerId,
-        metadata: { name: input.name, providerType: existing.providerType },
+        action: "model.update",
+        targetType: "model",
+        targetId: input.id,
+        metadata: { name: input.name, modelType: existing.modelType },
       });
 
       return { ok: true };
     }),
 
   delete: orgAdminProcedure
-    .input(z.object({ providerId: z.string().min(1) }))
+    .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       if (!(ctx.auth.orgId && ctx.auth.userId)) {
         throw new TRPCError({ code: "UNAUTHORIZED" });
       }
-      const existing = await getProvider({
+      const existing = await getModel({
         orgId: ctx.auth.orgId,
-        providerId: input.providerId,
+        id: input.id,
       });
       if (!existing) {
         throw new TRPCError({ code: "NOT_FOUND" });
       }
 
-      await deleteProvider({
+      await deleteModel({
         orgId: ctx.auth.orgId,
-        providerId: input.providerId,
+        id: input.id,
       });
 
       await logAuditEvent({
         orgId: ctx.auth.orgId,
         actorUserId: ctx.auth.userId,
-        action: "provider.delete",
-        targetType: "provider",
-        targetId: input.providerId,
-        metadata: { name: existing.name, providerType: existing.providerType },
+        action: "model.delete",
+        targetType: "model",
+        targetId: input.id,
+        metadata: { name: existing.name, modelType: existing.modelType },
       });
 
       return { ok: true };

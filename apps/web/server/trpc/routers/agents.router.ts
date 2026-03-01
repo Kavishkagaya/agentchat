@@ -1,25 +1,21 @@
 import {
   copyPublicAgent,
   createAgent,
-  getProvider,
+  getAgent,
   getAgents,
+  getModel,
   getPublicAgents,
   publishAgent,
+  updateAgent,
 } from "@axon/database";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { createTRPCRouter, orgProcedure } from "../trpc";
 
-const mcpToolRefSchema = z.object({
-  serverId: z.string().min(1),
-  toolId: z.string().min(1),
-  name: z.string().min(1),
-}).strict();
-
 const agentConfigSchema = z.object({
   systemPrompt: z.string().min(1),
   model: z.string().min(1).optional(),
-  tools: z.array(mcpToolRefSchema).optional(),
+  mcpServers: z.array(z.string()).optional(),
   temperature: z.number().optional(),
   maxTokens: z.number().optional(),
   topP: z.number().optional(),
@@ -31,8 +27,18 @@ const agentConfigSchema = z.object({
 
 export const agentsRouter = createTRPCRouter({
   list: orgProcedure.query(async ({ ctx }) => {
-    return getAgents(ctx.auth.orgId);
+    return await getAgents(ctx.auth.orgId);
   }),
+
+  get: orgProcedure
+    .input(z.object({ agentId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const agent = await getAgent(input.agentId, ctx.auth.orgId);
+      if (!agent) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Agent not found" });
+      }
+      return agent;
+    }),
 
   listPublic: orgProcedure.query(async () => {
     const agents = await getPublicAgents();
@@ -48,23 +54,23 @@ export const agentsRouter = createTRPCRouter({
       z.object({
         name: z.string().min(1),
         description: z.string().optional(),
-        providerId: z.string().min(1),
+        modelId: z.string().min(1),
         config: agentConfigSchema,
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const provider = await getProvider({
+      const model = await getModel({
         orgId: ctx.auth.orgId,
-        providerId: input.providerId,
+        id: input.modelId,
       });
-      if (!provider) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Provider not found" });
+      if (!model) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Model not found" });
       }
-      if (input.config.model && input.config.model !== provider.modelId) {
+      if (input.config.model && input.config.model !== model.modelId) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message:
-            "Agent config model must not diverge from provider catalog model.",
+            "Agent config model must not diverge from model catalog model.",
         });
       }
 
@@ -72,20 +78,54 @@ export const agentsRouter = createTRPCRouter({
         orgId: ctx.auth.orgId,
         name: input.name,
         description: input.description,
-        providerId: input.providerId,
+        modelId: input.modelId,
         config: {
           ...input.config,
-          model: provider.modelId,
+          model: model.modelId,
         },
         createdBy: ctx.auth.userId,
       });
       return result;
     }),
 
+  update: orgProcedure
+    .input(
+      z.object({
+        agentId: z.string().min(1),
+        name: z.string().min(1).optional(),
+        description: z.string().optional(),
+        modelId: z.string().min(1).optional(),
+        config: agentConfigSchema.optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (input.modelId) {
+        const model = await getModel({
+          orgId: ctx.auth.orgId,
+          id: input.modelId,
+        });
+        if (!model) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Model not found",
+          });
+        }
+      }
+
+      return await updateAgent({
+        agentId: input.agentId,
+        orgId: ctx.auth.orgId,
+        name: input.name,
+        description: input.description,
+        modelId: input.modelId,
+        config: input.config,
+      });
+    }),
+
   publish: orgProcedure
     .input(z.object({ agentId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      return publishAgent({
+      return await publishAgent({
         orgId: ctx.auth.orgId,
         agentId: input.agentId,
         createdBy: ctx.auth.userId,
@@ -95,7 +135,7 @@ export const agentsRouter = createTRPCRouter({
   copyFromPublic: orgProcedure
     .input(z.object({ agentId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      return copyPublicAgent({
+      return await copyPublicAgent({
         orgId: ctx.auth.orgId,
         agentId: input.agentId,
         createdBy: ctx.auth.userId,

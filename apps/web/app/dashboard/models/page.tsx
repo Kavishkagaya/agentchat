@@ -31,15 +31,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-type ProviderRow = {
+type ModelRow = {
   id: string;
-  name: string;
   kind: string;
   modelId: string;
+  name: string;
   secretRef?: string | null;
 };
 
-type CatalogProvider = {
+type CatalogModel = {
   kind: string;
   label: string;
   models: string[];
@@ -54,19 +54,19 @@ const EMPTY_FORM = {
   customBaseUrl: "",
 };
 
-type ProviderForm = typeof EMPTY_FORM;
+type ModelForm = typeof EMPTY_FORM;
 
-function getProviderLabel(kind: string, providers: CatalogProvider[]): string {
+function getModelLabel(kind: string, models: CatalogModel[]): string {
   if (kind.startsWith("custom-")) {
     return "Custom";
   }
-  const provider = providers.find((p) => p.kind === kind);
-  return provider?.label ?? kind;
+  const model = models.find((p) => p.kind === kind);
+  return model?.label ?? kind;
 }
 
-function buildProviderConfig(form: ProviderForm) {
+function buildModelConfig(form: ModelForm) {
   const config = {
-    provider_type: "cloudflare_ai_gateway",
+    model_type: "cloudflare_ai_gateway",
     kind: form.customSlug ? `custom-${form.customSlug}` : form.providerKind,
     model_id: form.modelId,
     credentials_ref: {
@@ -84,26 +84,26 @@ function buildProviderConfig(form: ProviderForm) {
   return config;
 }
 
-export default function ProvidersPage() {
-  const catalogQuery = api.providers.getCatalog.useQuery();
-  const providersQuery = api.providers.list.useQuery();
+export default function ModelsPage() {
+  const catalogQuery = api.models.getCatalog.useQuery();
+  const modelsQuery = api.models.list.useQuery();
   const secretsQuery = api.secrets.list.useQuery();
-  const createProvider = api.providers.create.useMutation();
-  const updateProvider = api.providers.update.useMutation();
-  const deleteProvider = api.providers.delete.useMutation();
+  const createModel = api.models.create.useMutation();
+  const updateModel = api.models.update.useMutation();
+  const deleteModel = api.models.delete.useMutation();
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  const [form, setForm] = useState<ProviderForm>({ ...EMPTY_FORM });
-  const [editingProvider, setEditingProvider] = useState<ProviderRow | null>(
+  const [form, setForm] = useState<ModelForm>({ ...EMPTY_FORM });
+  const [editingModel, setEditingModel] = useState<ModelRow | null>(
     null
   );
   const [formError, setFormError] = useState<string | null>(null);
 
   const catalog =
-    (catalogQuery.data as { providers: CatalogProvider[] } | undefined)
-      ?.providers ?? [];
-  const selectedProvider = useMemo(
+    (catalogQuery.data as { models: CatalogModel[] } | undefined)
+      ?.models ?? [];
+  const selectedModel = useMemo(
     () => catalog.find((p) => p.kind === form.providerKind),
     [catalog, form.providerKind]
   );
@@ -116,64 +116,64 @@ export default function ProvidersPage() {
   const handleCreate = async () => {
     setFormError(null);
     if (!(form.name && form.providerKind && form.modelId && form.secretRef)) {
-      setFormError("Name, provider, model, and API key are required.");
+      setFormError("Name, model provider, model, and API key are required.");
       return;
     }
 
     try {
-      await createProvider.mutateAsync({
+      await createModel.mutateAsync({
         name: form.name,
-        config: buildProviderConfig(form),
+        config: buildModelConfig(form),
       });
-      await providersQuery.refetch();
+      await modelsQuery.refetch();
       setCreateOpen(false);
       resetForm();
     } catch (error) {
       setFormError(
-        error instanceof Error ? error.message : "Failed to create provider"
+        error instanceof Error ? error.message : "Failed to create model"
       );
     }
   };
 
   const handleEdit = async () => {
-    if (!editingProvider) {
+    if (!editingModel) {
       return;
     }
     setFormError(null);
     if (!(form.name && form.providerKind && form.modelId)) {
-      setFormError("Name, provider, and model are required.");
+      setFormError("Name, model provider, and model are required.");
       return;
     }
 
     try {
-      await updateProvider.mutateAsync({
-        providerId: editingProvider.id,
+      await updateModel.mutateAsync({
+        id: editingModel.id,
         name: form.name,
-        config: buildProviderConfig(form),
+        config: buildModelConfig(form),
       });
-      await providersQuery.refetch();
+      await modelsQuery.refetch();
       setEditOpen(false);
-      setEditingProvider(null);
+      setEditingModel(null);
       resetForm();
     } catch (error) {
       setFormError(
-        error instanceof Error ? error.message : "Failed to update provider"
+        error instanceof Error ? error.message : "Failed to update model"
       );
     }
   };
 
-  const handleDelete = async (providerId: string) => {
+  const handleDelete = async (id: string) => {
     try {
-      await deleteProvider.mutateAsync({ providerId });
-      await providersQuery.refetch();
+      await deleteModel.mutateAsync({ id });
+      await modelsQuery.refetch();
     } catch (error) {
-      console.error("Failed to delete provider:", error);
+      console.error("Failed to delete model:", error);
     }
   };
 
-  const openEdit = (provider: ProviderRow) => {
-    setEditingProvider(provider);
-    const kind = provider.kind;
+  const openEdit = (model: ModelRow) => {
+    setEditingModel(model);
+    const kind = model.kind;
     let providerKind = kind;
     let customSlug = "";
     if (kind.startsWith("custom-")) {
@@ -181,10 +181,10 @@ export default function ProvidersPage() {
       customSlug = kind.substring(7); // Remove "custom-" prefix
     }
     setForm({
-      name: provider.name,
+      name: model.name,
       providerKind,
-      modelId: provider.modelId,
-      secretRef: provider.secretRef ?? "",
+      modelId: model.modelId,
+      secretRef: model.secretRef ?? "",
       customSlug,
       customBaseUrl: "",
     });
@@ -192,15 +192,15 @@ export default function ProvidersPage() {
   };
 
   const isCustomProvider = form.providerKind === "custom";
-  const providerModels = selectedProvider?.models ?? [];
+  const modelModels = selectedModel?.models ?? [];
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="font-bold text-3xl tracking-tight">Providers</h1>
+          <h1 className="font-bold text-3xl tracking-tight">Models</h1>
           <p className="text-muted-foreground">
-            Manage AI model providers for your organization.
+            Manage AI model configurations for your organization.
           </p>
         </div>
         <Button
@@ -209,11 +209,11 @@ export default function ProvidersPage() {
             setCreateOpen(true);
           }}
         >
-          Add Provider
+          Add Model
         </Button>
       </div>
 
-      {providersQuery.isLoading ? (
+      {modelsQuery.isLoading ? (
         <div className="overflow-x-auto rounded-lg border">
           <Table>
             <TableHeader>
@@ -261,32 +261,32 @@ export default function ProvidersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {providersQuery.data?.map((provider) => {
-                const kind = provider.kind;
-                const providerLabel = getProviderLabel(kind, catalog);
+              {modelsQuery.data?.map((model) => {
+                const kind = model.kind;
+                const modelLabel = getModelLabel(kind, catalog);
                 return (
-                  <TableRow key={provider.id}>
+                  <TableRow key={model.id}>
                     <TableCell className="font-medium">
-                      {provider.name}
+                      {model.name}
                     </TableCell>
-                    <TableCell className="text-sm">{providerLabel}</TableCell>
+                    <TableCell className="text-sm">{modelLabel}</TableCell>
                     <TableCell className="text-sm">
-                      {provider.modelId}
+                      {model.modelId}
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm">
-                      {provider.secretRef ? "•••••" : "—"}
+                      {model.secretRef ? "•••••" : "—"}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Button
-                          onClick={() => openEdit(provider)}
+                          onClick={() => openEdit(model)}
                           size="sm"
                           variant="ghost"
                         >
                           <Edit2 className="h-4 w-4" />
                         </Button>
                         <Button
-                          onClick={() => handleDelete(provider.id)}
+                          onClick={() => handleDelete(model.id)}
                           size="sm"
                           variant="ghost"
                         >
@@ -299,9 +299,9 @@ export default function ProvidersPage() {
               })}
             </TableBody>
           </Table>
-          {providersQuery.data?.length === 0 && (
+          {modelsQuery.data?.length === 0 && (
             <div className="py-12 text-center text-muted-foreground">
-              No providers yet.
+              No models yet.
             </div>
           )}
         </div>
@@ -310,9 +310,9 @@ export default function ProvidersPage() {
       <Dialog onOpenChange={setCreateOpen} open={createOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Add provider</DialogTitle>
+            <DialogTitle>Add model</DialogTitle>
             <DialogDescription>
-              Configure a provider to access AI models through your account.
+              Configure a model to access AI services through your account.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
@@ -410,7 +410,7 @@ export default function ProvidersPage() {
                     <SelectValue placeholder="Select a model" />
                   </SelectTrigger>
                   <SelectContent>
-                    {providerModels.map((model) => (
+                    {modelModels.map((model) => (
                       <SelectItem key={model} value={model}>
                         {model}
                       </SelectItem>
@@ -421,14 +421,14 @@ export default function ProvidersPage() {
             ) : null}
 
             <div className="grid gap-2">
-              <Label htmlFor="provider-secret">API Key (BYOK)</Label>
+              <Label htmlFor="model-secret">API Key (BYOK)</Label>
               <Select
                 onValueChange={(value) =>
                   setForm({ ...form, secretRef: value })
                 }
                 value={form.secretRef}
               >
-                <SelectTrigger id="provider-secret">
+                <SelectTrigger id="model-secret">
                   <SelectValue placeholder="Select an API key" />
                 </SelectTrigger>
                 <SelectContent>
@@ -449,8 +449,8 @@ export default function ProvidersPage() {
             <Button onClick={() => setCreateOpen(false)} variant="outline">
               Cancel
             </Button>
-            <Button disabled={createProvider.isPending} onClick={handleCreate}>
-              Create provider
+            <Button disabled={createModel.isPending} onClick={handleCreate}>
+              Create model
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -459,9 +459,9 @@ export default function ProvidersPage() {
       <Dialog onOpenChange={setEditOpen} open={editOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Edit provider</DialogTitle>
+            <DialogTitle>Edit model</DialogTitle>
             <DialogDescription>
-              Update provider configuration and settings.
+              Update model configuration and settings.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
@@ -557,7 +557,7 @@ export default function ProvidersPage() {
                     <SelectValue placeholder="Select a model" />
                   </SelectTrigger>
                   <SelectContent>
-                    {providerModels.map((model) => (
+                    {modelModels.map((model) => (
                       <SelectItem key={model} value={model}>
                         {model}
                       </SelectItem>
@@ -568,14 +568,14 @@ export default function ProvidersPage() {
             ) : null}
 
             <div className="grid gap-2">
-              <Label htmlFor="provider-edit-secret">API Key (BYOK)</Label>
+              <Label htmlFor="model-edit-secret">API Key (BYOK)</Label>
               <Select
                 onValueChange={(value) =>
                   setForm({ ...form, secretRef: value })
                 }
                 value={form.secretRef}
               >
-                <SelectTrigger id="provider-edit-secret">
+                <SelectTrigger id="model-edit-secret">
                   <SelectValue placeholder="Select an API key" />
                 </SelectTrigger>
                 <SelectContent>
@@ -596,13 +596,13 @@ export default function ProvidersPage() {
             <Button
               onClick={() => {
                 setEditOpen(false);
-                setEditingProvider(null);
+                setEditingModel(null);
               }}
               variant="outline"
             >
               Cancel
             </Button>
-            <Button disabled={updateProvider.isPending} onClick={handleEdit}>
+            <Button disabled={updateModel.isPending} onClick={handleEdit}>
               Save changes
             </Button>
           </DialogFooter>

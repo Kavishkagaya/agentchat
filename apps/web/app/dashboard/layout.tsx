@@ -78,13 +78,13 @@ export default function DashboardLayout({
                 Secrets
               </Button>
             </Link>
-            <Link href="/dashboard/providers">
+            <Link href="/dashboard/models">
               <Button
                 className="w-full justify-start gap-3 text-muted-foreground hover:text-foreground"
                 variant="ghost"
               >
                 <Database className="h-4 w-4" />
-                Providers
+                Models
               </Button>
             </Link>
             <Link href="/dashboard/settings">

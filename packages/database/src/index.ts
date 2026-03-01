@@ -4,6 +4,6 @@ export * from "./services/audit";
 export * from "./services/auth";
 export * from "./services/groups";
 export * from "./services/mcp-servers";
-export * from "./services/provider-catalog";
+export * from "./services/model-catalog";
 export * from "./services/secrets";
 export * from "./services/system-config";

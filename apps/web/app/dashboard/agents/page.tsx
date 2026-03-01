@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { PlusCircle } from "lucide-react";
+import { Edit, PlusCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { api } from "@/app/trpc/client";
 import { Button } from "@/components/ui/button";
 import {
   Card,
+  CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
@@ -20,6 +21,17 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+
+type AgentWithModel = {
+  id: string;
+  name: string;
+  description: string | null;
+  updatedAt: Date;
+  model: {
+    name: string;
+    kind: string;
+  } | null;
+};
 
 export default function AgentsPage() {
   const router = useRouter();
@@ -52,20 +64,50 @@ export default function AgentsPage() {
 
       {agentsQuery.isLoading ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {[...Array(3)].map((_, i) => (
-            <Skeleton className="h-[140px] w-full rounded-xl" key={i} />
+          {new Array(3).fill(null).map((_, i) => (
+            <Skeleton className="h-[200px] w-full rounded-xl" key={`skeleton-${i}`} />
           ))}
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {agentsQuery.data?.map((agent) => (
-            <Card key={agent.id}>
-              <CardHeader>
-                <CardTitle>{agent.name}</CardTitle>
-                <CardDescription>
+          {(agentsQuery.data as AgentWithModel[] | undefined)?.map((agent) => (
+            <Card
+              key={agent.id}
+              className="flex flex-col cursor-pointer transition-colors hover:bg-muted"
+              onClick={() => router.push(`/dashboard/agents/${agent.id}`)}
+            >
+              <CardHeader className="pb-3">
+                <CardTitle className="line-clamp-1">{agent.name}</CardTitle>
+                <CardDescription className="line-clamp-2">
                   {agent.description || "No description"}
                 </CardDescription>
               </CardHeader>
+              <CardContent className="flex-1 space-y-2 pb-3">
+                {agent.model && (
+                  <div className="text-xs text-muted-foreground">
+                    <span className="font-medium">Model:</span>{" "}
+                    {agent.model.kind}/{agent.model.name}
+                  </div>
+                )}
+                <div className="text-xs text-muted-foreground">
+                  <span className="font-medium">Updated:</span>{" "}
+                  {new Date(agent.updatedAt).toLocaleDateString()}
+                </div>
+              </CardContent>
+              <div className="flex gap-2 border-t px-4 py-3">
+                <Button
+                  className="flex-1"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    router.push(`/dashboard/agents/${agent.id}`);
+                  }}
+                  size="sm"
+                  variant="outline"
+                >
+                  <Edit className="mr-1 h-3 w-3" />
+                  Edit
+                </Button>
+              </div>
             </Card>
           ))}
           {agentsQuery.data?.length === 0 && (

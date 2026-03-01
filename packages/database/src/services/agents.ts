@@ -1,14 +1,14 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "../client";
-import { agents } from "../schema";
+import { agents, modelCatalog } from "../schema";
 
 export interface CreateAgentParams {
   config: any;
   createdBy: string;
   description?: string;
+  modelId?: string | null;
   name: string;
   orgId: string;
-  providerId?: string | null;
 }
 
 export async function createAgent(params: CreateAgentParams) {
@@ -17,9 +17,9 @@ export async function createAgent(params: CreateAgentParams) {
 
   await db.insert(agents).values({
     id,
-    orgId: params.orgId,
-    providerId: params.providerId ?? null,
+    modelId: params.modelId ?? null,
     name: params.name,
+    orgId: params.orgId,
     description: params.description,
     config: params.config,
     visibility: "private",
@@ -31,11 +31,50 @@ export async function createAgent(params: CreateAgentParams) {
   return { agentId: id, createdAt: now };
 }
 
+export async function getAgent(agentId: string, orgId: string) {
+  const agent = await db.query.agents.findFirst({
+    where: and(eq(agents.id, agentId), eq(agents.orgId, orgId)),
+  });
+
+  if (!agent) {
+    return null;
+  }
+
+  let model: typeof modelCatalog.$inferSelect | undefined;
+  if (agent.modelId) {
+    model = await db.query.modelCatalog.findFirst({
+      where: eq(modelCatalog.id, agent.modelId),
+    });
+  }
+
+  return {
+    ...agent,
+    model: model ?? null,
+  };
+}
+
 export async function getAgents(orgId: string) {
-  return await db.query.agents.findMany({
+  const agentList = await db.query.agents.findMany({
     where: eq(agents.orgId, orgId),
     orderBy: [desc(agents.updatedAt)],
   });
+
+  const agentsWithModels = await Promise.all(
+    agentList.map(async (agent) => {
+      let model: typeof modelCatalog.$inferSelect | undefined;
+      if (agent.modelId) {
+        model = await db.query.modelCatalog.findFirst({
+          where: eq(modelCatalog.id, agent.modelId),
+        });
+      }
+      return {
+        ...agent,
+        model: model ?? null,
+      };
+    })
+  );
+
+  return agentsWithModels;
 }
 
 export async function getPublicAgents() {
@@ -88,6 +127,40 @@ export async function publishAgent(params: {
   });
 
   return { publicAgentId: publicId, createdAt: now };
+}
+
+export interface UpdateAgentParams {
+  agentId: string;
+  config?: Record<string, unknown>;
+  description?: string;
+  modelId?: string | null;
+  name?: string;
+  orgId: string;
+}
+
+export async function updateAgent(params: UpdateAgentParams) {
+  const now = new Date();
+  const updates: Record<string, unknown> = { updatedAt: now };
+
+  if (params.name !== undefined) {
+    updates.name = params.name;
+  }
+  if (params.description !== undefined) {
+    updates.description = params.description;
+  }
+  if (params.config !== undefined) {
+    updates.config = params.config;
+  }
+  if (params.modelId !== undefined) {
+    updates.modelId = params.modelId;
+  }
+
+  await db
+    .update(agents)
+    .set(updates)
+    .where(and(eq(agents.id, params.agentId), eq(agents.orgId, params.orgId)));
+
+  return { agentId: params.agentId, updatedAt: now };
 }
 
 export async function copyPublicAgent(params: {

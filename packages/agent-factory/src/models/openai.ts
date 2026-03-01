@@ -1,9 +1,9 @@
 import { createOpenAI } from "@ai-sdk/openai";
-import type { ProviderAdapter, ProviderEnv } from "../types";
+import type { ModelAdapter, ModelEnv } from "../types";
 
-export const openAIProvider: ProviderAdapter = {
+export const openAIModel: ModelAdapter = {
   name: "openai",
-  createModel(modelId: string, env: ProviderEnv) {
+  createModel(modelId: string, env: ModelEnv) {
     const apiKey = env.OPENAI_API_KEY;
     if (!apiKey) {
       throw new Error("OPENAI_API_KEY is not configured");

@@ -35,11 +35,11 @@ export type AgentRunResult = {
   usage?: unknown;
 };
 
-export type ProviderEnv = Record<string, string | undefined>;
+export type ModelEnv = Record<string, string | undefined>;
 
-export type ProviderAdapter = {
+export type ModelAdapter = {
   name: string;
-  createModel: (modelId: string, env: ProviderEnv) => unknown;
+  createModel: (modelId: string, env: ModelEnv) => unknown;
 };
 
 export type ToolExecutionContext = {

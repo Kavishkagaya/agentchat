@@ -1,12 +1,12 @@
 import { generateText, type LanguageModel, type ToolSet, tool } from "ai";
 import { z } from "zod";
-import { ProviderRegistry } from "./providers/registry";
+import { ModelRegistry } from "./models/registry";
 import type {
   AgentConfig,
   AgentFactoryOptions,
   AgentRunInput,
   AgentRunResult,
-  ProviderEnv,
+  ModelEnv,
   ToolRegistry,
 } from "./types";
 
@@ -55,13 +55,13 @@ function resolveTools(
 
 export function createAgentRunner(params: {
   config: AgentConfig;
-  env: ProviderEnv;
+  env: ModelEnv;
   toolRegistry: ToolRegistry;
-  providerRegistry?: ProviderRegistry;
+  modelRegistry?: ModelRegistry;
   options?: AgentFactoryOptions;
 }) {
-  const providerRegistry = params.providerRegistry ?? new ProviderRegistry();
-  const adapter = providerRegistry.get(params.config.provider);
+  const modelRegistry = params.modelRegistry ?? new ModelRegistry();
+  const adapter = modelRegistry.get(params.config.provider);
   if (!adapter) {
     throw new Error(`unsupported provider: ${params.config.provider}`);
   }
