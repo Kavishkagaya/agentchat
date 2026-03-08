@@ -71,7 +71,7 @@ export const groupsRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const groupId = `group_${randomUUID()}`;
+      const configId = `group_${randomUUID()}`;
       const config = {
         ...buildDefaultGroupConfig(),
         ...(input.config ?? {}),
@@ -79,7 +79,7 @@ export const groupsRouter = createTRPCRouter({
 
       // 1. Create DB Record (Cold)
       await createGroup({
-        groupId,
+        configId,
         orgId: ctx.auth.orgId,
         title: input.title,
         isPrivate: input.isPrivate,
@@ -92,19 +92,19 @@ export const groupsRouter = createTRPCRouter({
       // 2. Activate Group Infrastructure (Warm Up)
       const orchestrator = getOrchestratorClient();
       await orchestrator.activateGroup({
-        group_id: groupId,
+        config_id: configId,
         org_id: ctx.auth.orgId,
         user_id: ctx.auth.userId,
         history_mode: resolveOrchestratorHistoryMode(config.history_mode),
       });
 
-      return { groupId, status: "active" };
+      return { configId, status: "active" };
     }),
 
   get: orgProcedure
-    .input(z.object({ groupId: z.string().min(1) }))
+    .input(z.object({ configId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
-      const group = await getGroup(input.groupId);
+      const group = await getGroup(input.configId);
       if (!group) {
         throw new Error("Group not found");
       }
@@ -112,11 +112,11 @@ export const groupsRouter = createTRPCRouter({
     }),
 
   getToken: orgProcedure
-    .input(z.object({ groupId: z.string().min(1) }))
+    .input(z.object({ configId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const orchestrator = getOrchestratorClient();
       const token = await orchestrator.getRoutingToken({
-        group_id: input.groupId,
+        config_id: input.configId,
         user_id: ctx.auth.userId,
       });
       return token;

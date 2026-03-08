@@ -11,7 +11,7 @@
     "dev:web": "pnpm --filter @axon/web dev",
     "dev:orchestrator": "pnpm --filter @axon/orchestrator dev",
     "dev:agents": "pnpm --filter @axon/agents dev",
-    "dev:group-controller": "pnpm --filter @axon/group-controller dev",
+    "dev:memory-controller": "pnpm --filter @axon/memory-controller dev",
     "build": "pnpm -r build",
     "lint": "biome lint .",
     "format": "biome format . --write",
@@ -21,8 +21,10 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.4",
+    "@cloudflare/workers-types": "^4.20260307.1",
+    "@types/node": "22.7.5",
     "ultracite": "^7.2.3",
-    "wrangler": "4"
+    "wrangler": "^4.71.0"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1"

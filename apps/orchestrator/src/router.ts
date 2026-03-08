@@ -14,19 +14,19 @@ import type { Env } from "./env";
 type HistoryMode = "internal" | "external";
 
 interface GroupActivateRequest {
-  group_id: string;
+  config_id: string;
   history_mode?: HistoryMode;
   org_id: string;
 }
 
 interface RoutingTokenRequest {
-  group_id: string;
+  config_id: string;
   role?: string;
   user_id: string;
 }
 
 interface CleanupRequest {
-  group_id: string;
+  config_id: string;
   status?: "active" | "idle" | "archived";
 }
 
@@ -109,7 +109,7 @@ function resolveActiveGroupLimit(env: Env) {
   return Number.isFinite(configured) && configured > 0 ? configured : 25;
 }
 
-function createGroupControllerHeaders(env: Env, headers?: HeadersInit) {
+function createMemoryControllerHeaders(env: Env, headers?: HeadersInit) {
   const next = new Headers(headers);
   if (env.GC_SERVICE_TOKEN) {
     next.set("x-orchestrator-service-token", env.GC_SERVICE_TOKEN);
@@ -117,21 +117,21 @@ function createGroupControllerHeaders(env: Env, headers?: HeadersInit) {
   return next;
 }
 
-function archiveR2Path(groupId: string, at: Date) {
-  return `groups/${groupId}/archives/${at.toISOString()}.json`;
+function archiveR2Path(configId: string, at: Date) {
+  return `groups/${configId}/archives/${at.toISOString()}.json`;
 }
 
 async function archiveGroup(
   env: Env,
-  groupId: string,
+  configId: string,
   reason: "manual" | "auto"
 ): Promise<void> {
   const archivedAt = new Date();
-  const id = env.GROUP_CONTROLLER.idFromName(groupId);
-  const stub = env.GROUP_CONTROLLER.get(id);
+  const id = env.MEMORY_CONTROLLER.idFromName(configId);
+  const stub = env.MEMORY_CONTROLLER.get(id);
   const res = await stub.fetch("http://internal/archive", {
     method: "POST",
-    headers: createGroupControllerHeaders(env, {
+    headers: createMemoryControllerHeaders(env, {
       "content-type": "application/json",
     }),
     body: JSON.stringify({ reason }),
@@ -148,7 +148,7 @@ async function archiveGroup(
   }
 
   const snapshotBody = JSON.stringify(archivePayload.snapshot);
-  const key = archiveR2Path(groupId, archivedAt);
+  const key = archiveR2Path(configId, archivedAt);
   await env.ARCHIVES_BUCKET.put(key, snapshotBody, {
     httpMetadata: {
       contentType: "application/json",
@@ -156,12 +156,12 @@ async function archiveGroup(
   });
 
   await recordGroupArchive({
-    groupId,
+    groupId: configId,
     r2Path: key,
     sizeBytes: snapshotBody.length,
     at: archivedAt,
   });
-  await markGroupArchived(groupId);
+  await markGroupArchived(configId);
 }
 
 export async function handleRequest(
@@ -187,13 +187,13 @@ export async function handleRequest(
 
     try {
       const body = await readJson<GroupActivateRequest>(request);
-      const groupId = requireString(body.group_id, "group_id");
+      const configId = requireString(body.config_id, "config_id");
       const orgId = requireString(body.org_id, "org_id");
       const historyMode: HistoryMode =
         body.history_mode === "external" ? "external" : "internal";
 
-      const existing = await getGroupRuntime(groupId);
-      const activeCount = await countOrgActiveGroups(orgId, groupId);
+      const existing = await getGroupRuntime(configId);
+      const activeCount = await countOrgActiveGroups(orgId, configId);
       const activeLimit = resolveActiveGroupLimit(env);
       const alreadyActive =
         existing?.status === "active" || existing?.status === "idle";
@@ -206,18 +206,18 @@ export async function handleRequest(
         );
       }
 
-      const doId = env.GROUP_CONTROLLER.idFromName(groupId);
+      const doId = env.MEMORY_CONTROLLER.idFromName(configId);
       const doIdString = doId.toString();
-      await initializeGroupRuntime(groupId, doIdString, null);
+      await initializeGroupRuntime(configId, doIdString, null);
 
-      const stub = env.GROUP_CONTROLLER.get(doId);
+      const stub = env.MEMORY_CONTROLLER.get(doId);
       const initResponse = await stub.fetch("http://internal/init", {
         method: "POST",
-        headers: createGroupControllerHeaders(env, {
+        headers: createMemoryControllerHeaders(env, {
           "content-type": "application/json",
         }),
         body: JSON.stringify({
-          group_id: groupId,
+          config_id: configId,
           org_id: orgId,
           history_mode: historyMode,
         }),
@@ -227,16 +227,16 @@ export async function handleRequest(
         const bodyText = await initResponse.text();
         return errorResponse(
           502,
-          "group_controller_init_failed",
+          "memory_controller_init_failed",
           bodyText || "failed to initialize group controller"
         );
       }
 
-      await touchGroupActivity(groupId);
+      await touchGroupActivity(configId);
 
       return json({
         ok: true,
-        group_controller_id: doIdString,
+        memory_controller_id: doIdString,
         history_mode: historyMode,
       });
     } catch (error) {
@@ -261,14 +261,14 @@ export async function handleRequest(
 
     try {
       const body = await readJson<RoutingTokenRequest>(request);
-      const groupId = requireString(body.group_id, "group_id");
+      const configId = requireString(body.config_id, "config_id");
       const userId = requireString(body.user_id, "user_id");
       const role = typeof body.role === "string" ? body.role : "member";
 
       const token = await createRoutingToken(
         env.ORCHESTRATOR_PRIVATE_KEY,
         userId,
-        groupId,
+        configId,
         role
       );
 
@@ -288,8 +288,8 @@ export async function handleRequest(
     url.pathname.endsWith("/archive")
   ) {
     const parts = url.pathname.split("/").filter(Boolean);
-    const groupId = parts[2];
-    if (!groupId) {
+    const configId = parts[2];
+    if (!configId) {
       return errorResponse(400, "invalid_request", "missing group id");
     }
 
@@ -304,8 +304,8 @@ export async function handleRequest(
     }
 
     try {
-      await archiveGroup(env, groupId, "manual");
-      return json({ ok: true, group_id: groupId, status: "archived" });
+      await archiveGroup(env, configId, "manual");
+      return json({ ok: true, config_id: configId, status: "archived" });
     } catch (error) {
       return errorResponse(
         500,
@@ -328,12 +328,12 @@ export async function handleRequest(
 
     try {
       const body = await readJson<CleanupRequest>(request);
-      const groupId = requireString(body.group_id, "group_id");
+      const configId = requireString(body.config_id, "config_id");
       const status = parseCleanupStatus(body.status);
 
-      await updateGroupRuntimeStatus(groupId, status);
+      await updateGroupRuntimeStatus(configId, status);
 
-      return json({ ok: true, group_id: groupId, status });
+      return json({ ok: true, config_id: configId, status });
     } catch (error) {
       return errorResponse(
         400,
@@ -344,8 +344,8 @@ export async function handleRequest(
   }
 
   if (url.pathname.startsWith("/groups/") && url.pathname.endsWith("/ws")) {
-    const groupId = url.pathname.split("/")[2];
-    if (!groupId) {
+    const configId = url.pathname.split("/")[2];
+    if (!configId) {
       return new Response("Invalid group id", { status: 400 });
     }
 
@@ -371,7 +371,7 @@ export async function handleRequest(
       return new Response("Invalid routing token", { status: 403 });
     }
 
-    if (payload.group_id !== groupId) {
+    if (payload.config_id !== configId) {
       return new Response("Routing token group mismatch", { status: 403 });
     }
 
@@ -379,11 +379,11 @@ export async function handleRequest(
       return new Response("Expected Upgrade: websocket", { status: 426 });
     }
 
-    await touchGroupActivity(groupId);
-    const doId = env.GROUP_CONTROLLER.idFromName(groupId);
-    const stub = env.GROUP_CONTROLLER.get(doId);
+    await touchGroupActivity(configId);
+    const doId = env.MEMORY_CONTROLLER.idFromName(configId);
+    const stub = env.MEMORY_CONTROLLER.get(doId);
     const forwardRequest = new Request(request, {
-      headers: createGroupControllerHeaders(env, request.headers),
+      headers: createMemoryControllerHeaders(env, request.headers),
     });
     return stub.fetch(forwardRequest);
   }
@@ -393,8 +393,8 @@ export async function handleRequest(
     url.pathname.startsWith("/groups/") &&
     url.pathname.endsWith("/history")
   ) {
-    const groupId = url.pathname.split("/")[2];
-    if (!groupId) {
+    const configId = url.pathname.split("/")[2];
+    if (!configId) {
       return new Response("Invalid group id", { status: 400 });
     }
 
@@ -420,15 +420,15 @@ export async function handleRequest(
       return new Response("Invalid routing token", { status: 403 });
     }
 
-    if (payload.group_id !== groupId) {
+    if (payload.config_id !== configId) {
       return new Response("Routing token group mismatch", { status: 403 });
     }
 
-    await touchGroupActivity(groupId);
-    const doId = env.GROUP_CONTROLLER.idFromName(groupId);
-    const stub = env.GROUP_CONTROLLER.get(doId);
+    await touchGroupActivity(configId);
+    const doId = env.MEMORY_CONTROLLER.idFromName(configId);
+    const stub = env.MEMORY_CONTROLLER.get(doId);
     const forwardRequest = new Request(request, {
-      headers: createGroupControllerHeaders(env, request.headers),
+      headers: createMemoryControllerHeaders(env, request.headers),
     });
     return stub.fetch(forwardRequest);
   }
@@ -449,7 +449,7 @@ export async function handleScheduled(
       await archiveGroup(env, group.id, "auto");
     } catch (error) {
       console.warn("auto_archive_failed", {
-        group_id: group.id,
+        config_id: group.id,
         error: error instanceof Error ? error.message : "unknown",
       });
     }

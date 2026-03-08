@@ -8,11 +8,11 @@ The Orchestrator MUST reject infra API requests that are not authenticated with 
 - **THEN** the Orchestrator returns an authentication error and performs no state changes
 
 ### Requirement: Group activation maps to a deterministic Group Controller
-On group activation, the Orchestrator MUST derive a deterministic Group Controller Durable Object id from `group_id` and persist routing state without creating per-group session keys.
+On group activation, the Orchestrator MUST derive a deterministic Group Controller Durable Object id from `config_id` and persist routing state without creating per-group session keys.
 
 #### Scenario: Activate group stores routing state
 - **WHEN** the Orchestrator receives a valid `POST /infra/groups` request
-- **THEN** it resolves the Group Controller DO id from `group_id` and stores/updates the routing record with `group_controller_id` and active status
+- **THEN** it resolves the Group Controller DO id from `config_id` and stores/updates the routing record with `memory_controller_id` and active status
 
 ### Requirement: Group activation accepts history mode configuration
 The Orchestrator MUST accept a `history_mode` in the activation request and pass it to the Group Controller as part of the init payload.
@@ -22,17 +22,17 @@ The Orchestrator MUST accept a `history_mode` in the activation request and pass
 - **THEN** the Orchestrator forwards the history mode to the Group Controller for that group
 
 ### Requirement: Routing token issuance is short-lived and scoped
-The Orchestrator MUST issue short-lived routing tokens that include `user_id`, `group_id`, and `role` claims.
+The Orchestrator MUST issue short-lived routing tokens that include `user_id`, `config_id`, and `role` claims.
 
 #### Scenario: Issue routing token
 - **WHEN** the app requests a routing token for a user and group
-- **THEN** the Orchestrator returns a token containing `user_id`, `group_id`, `role`, and an expiry
+- **THEN** the Orchestrator returns a token containing `user_id`, `config_id`, `role`, and an expiry
 
 ### Requirement: WebSocket proxy validates routing token and group match
 The Orchestrator MUST validate the routing token before upgrading and proxying the WebSocket, and MUST reject tokens that do not match the requested group.
 
 #### Scenario: Reject mismatched routing token
-- **WHEN** a WebSocket request presents a routing token with a different `group_id`
+- **WHEN** a WebSocket request presents a routing token with a different `config_id`
 - **THEN** the Orchestrator rejects the upgrade with an authorization error
 
 ### Requirement: Strict request chain is enforced

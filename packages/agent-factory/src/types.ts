@@ -59,5 +59,6 @@ export type ToolRegistry = {
 };
 
 export type AgentFactoryOptions = {
+  maxSteps?: number;
   onToolCall?: (toolId: string, args: unknown, toolName?: string) => void;
 };

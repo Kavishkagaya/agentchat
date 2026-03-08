@@ -56,28 +56,28 @@ export const agents = pgTable("agents", {
 
 export const agentRuntimes = pgTable("agent_runtimes", {
 	id: text().primaryKey().notNull(),
-	groupId: text("group_id").notNull(),
+	configId: text("config_id").notNull(),
 	agentId: text("agent_id").notNull(),
 	status: text().notNull(),
 	baseUrl: text("base_url").notNull(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).notNull(),
 }, (table) => [
-	index("agent_runtimes_group_id_idx").using("btree", table.groupId.asc().nullsLast().op("text_ops")),
-	foreignKey({
-			columns: [table.groupId],
-			foreignColumns: [groups.id],
-			name: "agent_runtimes_group_id_groups_id_fk"
-		}),
+	index("agent_runtimes_group_id_idx").using("btree", table.configId.asc().nullsLast().op("text_ops")),
 	foreignKey({
 			columns: [table.agentId],
 			foreignColumns: [agents.id],
 			name: "agent_runtimes_agent_id_agents_id_fk"
 		}),
+	foreignKey({
+			columns: [table.configId],
+			foreignColumns: [configs.id],
+			name: "agent_runtimes_config_id_configs_id_fk"
+		}),
 ]);
 
 export const groupRuntime = pgTable("group_runtime", {
-	groupId: text("group_id").primaryKey().notNull(),
+	configId: text("config_id").primaryKey().notNull(),
 	groupControllerId: text("group_controller_id").notNull(),
 	status: text().notNull(),
 	lastActiveAt: timestamp("last_active_at", { withTimezone: true, mode: 'string' }),
@@ -87,51 +87,24 @@ export const groupRuntime = pgTable("group_runtime", {
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).notNull(),
 }, (table) => [
 	foreignKey({
-			columns: [table.groupId],
-			foreignColumns: [groups.id],
-			name: "group_runtime_group_id_groups_id_fk"
-		}),
-]);
-
-export const groups = pgTable("groups", {
-	id: text().primaryKey().notNull(),
-	orgId: text("org_id").notNull(),
-	title: text().notNull(),
-	status: text().notNull(),
-	isPrivate: boolean("is_private").default(false).notNull(),
-	agentPolicy: jsonb("agent_policy").notNull(),
-	createdBy: text("created_by"),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
-	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).notNull(),
-	lastActiveAt: timestamp("last_active_at", { withTimezone: true, mode: 'string' }),
-	archivedAt: timestamp("archived_at", { withTimezone: true, mode: 'string' }),
-	config: jsonb().notNull(),
-}, (table) => [
-	index("groups_org_id_idx").using("btree", table.orgId.asc().nullsLast().op("text_ops")),
-	foreignKey({
-			columns: [table.orgId],
-			foreignColumns: [orgs.id],
-			name: "groups_org_id_orgs_id_fk"
-		}),
-	foreignKey({
-			columns: [table.createdBy],
-			foreignColumns: [users.id],
-			name: "groups_created_by_users_id_fk"
+			columns: [table.configId],
+			foreignColumns: [configs.id],
+			name: "group_runtime_config_id_configs_id_fk"
 		}),
 ]);
 
 export const groupSnapshots = pgTable("group_snapshots", {
 	id: text().primaryKey().notNull(),
-	groupId: text("group_id").notNull(),
+	configId: text("config_id").notNull(),
 	r2Path: text("r2_path").notNull(),
 	sizeBytes: integer("size_bytes"),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
 }, (table) => [
-	index("group_snapshots_group_id_idx").using("btree", table.groupId.asc().nullsLast().op("text_ops")),
+	index("group_snapshots_group_id_idx").using("btree", table.configId.asc().nullsLast().op("text_ops")),
 	foreignKey({
-			columns: [table.groupId],
-			foreignColumns: [groups.id],
-			name: "group_snapshots_group_id_groups_id_fk"
+			columns: [table.configId],
+			foreignColumns: [configs.id],
+			name: "group_snapshots_config_id_configs_id_fk"
 		}),
 ]);
 
@@ -162,17 +135,17 @@ export const orgMembers = pgTable("org_members", {
 
 export const groupTasks = pgTable("group_tasks", {
 	id: text().primaryKey().notNull(),
-	groupId: text("group_id").notNull(),
+	configId: text("config_id").notNull(),
 	taskType: text("task_type").notNull(),
 	status: text().notNull(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).notNull(),
 }, (table) => [
-	index("group_tasks_group_id_idx").using("btree", table.groupId.asc().nullsLast().op("text_ops")),
+	index("group_tasks_group_id_idx").using("btree", table.configId.asc().nullsLast().op("text_ops")),
 	foreignKey({
-			columns: [table.groupId],
-			foreignColumns: [groups.id],
-			name: "group_tasks_group_id_groups_id_fk"
+			columns: [table.configId],
+			foreignColumns: [configs.id],
+			name: "group_tasks_config_id_configs_id_fk"
 		}),
 ]);
 
@@ -190,16 +163,16 @@ export const orgLimits = pgTable("org_limits", {
 
 export const groupArchives = pgTable("group_archives", {
 	id: text().primaryKey().notNull(),
-	groupId: text("group_id").notNull(),
+	configId: text("config_id").notNull(),
 	snapshotId: text("snapshot_id").notNull(),
 	r2Path: text("r2_path").notNull(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
 }, (table) => [
-	index("group_archives_group_id_idx").using("btree", table.groupId.asc().nullsLast().op("text_ops")),
+	index("group_archives_group_id_idx").using("btree", table.configId.asc().nullsLast().op("text_ops")),
 	foreignKey({
-			columns: [table.groupId],
-			foreignColumns: [groups.id],
-			name: "group_archives_group_id_groups_id_fk"
+			columns: [table.configId],
+			foreignColumns: [configs.id],
+			name: "group_archives_config_id_configs_id_fk"
 		}),
 ]);
 
@@ -214,6 +187,33 @@ export const orgUsage = pgTable("org_usage", {
 			columns: [table.orgId],
 			foreignColumns: [orgs.id],
 			name: "org_usage_org_id_orgs_id_fk"
+		}),
+]);
+
+export const configs = pgTable("configs", {
+	id: text().primaryKey().notNull(),
+	orgId: text("org_id").notNull(),
+	title: text().notNull(),
+	status: text().notNull(),
+	isPrivate: boolean("is_private").default(false).notNull(),
+	agentPolicy: jsonb("agent_policy").notNull(),
+	createdBy: text("created_by"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).notNull(),
+	lastActiveAt: timestamp("last_active_at", { withTimezone: true, mode: 'string' }),
+	archivedAt: timestamp("archived_at", { withTimezone: true, mode: 'string' }),
+	config: jsonb().notNull(),
+}, (table) => [
+	index("groups_org_id_idx").using("btree", table.orgId.asc().nullsLast().op("text_ops")),
+	foreignKey({
+			columns: [table.orgId],
+			foreignColumns: [orgs.id],
+			name: "configs_org_id_orgs_id_fk"
+		}),
+	foreignKey({
+			columns: [table.createdBy],
+			foreignColumns: [users.id],
+			name: "configs_created_by_users_id_fk"
 		}),
 ]);
 
@@ -355,16 +355,11 @@ export const modelCatalog = pgTable("model_catalog", {
 ]);
 
 export const groupAgents = pgTable("group_agents", {
-	groupId: text("group_id").notNull(),
+	configId: text("config_id").notNull(),
 	agentId: text("agent_id").notNull(),
 	addedBy: text("added_by"),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
 }, (table) => [
-	foreignKey({
-			columns: [table.groupId],
-			foreignColumns: [groups.id],
-			name: "group_agents_group_id_groups_id_fk"
-		}),
 	foreignKey({
 			columns: [table.agentId],
 			foreignColumns: [agents.id],
@@ -375,20 +370,20 @@ export const groupAgents = pgTable("group_agents", {
 			foreignColumns: [users.id],
 			name: "group_agents_added_by_users_id_fk"
 		}),
-	primaryKey({ columns: [table.groupId, table.agentId], name: "group_agents_group_id_agent_id_pk"}),
+	foreignKey({
+			columns: [table.configId],
+			foreignColumns: [configs.id],
+			name: "group_agents_config_id_configs_id_fk"
+		}),
+	primaryKey({ columns: [table.configId, table.agentId], name: "group_agents_config_id_agent_id_pk"}),
 ]);
 
 export const groupSecrets = pgTable("group_secrets", {
-	groupId: text("group_id").notNull(),
+	configId: text("config_id").notNull(),
 	secretId: text("secret_id").notNull(),
 	grantedBy: text("granted_by"),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
 }, (table) => [
-	foreignKey({
-			columns: [table.groupId],
-			foreignColumns: [groups.id],
-			name: "group_secrets_group_id_groups_id_fk"
-		}),
 	foreignKey({
 			columns: [table.grantedBy],
 			foreignColumns: [users.id],
@@ -399,20 +394,20 @@ export const groupSecrets = pgTable("group_secrets", {
 			foreignColumns: [secrets.secretId],
 			name: "group_secrets_secret_id_secrets_secret_id_fk"
 		}),
-	primaryKey({ columns: [table.groupId, table.secretId], name: "group_secrets_group_id_secret_id_pk"}),
+	foreignKey({
+			columns: [table.configId],
+			foreignColumns: [configs.id],
+			name: "group_secrets_config_id_configs_id_fk"
+		}),
+	primaryKey({ columns: [table.configId, table.secretId], name: "group_secrets_config_id_secret_id_pk"}),
 ]);
 
 export const groupAgentRuntimes = pgTable("group_agent_runtimes", {
-	groupId: text("group_id").notNull(),
+	configId: text("config_id").notNull(),
 	agentId: text("agent_id").notNull(),
 	runtimeId: text("runtime_id").notNull(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
 }, (table) => [
-	foreignKey({
-			columns: [table.groupId],
-			foreignColumns: [groups.id],
-			name: "group_agent_runtimes_group_id_groups_id_fk"
-		}),
 	foreignKey({
 			columns: [table.agentId],
 			foreignColumns: [agents.id],
@@ -423,22 +418,22 @@ export const groupAgentRuntimes = pgTable("group_agent_runtimes", {
 			foreignColumns: [agentRuntimes.id],
 			name: "group_agent_runtimes_runtime_id_agent_runtimes_id_fk"
 		}),
-	primaryKey({ columns: [table.groupId, table.agentId, table.runtimeId], name: "group_agent_runtimes_group_id_agent_id_runtime_id_pk"}),
+	foreignKey({
+			columns: [table.configId],
+			foreignColumns: [configs.id],
+			name: "group_agent_runtimes_config_id_configs_id_fk"
+		}),
+	primaryKey({ columns: [table.configId, table.agentId, table.runtimeId], name: "group_agent_runtimes_config_id_agent_id_runtime_id_pk"}),
 ]);
 
 export const groupMembers = pgTable("group_members", {
-	groupId: text("group_id").notNull(),
+	configId: text("config_id").notNull(),
 	userId: text("user_id").notNull(),
 	role: text().notNull(),
 	addedBy: text("added_by"),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
 }, (table) => [
 	index("group_members_user_id_idx").using("btree", table.userId.asc().nullsLast().op("text_ops")),
-	foreignKey({
-			columns: [table.groupId],
-			foreignColumns: [groups.id],
-			name: "group_members_group_id_groups_id_fk"
-		}),
 	foreignKey({
 			columns: [table.userId],
 			foreignColumns: [users.id],
@@ -449,5 +444,10 @@ export const groupMembers = pgTable("group_members", {
 			foreignColumns: [users.id],
 			name: "group_members_added_by_users_id_fk"
 		}),
-	primaryKey({ columns: [table.groupId, table.userId], name: "group_members_group_id_user_id_pk"}),
+	foreignKey({
+			columns: [table.configId],
+			foreignColumns: [configs.id],
+			name: "group_members_config_id_configs_id_fk"
+		}),
+	primaryKey({ columns: [table.configId, table.userId], name: "group_members_config_id_user_id_pk"}),
 ]);

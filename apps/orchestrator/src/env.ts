@@ -1,15 +1,15 @@
 export interface Env {
   AGENTS_BASE_URL?: string;
-  ARCHIVES_BUCKET: R2Bucket;
   APP_PUBLIC_KEY: string;
+  ARCHIVES_BUCKET: R2Bucket;
   ENVIRONMENT: string;
   GC_PUBLIC_KEY: string;
   GC_SERVICE_TOKEN?: string;
   GROUP_AUTO_ARCHIVE_DAYS?: string;
-  MAX_ACTIVE_GROUPS_PER_ORG?: string;
 
   // Durable Objects
-  GROUP_CONTROLLER: DurableObjectNamespace;
+  MEMORY_CONTROLLER: DurableObjectNamespace;
+  MAX_ACTIVE_GROUPS_PER_ORG?: string;
   NEON_DATABASE_URL?: string;
 
   // Secrets

@@ -2,12 +2,12 @@ import { randomUUID } from "node:crypto";
 import { and, desc, eq, inArray, lte, ne, or, sql } from "drizzle-orm";
 import { getDb } from "../client";
 import {
-  groupAgents,
-  groupArchives,
-  groupMembers,
-  groupRuntime,
-  groupSnapshots,
-  groups,
+  configAgents,
+  configArchives,
+  configMembers,
+  configRuntime,
+  configSnapshots,
+  configs,
 } from "../schema";
 
 export interface CreateGroupParams {
@@ -33,7 +33,7 @@ export async function createGroup(params: CreateGroupParams) {
   const db = getDb();
   const now = new Date();
 
-  await db.insert(groups).values({
+  await db.insert(configs).values({
     id: params.groupId,
     orgId: params.orgId,
     title: params.title,
@@ -48,7 +48,7 @@ export async function createGroup(params: CreateGroupParams) {
   });
 
   if (params.memberIds.length > 0) {
-    await db.insert(groupMembers).values(
+    await db.insert(configMembers).values(
       params.memberIds.map((userId) => ({
         groupId: params.groupId,
         userId,
@@ -60,7 +60,7 @@ export async function createGroup(params: CreateGroupParams) {
   }
 
   if (params.agentIds.length > 0) {
-    await db.insert(groupAgents).values(
+    await db.insert(configAgents).values(
       params.agentIds.map((agentId) => ({
         groupId: params.groupId,
         agentId,
@@ -75,8 +75,8 @@ export async function createGroup(params: CreateGroupParams) {
 
 export async function getGroup(groupId: string) {
   const db = getDb();
-  return await db.query.groups.findFirst({
-    where: eq(groups.id, groupId),
+  return await db.query.configs.findFirst({
+    where: eq(configs.id, groupId),
     with: {
       members: true,
       agents: true,
@@ -86,23 +86,23 @@ export async function getGroup(groupId: string) {
 
 export async function getOrgGroups(orgId: string) {
   const db = getDb();
-  return await db.query.groups.findMany({
-    where: eq(groups.orgId, orgId),
-    orderBy: [desc(groups.lastActiveAt)],
+  return await db.query.configs.findMany({
+    where: eq(configs.orgId, orgId),
+    orderBy: [desc(configs.lastActiveAt)],
   });
 }
 
 export async function getAllGroups() {
   const db = getDb();
-  return await db.query.groups.findMany({
-    orderBy: [desc(groups.createdAt)],
+  return await db.query.configs.findMany({
+    orderBy: [desc(configs.createdAt)],
   });
 }
 
 export async function getGroupRuntime(groupId: string) {
   const db = getDb();
-  return await db.query.groupRuntime.findFirst({
-    where: eq(groupRuntime.groupId, groupId),
+  return await db.query.configRuntime.findFirst({
+    where: eq(configRuntime.groupId, groupId),
   });
 }
 
@@ -117,7 +117,7 @@ export async function initializeGroupRuntime(
 
   if (existing) {
     await db
-      .update(groupRuntime)
+      .update(configRuntime)
       .set({
         groupControllerId: controllerId,
         status: "active",
@@ -125,9 +125,9 @@ export async function initializeGroupRuntime(
         lastActiveAt: now,
         updatedAt: now,
       })
-      .where(eq(groupRuntime.groupId, groupId));
+      .where(eq(configRuntime.groupId, groupId));
   } else {
-    await db.insert(groupRuntime).values({
+    await db.insert(configRuntime).values({
       groupId,
       groupControllerId: controllerId,
       status: "active",
@@ -159,37 +159,37 @@ export async function updateGroupRuntimeStatus(groupId: string, status: string) 
   }
 
   await db
-    .update(groups)
+    .update(configs)
     .set(groupUpdate)
-    .where(eq(groups.id, groupId));
+    .where(eq(configs.id, groupId));
 
   await db
-    .update(groupRuntime)
+    .update(configRuntime)
     .set({
       status,
       updatedAt: now,
       ...(status === "active" ? { lastActiveAt: now } : {}),
       ...(status === "idle" ? { idleAt: now } : {}),
     })
-    .where(eq(groupRuntime.groupId, groupId));
+    .where(eq(configRuntime.groupId, groupId));
 }
 
 export async function countOrgActiveGroups(orgId: string, excludeGroupId?: string) {
   const db = getDb();
   const activePredicate = and(
-    eq(groups.orgId, orgId),
-    inArray(groups.status, ["active", "idle"])
+    eq(configs.orgId, orgId),
+    inArray(configs.status, ["active", "idle"])
   );
   const wherePredicate =
     excludeGroupId && excludeGroupId.length > 0
-      ? and(activePredicate, ne(groups.id, excludeGroupId))
+      ? and(activePredicate, ne(configs.id, excludeGroupId))
       : activePredicate;
 
   const rows = await db
     .select({
       value: sql<number>`count(*)`,
     })
-    .from(groups)
+    .from(configs)
     .where(wherePredicate);
   return Number(rows[0]?.value ?? 0);
 }
@@ -197,42 +197,42 @@ export async function countOrgActiveGroups(orgId: string, excludeGroupId?: strin
 export async function touchGroupActivity(groupId: string, at = new Date()) {
   const db = getDb();
   await db
-    .update(groups)
+    .update(configs)
     .set({
       status: "active",
       lastActiveAt: at,
       updatedAt: at,
     })
-    .where(eq(groups.id, groupId));
+    .where(eq(configs.id, groupId));
 
   await db
-    .update(groupRuntime)
+    .update(configRuntime)
     .set({
       status: "active",
       lastActiveAt: at,
       updatedAt: at,
     })
-    .where(eq(groupRuntime.groupId, groupId));
+    .where(eq(configRuntime.groupId, groupId));
 }
 
 export async function markGroupArchived(groupId: string, at = new Date()) {
   const db = getDb();
   await db
-    .update(groups)
+    .update(configs)
     .set({
       status: "archived",
       archivedAt: at,
       updatedAt: at,
     })
-    .where(eq(groups.id, groupId));
+    .where(eq(configs.id, groupId));
 
   await db
-    .update(groupRuntime)
+    .update(configRuntime)
     .set({
       status: "archived",
       updatedAt: at,
     })
-    .where(eq(groupRuntime.groupId, groupId));
+    .where(eq(configRuntime.groupId, groupId));
 }
 
 export async function listGroupsForAutoArchive(
@@ -241,10 +241,10 @@ export async function listGroupsForAutoArchive(
 ) {
   const db = getDb();
   const cutoff = new Date(now.getTime() - inactiveDays * 24 * 60 * 60 * 1000);
-  return await db.query.groups.findMany({
+  return await db.query.configs.findMany({
     where: and(
-      inArray(groups.status, ["active", "idle"]),
-      or(lte(groups.lastActiveAt, cutoff), lte(groups.updatedAt, cutoff))
+      inArray(configs.status, ["active", "idle"]),
+      or(lte(configs.lastActiveAt, cutoff), lte(configs.updatedAt, cutoff))
     ),
     columns: {
       id: true,
@@ -267,7 +267,7 @@ export async function recordGroupArchive(params: {
   const snapshotId = `snapshot_${randomUUID()}`;
   const archiveId = `archive_${randomUUID()}`;
 
-  await db.insert(groupSnapshots).values({
+  await db.insert(configSnapshots).values({
     id: snapshotId,
     groupId: params.groupId,
     r2Path: params.r2Path,
@@ -275,7 +275,7 @@ export async function recordGroupArchive(params: {
     createdAt: now,
   });
 
-  await db.insert(groupArchives).values({
+  await db.insert(configArchives).values({
     id: archiveId,
     groupId: params.groupId,
     snapshotId,

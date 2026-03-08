@@ -5,8 +5,8 @@ A group is the long-lived chat runtime unit. The Group Controller DO owns active
 ## Group Controller
 
 - Technology: Cloudflare Durable Objects + SQLite.
-- Deterministic identity: Orchestrator resolves DO from `group_id`.
-- Initialization payload includes `group_id`, `org_id`, and `history_mode`.
+- Deterministic identity: Orchestrator resolves DO from `config_id`.
+- Initialization payload includes `config_id`, `org_id`, and `history_mode`.
 - Access restricted to Orchestrator-forwarded requests (internal service token).
 
 ## History Modes

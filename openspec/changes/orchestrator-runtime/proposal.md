@@ -6,9 +6,9 @@ The Orchestrator is described as the global control plane and already performs g
 
 - Define a new **orchestrator-runtime** capability spec that documents the Orchestrator’s runtime responsibilities as the global control plane.
 - Formalize the infra API surface:
-  - `POST /infra/groups` (activate group): maps `group_id` to a deterministic Group Controller DO id, initializes group runtime routing state, and (optionally) warms the Group Controller without per-group session keys.
+  - `POST /infra/groups` (activate group): maps `config_id` to a deterministic Group Controller DO id, initializes group runtime routing state, and (optionally) warms the Group Controller without per-group session keys.
   - `POST /infra/routing-token` (issue routing token): issues a short-lived routing token for user access to a group.
-  - `GET /groups/{group_id}/history` and `GET|WS /groups/{group_id}/ws` proxying behavior using routing tokens.
+  - `GET /groups/{config_id}/history` and `GET|WS /groups/{config_id}/ws` proxying behavior using routing tokens.
   - `POST /infra/cleanup` hook from Group Controller to Orchestrator for lifecycle cleanup callbacks.
   - Scheduled maintenance hooks (idle cleanup, long-idle archival triggers) as part of the Orchestrator runtime.
 - Specify the security/auth contracts the Orchestrator owns:
@@ -17,7 +17,7 @@ The Orchestrator is described as the global control plane and already performs g
   - Validation requirements for routing token usage on proxy routes, and strict client → app → orchestrator → group controller chain (no skipped hops).
   - Group Controller–signed agent-access tokens for Agents Worker calls (static GC keypair, short-lived JWTs).
 - Define group runtime record behavior in the database:
-  - Required fields (`group_id`, `group_controller_id`, `status`, timestamps).
+  - Required fields (`config_id`, `memory_controller_id`, `status`, timestamps).
   - Update semantics on activation and on cleanup/idle transitions.
 - Establish lifecycle and routing expectations:
   - Idempotency expectations for group activation and cleanup callbacks.

@@ -6,17 +6,17 @@ This is a minimal contract draft to align teams. Exact schemas should live in Op
 
 1. `POST /groups`
 Request: org_id, title, is_private, agent_ids.
-Response: group_id, status, created_at.
+Response: config_id, status, created_at.
 
-2. `GET /groups/{group_id}`
+2. `GET /groups/{config_id}`
 Request: auth context.
 Response: group record, members, agents, status.
 
-3. `POST /groups/{group_id}/token`
+3. `POST /groups/{config_id}/token`
 Request: auth context.
 Response: routing_token.
 
-4. `POST /groups/{group_id}/archive`
+4. `POST /groups/{config_id}/archive`
 Request: reason.
 Response: archived_at, r2_path.
 
@@ -38,11 +38,11 @@ Response: archived_at, r2_path.
 
     *   **Purpose:** Initialize a Group Session.
 
-    *   **Request:** `group_id`, `org_id`, `user_id` (Auth: App Signed).
+    *   **Request:** `config_id`, `org_id`, `user_id` (Auth: App Signed).
 
     *   **Response:** 
 
-        *   `group_controller_id`
+        *   `memory_controller_id`
 
         *   `session_private_key` (Ephemeral)
 
@@ -54,13 +54,13 @@ Response: archived_at, r2_path.
 
     *   **Purpose:** Issue a short-lived stateless token for client access (Messaging/WebSocket).
 
-    *   **Request:** `group_id`, `user_id` (Auth: App Signed / Bearer Token checked against DB).
+    *   **Request:** `config_id`, `user_id` (Auth: App Signed / Bearer Token checked against DB).
 
     *   **Response:** `routing_token` (JWT signed by Orchestrator).
 
 
 
-3.  `GET /groups/{group_id}/ws` (WebSocket)
+3.  `GET /groups/{config_id}/ws` (WebSocket)
 
     *   **Query Param:** `?token={routing_token}`
 
@@ -72,7 +72,7 @@ Response: archived_at, r2_path.
 
     *   **Purpose:** Lifecycle callback from Group Controller.
 
-    *   **Request:** `group_id`, `reason` (Auth: Signed with `session_private_key`).
+    *   **Request:** `config_id`, `reason` (Auth: Signed with `session_private_key`).
 
     *   **Response:** `status`.
 

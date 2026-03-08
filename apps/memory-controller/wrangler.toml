@@ -1,0 +1,18 @@
+name = "agentchat-chat-controller"
+main = "src/index.ts"
+compatibility_date = "2025-02-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+ENVIRONMENT = "dev"
+AGENTS_BASE_URL = "http://localhost:41837"
+ORCHESTRATOR_SERVICE_TOKEN = ""
+GC_PRIVATE_KEY = "MC4CAQAwBQYDK2VwBCIEIFzeVcu66S+AwVn5bV5HCOeNtxbPRhcj3GgE7kfbdUYd"
+
+[[durable_objects.bindings]]
+name = "MEMORY_CONTROLLER"
+class_name = "MemoryController"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["MemoryController"]

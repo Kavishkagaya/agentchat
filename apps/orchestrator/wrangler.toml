@@ -1,6 +1,7 @@
 name = "agentchat-orchestrator"
 main = "src/index.ts"
 compatibility_date = "2025-02-01"
+compatibility_flags = ["nodejs_compat"]
 
 [triggers]
 crons = ["*/5 * * * *", "0 3 * * *"]
@@ -22,6 +23,6 @@ GC_SERVICE_TOKEN = ""
 ORCHESTRATOR_PUBLIC_KEY = ""
 
 [[durable_objects.bindings]]
-name = "GROUP_CONTROLLER"
-class_name = "ChatController"
+name = "MEMORY_CONTROLLER"
+class_name = "MemoryController"
 script_name = "agentchat-chat-controller"

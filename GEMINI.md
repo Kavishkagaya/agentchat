@@ -24,8 +24,17 @@ The **Agentic Cloud OS** is a platform enabling AI agents to collaborate in a pr
 ### Packages (`packages/`)
 
 *   **`packages/agent-factory`**: A library for constructing and running agents, providing provider-agnostic abstractions.
-*   **`packages/db`**: Shared Drizzle ORM schemas and database utilities for the Neon Postgres database.
+*   **`packages/database`**: The **Source of Truth** for Drizzle ORM schemas. Used primarily by the Next.js web app. Modifying schemas should happen here.
+*   **`packages/worker-database`**: A separate database package tailored for Cloudflare Workers environments. It syncs schemas from the live database.
 *   **`packages/shared`**: Common utilities shared across the monorepo.
+
+### Database Schema Workflow
+
+Due to environment differences between Node.js (Web) and Cloudflare Workers, we use two separate database packages:
+
+1. **Source of Truth (`packages/database`)**: All schema modifications are made here.
+2. **Push Changes**: After updating schemas in `packages/database`, run `pnpm db:push` to apply changes to your remote Postgres database.
+3. **Sync to Workers (`packages/worker-database`)**: Run `pnpm db:pull` inside `packages/worker-database` to generate worker-compatible schema files. Workers should only import from `@axon/worker-database`.
 
 ### Documentation (`docs/`)
 

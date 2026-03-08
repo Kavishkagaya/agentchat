@@ -78,10 +78,10 @@ export const orgMembers = pgTable(
   })
 );
 
-// --- Groups (Persistent Chat Rooms) ---
+// --- Configs (Memory/Execution Contexts) ---
 
-export const groups = pgTable(
-  "groups",
+export const configs = pgTable(
+  "configs",
   {
     id: text("id").primaryKey(),
     orgId: text("org_id")
@@ -105,17 +105,17 @@ export const groups = pgTable(
   })
 );
 
-export const groupsRelations = relations(groups, ({ many }) => ({
-  members: many(groupMembers),
-  agents: many(groupAgents),
+export const configsRelations = relations(configs, ({ many }) => ({
+  members: many(configMembers),
+  agents: many(configAgents),
 }));
 
-export const groupMembers = pgTable(
+export const configMembers = pgTable(
   "group_members",
   {
-    groupId: text("group_id")
+    groupId: text("config_id")
       .notNull()
-      .references(() => groups.id),
+      .references(() => configs.id),
     userId: text("user_id")
       .notNull()
       .references(() => users.id),
@@ -129,10 +129,10 @@ export const groupMembers = pgTable(
   })
 );
 
-export const groupMembersRelations = relations(groupMembers, ({ one }) => ({
-  group: one(groups, {
-    fields: [groupMembers.groupId],
-    references: [groups.id],
+export const configMembersRelations = relations(configMembers, ({ one }) => ({
+  config: one(configs, {
+    fields: [configMembers.groupId],
+    references: [configs.id],
   }),
 }));
 
@@ -161,12 +161,12 @@ export const agents = pgTable(
   })
 );
 
-export const groupAgents = pgTable(
+export const configAgents = pgTable(
   "group_agents",
   {
-    groupId: text("group_id")
+    groupId: text("config_id")
       .notNull()
-      .references(() => groups.id),
+      .references(() => configs.id),
     agentId: text("agent_id")
       .notNull()
       .references(() => agents.id),
@@ -178,13 +178,13 @@ export const groupAgents = pgTable(
   })
 );
 
-export const groupAgentsRelations = relations(groupAgents, ({ one }) => ({
-  group: one(groups, {
-    fields: [groupAgents.groupId],
-    references: [groups.id],
+export const configAgentsRelations = relations(configAgents, ({ one }) => ({
+  config: one(configs, {
+    fields: [configAgents.groupId],
+    references: [configs.id],
   }),
   agent: one(agents, {
-    fields: [groupAgents.agentId],
+    fields: [configAgents.agentId],
     references: [agents.id],
   }),
 }));
@@ -230,10 +230,10 @@ export const mcpServersRelations = relations(mcpServers, ({ one }) => ({
 
 // --- Runtime Routing ---
 
-export const groupRuntime = pgTable("group_runtime", {
-  groupId: text("group_id")
+export const configRuntime = pgTable("group_runtime", {
+  groupId: text("config_id")
     .primaryKey()
-    .references(() => groups.id),
+    .references(() => configs.id),
   groupControllerId: text("group_controller_id").notNull(), // Durable Object ID string
   status: text("status").notNull(), // 'active', 'idle'
   lastActiveAt: timestamp("last_active_at", { withTimezone: true }),
@@ -247,9 +247,9 @@ export const agentRuntimes = pgTable(
   "agent_runtimes",
   {
     id: text("id").primaryKey(),
-    groupId: text("group_id")
+    groupId: text("config_id")
       .notNull()
-      .references(() => groups.id),
+      .references(() => configs.id),
     agentId: text("agent_id")
       .notNull()
       .references(() => agents.id),
@@ -263,12 +263,12 @@ export const agentRuntimes = pgTable(
   })
 );
 
-export const groupAgentRuntimes = pgTable(
+export const configAgentRuntimes = pgTable(
   "group_agent_runtimes",
   {
-    groupId: text("group_id")
+    groupId: text("config_id")
       .notNull()
-      .references(() => groups.id),
+      .references(() => configs.id),
     agentId: text("agent_id")
       .notNull()
       .references(() => agents.id),
@@ -286,13 +286,13 @@ export const groupAgentRuntimes = pgTable(
 
 // --- Lifecycle & Archive ---
 
-export const groupArchives = pgTable(
+export const configArchives = pgTable(
   "group_archives",
   {
     id: text("id").primaryKey(),
-    groupId: text("group_id")
+    groupId: text("config_id")
       .notNull()
-      .references(() => groups.id),
+      .references(() => configs.id),
     snapshotId: text("snapshot_id").notNull(),
     r2Path: text("r2_path").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
@@ -302,13 +302,13 @@ export const groupArchives = pgTable(
   })
 );
 
-export const groupSnapshots = pgTable(
+export const configSnapshots = pgTable(
   "group_snapshots",
   {
     id: text("id").primaryKey(),
-    groupId: text("group_id")
+    groupId: text("config_id")
       .notNull()
-      .references(() => groups.id),
+      .references(() => configs.id),
     r2Path: text("r2_path").notNull(),
     sizeBytes: integer("size_bytes"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
@@ -318,13 +318,13 @@ export const groupSnapshots = pgTable(
   })
 );
 
-export const groupTasks = pgTable(
+export const configTasks = pgTable(
   "group_tasks",
   {
     id: text("id").primaryKey(),
-    groupId: text("group_id")
+    groupId: text("config_id")
       .notNull()
-      .references(() => groups.id),
+      .references(() => configs.id),
     taskType: text("task_type").notNull(),
     status: text("status").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
@@ -388,12 +388,12 @@ export const modelCatalog = pgTable(
   })
 );
 
-export const groupSecrets = pgTable(
+export const configSecrets = pgTable(
   "group_secrets",
   {
-    groupId: text("group_id")
+    groupId: text("config_id")
       .notNull()
-      .references(() => groups.id),
+      .references(() => configs.id),
     secretId: text("secret_id")
       .notNull()
       .references(() => secrets.id),

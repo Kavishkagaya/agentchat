@@ -5,7 +5,7 @@ export interface KeyPair {
 
 export interface RoutingTokenPayload {
   exp: number;
-  group_id: string;
+  config_id: string;
   iat: number;
   role: string;
   user_id: string;
@@ -27,12 +27,12 @@ export interface AppInfraTokenPayload {
 export interface AgentAccessTokenPayload {
   agent_id: string;
   exp: number;
-  group_id: string;
+  config_id: string;
   iat: number;
   jti: string;
   org_id: string;
   scope: "agent:invoke";
-  sub: "group-controller";
+  sub: "memory-controller";
 }
 
 // Check for global crypto availability
@@ -104,14 +104,14 @@ export async function verify(
 export async function createRoutingToken(
   orchestratorPrivateKey: string,
   userId: string,
-  groupId: string,
+  configId: string,
   role: string,
   expiresInSeconds = 300 // Short lived (5 mins)
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const payload: RoutingTokenPayload = {
     user_id: userId,
-    group_id: groupId,
+    config_id: configId,
     role,
     exp: now + expiresInSeconds,
     iat: now,
@@ -221,7 +221,7 @@ export async function createAgentAccessToken(
   gcPrivateKey: string,
   claims: {
     agent_id: string;
-    group_id: string;
+    config_id: string;
     org_id: string;
     scope?: "agent:invoke";
   },
@@ -229,10 +229,9 @@ export async function createAgentAccessToken(
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const payload: AgentAccessTokenPayload = {
-    sub: "group-controller",
-    scope: claims.scope ?? "agent:invoke",
+              sub: "memory-controller",    scope: claims.scope ?? "agent:invoke",
     agent_id: claims.agent_id,
-    group_id: claims.group_id,
+    config_id: claims.config_id,
     org_id: claims.org_id,
     iat: now,
     exp: now + expiresInSeconds,
@@ -247,7 +246,7 @@ export async function verifyAgentAccessToken(
   gcPublicKey: string,
   token: string,
   expected?: {
-    group_id?: string;
+    config_id?: string;
     agent_id?: string;
   }
 ): Promise<AgentAccessTokenPayload> {
@@ -264,10 +263,9 @@ export async function verifyAgentAccessToken(
   if (payload.exp < now) {
     throw new Error("Agent token expired");
   }
-  if (payload.sub !== "group-controller" || payload.scope !== "agent:invoke") {
-    throw new Error("Invalid agent token scope");
+          if (payload.sub !== "memory-controller" || payload.scope !== "agent:invoke") {    throw new Error("Invalid agent token scope");
   }
-  if (expected?.group_id && expected.group_id !== payload.group_id) {
+  if (expected?.config_id && expected.config_id !== payload.config_id) {
     throw new Error("Agent token group mismatch");
   }
   if (expected?.agent_id && expected.agent_id !== payload.agent_id) {

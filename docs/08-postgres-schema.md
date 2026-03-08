@@ -29,8 +29,8 @@ This schema uses `group` as the canonical chat entity (`group == chat`).
 ## Runtime Routing
 
 ### `group_runtime`
-- Control-plane routing/runtime record keyed by `group_id`.
-- Stores `group_controller_id`, runtime status, activity timestamps, and region metadata.
+- Control-plane routing/runtime record keyed by `config_id`.
+- Stores `memory_controller_id`, runtime status, activity timestamps, and region metadata.
 
 ### `agent_runtimes`, `group_agent_runtimes`
 - Runtime tracking/association metadata for agent execution.

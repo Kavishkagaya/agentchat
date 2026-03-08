@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../client";
-import { groupMembers, orgMembers, orgs, users } from "../schema";
+import { configMembers, orgMembers, orgs, users } from "../schema";
 
 export interface SyncUserParams {
   clerkId: string;
@@ -188,10 +188,10 @@ export async function deleteOrg(clerkId: string) {
 
 export async function verifyUserInGroup(userId: string, groupId: string) {
   const db = getDb();
-  const member = await db.query.groupMembers.findFirst({
+  const member = await db.query.configMembers.findFirst({
     where: and(
-      eq(groupMembers.groupId, groupId),
-      eq(groupMembers.userId, userId)
+      eq(configMembers.groupId, groupId),
+      eq(configMembers.userId, userId)
     ),
   });
 

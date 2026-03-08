@@ -1,14 +1,14 @@
 ## 1. Orchestrator Auth And Activation
 
 - [x] 1.1 Enforce app-signed authentication on `POST /infra/groups` and `POST /infra/routing-token` with no state mutation on auth failure
-- [x] 1.2 Implement deterministic `group_controller_id` derivation from `group_id` and idempotent upsert of group runtime activation state
+- [x] 1.2 Implement deterministic `memory_controller_id` derivation from `config_id` and idempotent upsert of group runtime activation state
 - [x] 1.3 Extend group activation payload and validation to include `history_mode`, and forward it in Group Controller init
 - [x] 1.4 Enforce per-org active-group limits during activation with structured limit errors
 
 ## 2. Routing Token And Proxy Chain
 
-- [x] 2.1 Issue short-lived routing tokens with required claims (`user_id`, `group_id`, `role`, `exp`) and signature verification support
-- [x] 2.2 Validate routing token and requested `group_id` match before WS upgrade/proxy, rejecting mismatched or expired tokens
+- [x] 2.1 Issue short-lived routing tokens with required claims (`user_id`, `config_id`, `role`, `exp`) and signature verification support
+- [x] 2.2 Validate routing token and requested `config_id` match before WS upgrade/proxy, rejecting mismatched or expired tokens
 - [x] 2.3 Enforce strict runtime chain by rejecting direct, non-app-authenticated control-plane access paths
 - [x] 2.4 Add idempotent `POST /infra/cleanup` handling to transition runtime state on GC lifecycle callbacks
 

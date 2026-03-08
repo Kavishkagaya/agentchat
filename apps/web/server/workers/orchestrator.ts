@@ -1,18 +1,18 @@
 import { createAppInfraToken } from "@axon/shared";
 
 type GroupActivateRequest = {
-  group_id: string;
+  config_id: string;
   org_id: string;
   user_id: string;
   history_mode?: "internal" | "external";
 };
 
 type GroupActivateResponse = {
-  group_controller_id: string;
+  memory_controller_id: string;
 };
 
 type RoutingTokenRequest = {
-  group_id: string;
+  config_id: string;
   user_id: string;
 };
 
@@ -27,7 +27,7 @@ type OrchestratorClient = {
   getRoutingToken: (
     payload: RoutingTokenRequest
   ) => Promise<RoutingTokenResponse>;
-  getGroupHistory: (groupId: string, token: string) => Promise<any>;
+  getGroupHistory: (configId: string, token: string) => Promise<any>;
 };
 
 async function requestOrchestrator<T>(
@@ -100,9 +100,9 @@ export function getOrchestratorClient(): OrchestratorClient {
         {},
         { sub: payload.user_id }
       ),
-    getGroupHistory: (groupId, token) =>
+    getGroupHistory: (configId, token) =>
       requestOrchestrator<any>(
-        `/groups/${groupId}/history`,
+        `/groups/${configId}/history`,
         undefined,
         "GET",
         { "X-Routing-Token": token }

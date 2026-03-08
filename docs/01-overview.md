@@ -14,7 +14,7 @@ A group is the canonical long-lived chat unit (`group == chat`).
 
 1. Client connects to the app.
 2. App calls Orchestrator infra APIs with an app-signed token.
-3. Orchestrator activates/routs to deterministic Group Controller IDs from `group_id`.
+3. Orchestrator activates/routs to deterministic Group Controller IDs from `config_id`.
 4. App requests a short-lived routing token from Orchestrator.
 5. App proxies runtime traffic through Orchestrator to Group Controller.
 6. Group Controller calls Agents Worker per request using short-lived GC-signed agent-access tokens.
@@ -28,10 +28,10 @@ A group is the canonical long-lived chat unit (`group == chat`).
 ### User Routing Tokens
 - Orchestrator issues short-lived routing tokens with claims:
   - `user_id`
-  - `group_id`
+  - `config_id`
   - `role`
   - `exp`
-- Proxy routes validate signature, expiry, and `group_id` match before upgrade/forward.
+- Proxy routes validate signature, expiry, and `config_id` match before upgrade/forward.
 
 ### Group Controller -> Agents Worker Auth
 - Group Controller mints short-lived agent-access JWTs with static GC signing keys.
