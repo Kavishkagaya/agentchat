@@ -30,9 +30,9 @@ async function authorizeRequest(
     throw new Error("invalid authorization header");
   }
 
-  const expectedGroupId = request.headers.get("x-group-id") ?? undefined;
+  const expectedConfigId = request.headers.get("x-config-id") ?? undefined;
   return await verifyAgentAccessToken(env.GC_PUBLIC_KEY, token, {
-    group_id: expectedGroupId,
+    config_id: expectedConfigId,
     agent_id: requestedAgentId,
   });
 }
@@ -82,7 +82,7 @@ export async function handleAgentRun(
     JSON.stringify({
       ok: true,
       agent_id: record.agentId,
-      group_id: authPayload.group_id,
+      config_id: authPayload.config_id,
       runtime_id: body.runtime_id,
       role: "assistant",
       text: result.text,
@@ -165,7 +165,7 @@ export async function handleAgentRunStream(
       send("final", {
         ok: true,
         agent_id: record.agentId,
-        group_id: authPayload.group_id,
+        config_id: authPayload.config_id,
         runtime_id: body.runtime_id,
         role: "assistant",
         text: result.text,
@@ -264,7 +264,7 @@ export async function handleAgentRunDev(
   return Response.json({
     ok: true,
     agent_id: record.agentId,
-    group_id: null,
+    config_id: null,
     runtime_id: body.runtime_id,
     role: "assistant",
     text: result.text,

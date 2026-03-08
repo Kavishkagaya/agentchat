@@ -1,4 +1,4 @@
-import { initDb } from "@axon/database";
+import { initDb } from "@axon/worker-database";
 import { validateEnv } from "./env";
 import type { Env } from "./env";
 import { handleAgentRun, handleAgentRunDev, handleAgentRunStream } from "./handlers";

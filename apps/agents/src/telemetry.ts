@@ -1,4 +1,4 @@
-type CacheKind = "agent" | "provider" | "secret" | "mcp_server" | "mcp_tools";
+type CacheKind = "agent" | "provider" | "secret" | "mcp_server" | "mcp_tools" | "model";
 
 const cacheHits: Record<CacheKind, number> = {
   agent: 0,
@@ -6,6 +6,7 @@ const cacheHits: Record<CacheKind, number> = {
   secret: 0,
   mcp_server: 0,
   mcp_tools: 0,
+  model: 0,
 };
 
 const cacheMisses: Record<CacheKind, number> = {
@@ -14,6 +15,7 @@ const cacheMisses: Record<CacheKind, number> = {
   secret: 0,
   mcp_server: 0,
   mcp_tools: 0,
+  model: 0,
 };
 
 const resolutionTimings: Record<string, number[]> = {};

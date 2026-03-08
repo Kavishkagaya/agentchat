@@ -6,7 +6,7 @@ import {
   getMcpServer,
   getModel,
   getSecretValue,
-} from "@axon/database";
+} from "@axon/worker-database";
 import { TtlCache } from "./cache";
 import { readLatestVersion, readVersionedCache, writeVersionedCache } from "./cache-store";
 import { getTtlMs, type Env } from "./env";
@@ -72,7 +72,7 @@ async function loadModelCached(
 
   recordCacheMetric("model", false);
   const started = Date.now();
-  const model = await getModel({ orgId, id });
+  const model = await getModel({ orgId, providerId: id });
   if (!model) {
     recordResolutionMetric("model", Date.now() - started, false);
     return null;

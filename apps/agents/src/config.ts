@@ -1,8 +1,15 @@
-import { getDb, schema } from "@axon/database";
+import { getDb, schema } from "@axon/worker-database";
 import { eq } from "drizzle-orm";
+
+const { agentRuntimes, agents } = schema;
+
 import { TtlCache } from "./cache";
-import { readLatestVersion, readVersionedCache, writeVersionedCache } from "./cache-store";
-import { getTtlMs, type Env } from "./env";
+import {
+  readLatestVersion,
+  readVersionedCache,
+  writeVersionedCache,
+} from "./cache-store";
+import { type Env, getTtlMs } from "./env";
 import { recordCacheMetric, recordResolutionMetric } from "./telemetry";
 
 export type AgentConfigRecord = {
@@ -76,7 +83,7 @@ export async function loadAgentConfig(
   const started = Date.now();
   const db = getDb();
   const agent = await db.query.agents.findFirst({
-    where: eq(schema.agents.id, targetAgentId),
+    where: eq(agents.id, targetAgentId),
   });
   if (!agent) {
     recordResolutionMetric("agent", Date.now() - started, false);
@@ -92,7 +99,13 @@ export async function loadAgentConfig(
   };
   const version = record.updatedAt ?? new Date().toISOString();
   configCache.set(cacheKey, record, ttlMs, version);
-  await writeVersionedCache(env, cacheKey, version, record, Math.ceil(ttlMs / 1000));
+  await writeVersionedCache(
+    env,
+    cacheKey,
+    version,
+    record,
+    Math.ceil(ttlMs / 1000)
+  );
   recordResolutionMetric("agent", Date.now() - started, true);
   return record;
 }
