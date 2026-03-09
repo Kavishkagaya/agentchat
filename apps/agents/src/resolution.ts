@@ -1,15 +1,14 @@
+import type { AgentToolRef, ModelEnv } from "@axon/agent-factory";
+import { getMcpServer, getModel, getSecretValue } from "@axon/worker-database";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-
-import type { AgentToolRef, ModelEnv } from "@axon/agent-factory";
-import {
-  getMcpServer,
-  getModel,
-  getSecretValue,
-} from "@axon/worker-database";
 import { TtlCache } from "./cache";
-import { readLatestVersion, readVersionedCache, writeVersionedCache } from "./cache-store";
-import { getTtlMs, type Env } from "./env";
+import {
+  readLatestVersion,
+  readVersionedCache,
+  writeVersionedCache,
+} from "./cache-store";
+import { type Env, getTtlMs } from "./env";
 import { recordCacheMetric, recordResolutionMetric } from "./telemetry";
 
 const MAX_CACHE_ENTRIES = 500;
@@ -20,7 +19,6 @@ type ModelRecord = NonNullable<Awaited<ReturnType<typeof getModel>>>;
 type SecretRecord = NonNullable<Awaited<ReturnType<typeof getSecretValue>>>;
 
 type McpServerRecord = NonNullable<Awaited<ReturnType<typeof getMcpServer>>>;
-
 
 export type ResolvedMcpTool = {
   description?: string | null;
@@ -50,7 +48,7 @@ function resolveUpdatedAt(value: unknown) {
 async function loadModelCached(
   env: Env,
   orgId: string,
-  id: string
+  id: string,
 ): Promise<ModelRecord | null> {
   const cacheKey = `model:${id}`;
   const ttlMs = getTtlMs(env.AGENT_CONFIG_CACHE_TTL_SECONDS, DEFAULT_TTL_MS);
@@ -80,7 +78,13 @@ async function loadModelCached(
   const record: ModelRecord = model;
   const version = resolveUpdatedAt(model.updatedAt) ?? new Date().toISOString();
   modelCache.set(cacheKey, record, ttlMs, version);
-  await writeVersionedCache(env, cacheKey, version, record, Math.ceil(ttlMs / 1000));
+  await writeVersionedCache(
+    env,
+    cacheKey,
+    version,
+    record,
+    Math.ceil(ttlMs / 1000),
+  );
   recordResolutionMetric("model", Date.now() - started, true);
   return record;
 }
@@ -88,7 +92,7 @@ async function loadModelCached(
 async function loadSecretCached(
   env: Env,
   orgId: string,
-  secretId: string
+  secretId: string,
 ): Promise<SecretRecord | null> {
   const cacheKey = `secret:${secretId}`;
   const ttlMs = getTtlMs(env.AGENT_CONFIG_CACHE_TTL_SECONDS, DEFAULT_TTL_MS);
@@ -110,7 +114,11 @@ async function loadSecretCached(
 
   recordCacheMetric("secret", false);
   const started = Date.now();
-  const secret = await getSecretValue({ orgId, secretId, encryptionKey: env.SECRETS_ENCRYPTION_KEY });
+  const secret = await getSecretValue({
+    orgId,
+    secretId,
+    encryptionKey: env.SECRETS_ENCRYPTION_KEY,
+  });
   if (!secret) {
     recordResolutionMetric("secret", Date.now() - started, false);
     return null;
@@ -119,7 +127,13 @@ async function loadSecretCached(
   secretCache.set(cacheKey, secret, ttlMs, version);
   // NOTE: secret.value is already decrypted plaintext. L2 cache stores plaintext intentionally
   // for agent runtime performance. Do NOT call decryptSecretValue() on values read from cache.
-  await writeVersionedCache(env, cacheKey, version, secret, Math.ceil(ttlMs / 1000));
+  await writeVersionedCache(
+    env,
+    cacheKey,
+    version,
+    secret,
+    Math.ceil(ttlMs / 1000),
+  );
   recordResolutionMetric("secret", Date.now() - started, true);
   return secret;
 }
@@ -127,7 +141,7 @@ async function loadSecretCached(
 async function loadMcpServerCached(
   env: Env,
   orgId: string,
-  serverId: string
+  serverId: string,
 ): Promise<McpServerRecord | null> {
   const cacheKey = `mcp-server:${serverId}`;
   const ttlMs = getTtlMs(env.AGENT_CONFIG_CACHE_TTL_SECONDS, DEFAULT_TTL_MS);
@@ -160,7 +174,13 @@ async function loadMcpServerCached(
     resolveUpdatedAt(server.lastValidatedAt) ??
     new Date().toISOString();
   mcpServerCache.set(cacheKey, record, ttlMs, version);
-  await writeVersionedCache(env, cacheKey, version, record, Math.ceil(ttlMs / 1000));
+  await writeVersionedCache(
+    env,
+    cacheKey,
+    version,
+    record,
+    Math.ceil(ttlMs / 1000),
+  );
   recordResolutionMetric("mcp_server", Date.now() - started, true);
   return record;
 }
@@ -168,7 +188,14 @@ async function loadMcpServerCached(
 async function fetchMcpToolsLive(
   url: string,
   token: string,
-): Promise<Array<{ toolId: string; name: string; description: string | null; inputSchema: Record<string, unknown> | null }>> {
+): Promise<
+  Array<{
+    toolId: string;
+    name: string;
+    description: string | null;
+    inputSchema: Record<string, unknown> | null;
+  }>
+> {
   const client = new Client({ name: "AgentChat", version: "1.0.0" });
   const transport = new StreamableHTTPClientTransport(new URL(url), {
     requestInit: {
@@ -307,15 +334,12 @@ function resolveApiKeyEnvVar(kind: string | null | undefined): string {
 export async function resolveModelEnv(
   env: Env,
   orgId: string,
-  modelId?: string | null
-): Promise<{ modelEnv: ModelEnv; modelType?: string; modelId?: string }>{
-  let modelEnv: ModelEnv = {
-    OPENAI_API_KEY: env.OPENAI_API_KEY,
-    OPENAI_BASE_URL: env.OPENAI_BASE_URL,
-  };
+  modelId?: string | null,
+): Promise<{ modelEnv: ModelEnv; modelType?: string; modelId?: string }> {
+  let modelEnv: ModelEnv = {};
 
   if (!modelId) {
-    return { modelEnv };
+    throw new Error("modelId is required for agent execution");
   }
 
   const model = await loadModelCached(env, orgId, modelId);

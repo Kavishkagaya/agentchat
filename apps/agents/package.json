@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev src/index.ts",
+    "dev": "wrangler dev src/index.ts --port 8787",
     "deploy": "wrangler deploy",
     "lint": "biome lint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",

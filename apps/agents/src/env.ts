@@ -1,14 +1,20 @@
 export interface Env {
-  AGENT_CONFIG_CACHE_TTL_SECONDS?: string;
-  AGENTS_KV?: KVNamespace;
-  CLOUDFLARE_AIG_TOKEN?: string;
-  DATABASE_URL?: string;
   ENVIRONMENT: string;
-  GC_PUBLIC_KEY: string;
-  OPENAI_API_KEY?: string;
-  OPENAI_BASE_URL?: string;
+  DATABASE_URL: string;
+
+  // Cache Configuration
+  AGENTS_KV?: KVNamespace;
+  AGENT_CONFIG_CACHE_TTL_SECONDS?: string;
+
+  // Secrete keys and tokens
   ORCHESTRATOR_PUBLIC_KEY?: string;
+  GC_PUBLIC_KEY: string;
   SECRETS_ENCRYPTION_KEY: string;
+
+  // Cloudflare AIG integration
+  CLOUDFLARE_AIG_TOKEN: string;
+  CLOUDFLARE_AIG_ACCOUNT_ID: string;
+  CLOUDFLARE_AIG_GATEWAY_ID: string;
 }
 
 export function getTtlMs(value: string | undefined, fallbackMs: number) {
@@ -19,17 +25,48 @@ export function getTtlMs(value: string | undefined, fallbackMs: number) {
   return fallbackMs;
 }
 
-export function validateEnv(env: Env): void {
-  if (!env.GC_PUBLIC_KEY) {
-    throw new Error(
-      "Missing required env var: GC_PUBLIC_KEY. " +
-      "Set this to the base64-encoded Ed25519 public key of the Group Controller."
-    );
+const keyErrorMessage = (key: string) => {
+  switch (key) {
+    case "AGENT_CONFIG_CACHE_TTL_SECONDS":
+      return `Invalid ${key}: must be a positive number representing seconds.`;
+    case "ENVIRONMENT":
+      return `Invalid ${key}: must be one of "development", "staging", or "production".`;
+    case "GC_PUBLIC_KEY":
+      return `Invalid ${key}: must be a non-empty string.`;
+    case "SECRETS_ENCRYPTION_KEY":
+      return `Invalid ${key}: must be a non-empty string.`;
+    default:
+      return `Invalid ${key}`;
   }
-  if (!env.DATABASE_URL) {
-    throw new Error(
-      "Missing required env var: DATABASE_URL. " +
-      "Set this to the Postgres connection string."
-    );
+};
+
+export function validateEnv(env: Env): void {
+  const requiredKeys: (keyof Env)[] = [
+    "ENVIRONMENT",
+    "DATABASE_URL",
+    "GC_PUBLIC_KEY",
+    "SECRETS_ENCRYPTION_KEY",
+    "CLOUDFLARE_AIG_TOKEN",
+    "CLOUDFLARE_AIG_ACCOUNT_ID",
+    "CLOUDFLARE_AIG_GATEWAY_ID",
+  ];
+
+  for (const key of requiredKeys) {
+    const value = env[key];
+    if (typeof value !== "string" || value.trim() === "") {
+      throw new Error(keyErrorMessage(key));
+    }
+  }
+
+  const validEnvironments = ["development", "staging", "production"];
+  if (!validEnvironments.includes(env.ENVIRONMENT)) {
+    throw new Error(keyErrorMessage("ENVIRONMENT"));
+  }
+
+  if (
+    env.AGENT_CONFIG_CACHE_TTL_SECONDS !== undefined &&
+    getTtlMs(env.AGENT_CONFIG_CACHE_TTL_SECONDS, -1) <= 0
+  ) {
+    throw new Error(keyErrorMessage("AGENT_CONFIG_CACHE_TTL_SECONDS"));
   }
 }

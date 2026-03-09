@@ -18,6 +18,7 @@ export type AgentConfigRecord = {
   modelId?: string | null;
   orgId: string;
   updatedAt?: string;
+  agentName?: string;
 };
 
 const MAX_CACHE_ENTRIES = 500;
@@ -96,6 +97,7 @@ export async function loadAgentConfig(
     modelId: agent.modelId ?? null,
     orgId: agent.orgId,
     updatedAt: resolveUpdatedAt(agent.updatedAt),
+    agentName: agent.name,
   };
   const version = record.updatedAt ?? new Date().toISOString();
   configCache.set(cacheKey, record, ttlMs, version);

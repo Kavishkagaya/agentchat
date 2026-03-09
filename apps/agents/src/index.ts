@@ -1,15 +1,15 @@
 import { initDb } from "@axon/worker-database";
-import { validateEnv } from "./env";
 import type { Env } from "./env";
-import { handleAgentRun, handleAgentRunDev, handleAgentRunStream } from "./handlers";
+import { validateEnv } from "./env";
+import {
+  handleAgentRun,
+  handleAgentRunDev,
+  handleAgentRunDevStream,
+  handleAgentRunStream,
+} from "./handlers";
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    // Initialize database with worker env
-    if (env.DATABASE_URL) {
-      initDb(env.DATABASE_URL);
-    }
-
     try {
       validateEnv(env);
     } catch (error) {
@@ -17,12 +17,15 @@ export default {
         {
           ok: false,
           error:
-            error instanceof Error ? error.message : "invalid worker configuration",
+            error instanceof Error
+              ? error.message
+              : "invalid worker configuration",
         },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
+    initDb(env.DATABASE_URL);
     const url = new URL(request.url);
 
     if (url.pathname === "/health") {
@@ -42,7 +45,7 @@ export default {
             ok: false,
             error: error instanceof Error ? error.message : "agent error",
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
     }
@@ -53,6 +56,10 @@ export default {
 
     if (request.method === "POST" && url.pathname === "/agents/run-dev") {
       return handleAgentRunDev(request, env);
+    }
+
+    if (request.method === "POST" && url.pathname === "/agents/run-dev-stream") {
+      return handleAgentRunDevStream(request, env);
     }
 
     return new Response("Not Found", { status: 404 });
