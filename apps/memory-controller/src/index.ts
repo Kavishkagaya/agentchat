@@ -1,7 +1,6 @@
 import { getDb, initDb, schema } from "@axon/worker-database";
 import { eq } from "drizzle-orm";
-import { MultiAgentHandler } from "./multi/handler";
-import { SingleAgentHandler } from "./single/handler";
+import { ChatHandler } from "./chat/handler";
 import { WorkflowHandler } from "./workflow/handler";
 
 export interface Env {
@@ -15,7 +14,7 @@ export interface Env {
 
 type InitRequest = {
   config_id: string;
-  type: "single" | "multi" | "workflow";
+  type: "chat" | "workflow";
   org_id?: string;
   config?: any;
 };
@@ -46,15 +45,15 @@ function hasOrchestratorToken(request: Request, env: Env) {
 function pathSuffix(pathname: string): string {
   const chatsPrefix = /^\/chats\/[^/]+/;
   const devPrefix = /^\/dev\/[^/]+/;
+  let stripped = pathname;
   if (chatsPrefix.test(pathname)) {
-    const stripped = pathname.replace(chatsPrefix, "");
-    return stripped.length > 0 ? stripped : "/";
+    stripped = pathname.replace(chatsPrefix, "");
+  } else if (devPrefix.test(pathname)) {
+    stripped = pathname.replace(devPrefix, "");
   }
-  if (devPrefix.test(pathname)) {
-    const stripped = pathname.replace(devPrefix, "");
-    return stripped.length > 0 ? stripped : "/";
-  }
-  return pathname;
+  // Normalize: remove trailing slash and ensure it starts with /
+  stripped = stripped.replace(/\/$/, "");
+  return stripped.length > 0 ? stripped : "/";
 }
 
 import { DurableObject } from "cloudflare:workers";
@@ -152,7 +151,7 @@ export class MemoryController extends DurableObject<Env> {
               // If not, we'll need to decide how to map groups to types.
               // For legacy compatibility, maybe we check the config for clues.
               type =
-                (config as any)?.type || (config as any)?.topology || "single";
+                (config as any)?.type || (config as any)?.topology || "chat";
             } else {
               return json(
                 { ok: false, error: "configuration not found in database" },
@@ -183,11 +182,8 @@ export class MemoryController extends DurableObject<Env> {
       if (config) await this.ctx.storage.put("config", config);
 
       // Enforce schema upon initialization
-      if (type === "single") {
-        const handler = new SingleAgentHandler(this.ctx, this.env);
-        await handler.ensureSchema();
-      } else if (type === "multi") {
-        const handler = new MultiAgentHandler(this.ctx, this.env);
+      if (type === "chat") {
+        const handler = new ChatHandler(this.ctx, this.env);
         await handler.ensureSchema();
       } else if (type === "workflow") {
         const handler = new WorkflowHandler(this.ctx, this.env);
@@ -201,25 +197,31 @@ export class MemoryController extends DurableObject<Env> {
     const type = await this.ctx.storage.get("type");
     if (!type) {
       return json(
-        { ok: false, error: "memory controller not initialized" },
+        { ok: false, error: "memory controller not initialized", type: type },
         409,
       );
     }
 
-    // Delegate to specific handlers
-    if (type === "single") {
-      const handler = new SingleAgentHandler(this.ctx, this.env);
-      return handler.handle(request, route);
-    }
+    try {
+      // Delegate to specific handlers
+      if (type === "chat") {
+        const handler = new ChatHandler(this.ctx, this.env);
+        return await handler.handle(request, route);
+      }
 
-    if (type === "multi") {
-      const handler = new MultiAgentHandler(this.ctx, this.env);
-      return handler.handle(request, route);
-    }
-
-    if (type === "workflow") {
-      const handler = new WorkflowHandler(this.ctx, this.env);
-      return handler.handle(request, route);
+      if (type === "workflow") {
+        const handler = new WorkflowHandler(this.ctx, this.env);
+        return await handler.handle(request, route);
+      }
+    } catch (err) {
+      console.error("Handler error:", err);
+      return json(
+        {
+          ok: false,
+          error: err instanceof Error ? err.message : "internal handler error",
+        },
+        500,
+      );
     }
 
     return new Response("Not Found", { status: 404 });

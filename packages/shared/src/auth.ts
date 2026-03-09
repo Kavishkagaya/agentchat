@@ -53,7 +53,7 @@ export async function generateKeyPair(): Promise<KeyPair> {
   const keyPair = (await cryptoAPI.subtle.generateKey(
     { name: "Ed25519" },
     true,
-    ["sign", "verify"]
+    ["sign", "verify"],
   )) as CryptoKeyPair;
 
   const pubBuf = await cryptoAPI.subtle.exportKey("spki", keyPair.publicKey);
@@ -70,13 +70,13 @@ export async function generateKeyPair(): Promise<KeyPair> {
  */
 export async function sign(
   privateKeyBase64: string,
-  data: string
+  data: string,
 ): Promise<string> {
   const key = await importPrivateKey(privateKeyBase64);
   const buf = await cryptoAPI.subtle.sign(
     "Ed25519",
     key,
-    new TextEncoder().encode(data)
+    new TextEncoder().encode(data),
   );
   return arrayBufferToBase64(buf);
 }
@@ -87,7 +87,7 @@ export async function sign(
 export async function verify(
   publicKeyBase64: string,
   data: string,
-  signatureBase64: string
+  signatureBase64: string,
 ): Promise<boolean> {
   const key = await importPublicKey(publicKeyBase64);
   const sigBuf = base64ToArrayBuffer(signatureBase64);
@@ -95,7 +95,7 @@ export async function verify(
     "Ed25519",
     key,
     sigBuf,
-    new TextEncoder().encode(data)
+    new TextEncoder().encode(data),
   );
 }
 
@@ -106,7 +106,7 @@ export async function createRoutingToken(
   userId: string,
   configId: string,
   role: string,
-  expiresInSeconds = 300 // Short lived (5 mins)
+  expiresInSeconds = 300, // Short lived (5 mins)
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const payload: RoutingTokenPayload = {
@@ -125,7 +125,7 @@ export async function createRoutingToken(
 
 export async function verifyRoutingToken(
   orchestratorPublicKey: string,
-  token: string
+  token: string,
 ): Promise<RoutingTokenPayload> {
   const [encodedPayload, signature] = token.split(".");
   if (!(encodedPayload && signature)) {
@@ -135,7 +135,7 @@ export async function verifyRoutingToken(
   const isValid = await verify(
     orchestratorPublicKey,
     encodedPayload,
-    signature
+    signature,
   );
   if (!isValid) {
     throw new Error("Invalid token signature");
@@ -161,7 +161,7 @@ export async function createAppInfraToken(
     org_id?: string;
     sub: string;
   },
-  expiresInSeconds = 60
+  expiresInSeconds = 60,
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const payload: AppInfraTokenPayload = {
@@ -186,7 +186,7 @@ export async function verifyAppInfraToken(
   expected: {
     method: string;
     path: string;
-  }
+  },
 ): Promise<AppInfraTokenPayload> {
   const [encodedPayload, signature] = token.split(".");
   if (!(encodedPayload && signature)) {
@@ -225,11 +225,12 @@ export async function createAgentAccessToken(
     org_id: string;
     scope?: "agent:invoke";
   },
-  expiresInSeconds = 60
+  expiresInSeconds = 60,
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const payload: AgentAccessTokenPayload = {
-              sub: "memory-controller",    scope: claims.scope ?? "agent:invoke",
+    sub: "memory-controller",
+    scope: claims.scope ?? "agent:invoke",
     agent_id: claims.agent_id,
     config_id: claims.config_id,
     org_id: claims.org_id,
@@ -248,7 +249,7 @@ export async function verifyAgentAccessToken(
   expected?: {
     config_id?: string;
     agent_id?: string;
-  }
+  },
 ): Promise<AgentAccessTokenPayload> {
   const [encodedPayload, signature] = token.split(".");
   if (!(encodedPayload && signature)) {
@@ -263,7 +264,8 @@ export async function verifyAgentAccessToken(
   if (payload.exp < now) {
     throw new Error("Agent token expired");
   }
-          if (payload.sub !== "memory-controller" || payload.scope !== "agent:invoke") {    throw new Error("Invalid agent token scope");
+  if (payload.sub !== "memory-controller" || payload.scope !== "agent:invoke") {
+    throw new Error("Invalid agent token scope");
   }
   if (expected?.config_id && expected.config_id !== payload.config_id) {
     throw new Error("Agent token group mismatch");
@@ -282,7 +284,7 @@ async function importPrivateKey(base64: string): Promise<CryptoKey> {
     base64ToArrayBuffer(base64),
     { name: "Ed25519" },
     false,
-    ["sign"]
+    ["sign"],
   );
 }
 
@@ -292,7 +294,7 @@ async function importPublicKey(base64: string): Promise<CryptoKey> {
     base64ToArrayBuffer(base64),
     { name: "Ed25519" },
     false,
-    ["verify"]
+    ["verify"],
   );
 }
 

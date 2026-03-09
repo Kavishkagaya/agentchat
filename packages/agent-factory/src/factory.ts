@@ -112,11 +112,7 @@ export function createAgentRunner(params: {
         messages,
       });
 
-      return {
-        text: result.text,
-        finish_reason: result.finishReason,
-        usage: result.usage,
-      };
+      return result;
     },
   };
 }

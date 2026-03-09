@@ -29,11 +29,10 @@ export type AgentRunInput = {
   messages?: ModelMessage[];
 };
 
-export type AgentRunResult = {
-  text: string;
-  finish_reason?: string;
-  usage?: unknown;
-};
+import type { ModelMessage, ToolLoopAgent } from "ai";
+import type { ZodTypeAny } from "zod";
+
+export type AgentRunResult = Awaited<ReturnType<InstanceType<typeof ToolLoopAgent>["generate"]>>;
 
 export type ModelEnv = Record<string, string | undefined>;
 
