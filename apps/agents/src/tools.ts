@@ -34,7 +34,7 @@ async function invokeMcpTool(tool: ResolvedMcpTool, args: unknown) {
     return {
       ok: true,
       tool: tool.id,
-      data: result.content?.[0]?.text ?? result,
+      data: (result.content as any)?.[0]?.text ?? result,
     };
   } finally {
     await transport.close();

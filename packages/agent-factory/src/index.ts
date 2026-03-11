@@ -8,6 +8,7 @@ export type {
   AgentFactoryOptions,
   AgentRunInput,
   AgentRunResult,
+  AgentStreamEvent,
   AgentToolRef,
   ModelAdapter,
   ModelEnv,

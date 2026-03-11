@@ -29,8 +29,7 @@ export type AgentRunInput = {
   messages?: ModelMessage[];
 };
 
-import type { ModelMessage, ToolLoopAgent } from "ai";
-import type { ZodTypeAny } from "zod";
+import type { ToolLoopAgent } from "ai";
 
 export type AgentRunResult = Awaited<ReturnType<InstanceType<typeof ToolLoopAgent>["generate"]>>;
 
@@ -61,3 +60,12 @@ export type AgentFactoryOptions = {
   maxSteps?: number;
   onToolCall?: (toolId: string, args: unknown, toolName?: string) => void;
 };
+
+export type AgentStreamEvent =
+  | { type: "text_delta"; text: string }
+  | { type: "reasoning"; text: string }
+  | { type: "tool_call"; tool_call_id: string; name: string; args: unknown }
+  | { type: "tool_result"; tool_call_id: string; name: string; result: unknown }
+  | { type: "step_finish"; finish_reason: string; usage: unknown }
+  | { type: "error"; error: string }
+  | { type: "final"; text: string; usage: unknown; finish_reason: string };

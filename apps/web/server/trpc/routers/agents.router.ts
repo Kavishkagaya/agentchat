@@ -42,7 +42,7 @@ export const agentsRouter = createTRPCRouter({
 
   listPublic: orgProcedure.query(async () => {
     const agents = await getPublicAgents();
-    return agents.map((agent) => ({
+    return agents.map((agent: any) => ({
       id: agent.id,
       name: agent.name,
       description: agent.description,
@@ -83,7 +83,7 @@ export const agentsRouter = createTRPCRouter({
           ...input.config,
           model: model.modelId,
         },
-        createdBy: ctx.auth.userId,
+        createdBy: ctx.auth.userId as string,
       });
       return result;
     }),
@@ -128,7 +128,7 @@ export const agentsRouter = createTRPCRouter({
       return await publishAgent({
         orgId: ctx.auth.orgId,
         agentId: input.agentId,
-        createdBy: ctx.auth.userId,
+        createdBy: ctx.auth.userId as string,
       });
     }),
 
@@ -138,7 +138,7 @@ export const agentsRouter = createTRPCRouter({
       return await copyPublicAgent({
         orgId: ctx.auth.orgId,
         agentId: input.agentId,
-        createdBy: ctx.auth.userId,
+        createdBy: ctx.auth.userId as string,
       });
     }),
 });

@@ -110,6 +110,9 @@ importers:
       '@axon/shared':
         specifier: workspace:^
         version: link:../../packages/shared
+      '@axon/worker-database':
+        specifier: workspace:*
+        version: link:../../packages/worker-database
       '@neondatabase/serverless':
         specifier: 0.10.4
         version: 0.10.4

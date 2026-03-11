@@ -1,19 +1,25 @@
 import {
-  countOrgActiveGroups,
-  getGroupRuntime,
-  initializeGroupRuntime,
-  listGroupsForAutoArchive,
-  markGroupArchived,
-  recordGroupArchive,
-  touchGroupActivity,
-  updateGroupRuntimeStatus,
-} from "@axon/database";
-import { createRoutingToken, verifyAppInfraToken, verifyRoutingToken } from "@axon/shared";
+  countOrgActiveChats,
+  deleteChatRuntime,
+  getChatRuntime,
+  initDb,
+  initializeChatRuntime,
+  markChatArchived,
+  recordChatArchive,
+  touchChatActivity,
+  updateChatRuntimeStatus,
+} from "@axon/worker-database";
+import {
+  createRoutingToken,
+  sign,
+  verifyAppInfraToken,
+  verifyRoutingToken,
+} from "@axon/shared";
 import type { Env } from "./env";
 
 type HistoryMode = "internal" | "external";
 
-interface GroupActivateRequest {
+interface ChatActivateRequest {
   config_id: string;
   history_mode?: HistoryMode;
   org_id: string;
@@ -30,7 +36,7 @@ interface CleanupRequest {
   status?: "active" | "idle" | "archived";
 }
 
-interface GroupArchiveResponse {
+interface ChatArchiveResponse {
   ok: boolean;
   snapshot?: Record<string, unknown>;
 }
@@ -42,7 +48,11 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
-function errorResponse(status: number, code: string, message: string): Response {
+function errorResponse(
+  status: number,
+  code: string,
+  message: string,
+): Response {
   return json(
     {
       ok: false,
@@ -51,7 +61,7 @@ function errorResponse(status: number, code: string, message: string): Response 
         message,
       },
     },
-    status
+    status,
   );
 }
 
@@ -95,130 +105,116 @@ function parseCleanupStatus(value: unknown): "active" | "archived" | "idle" {
 async function requireAppSignature(
   request: Request,
   env: Env,
-  path: string
+  path: string,
 ): Promise<void> {
   const token = getBearerToken(request);
-  await verifyAppInfraToken(env.APP_PUBLIC_KEY, token, {
-    method: request.method,
-    path,
-  });
+  await verifyAppInfraToken(env.APP_PUBLIC_KEY, token, { method: request.method, path });
 }
 
-function resolveActiveGroupLimit(env: Env) {
-  const configured = Number(env.MAX_ACTIVE_GROUPS_PER_ORG);
-  return Number.isFinite(configured) && configured > 0 ? configured : 25;
-}
-
-function createMemoryControllerHeaders(env: Env, headers?: HeadersInit) {
-  const next = new Headers(headers);
-  if (env.GC_SERVICE_TOKEN) {
-    next.set("x-orchestrator-service-token", env.GC_SERVICE_TOKEN);
-  }
-  return next;
-}
-
-function archiveR2Path(configId: string, at: Date) {
-  return `groups/${configId}/archives/${at.toISOString()}.json`;
-}
-
-async function archiveGroup(
+async function createMemoryControllerHeaders(
   env: Env,
-  configId: string,
-  reason: "manual" | "auto"
-): Promise<void> {
-  const archivedAt = new Date();
-  const id = env.MEMORY_CONTROLLER.idFromName(configId);
-  const stub = env.MEMORY_CONTROLLER.get(id);
-  const res = await stub.fetch("http://internal/archive", {
-    method: "POST",
-    headers: createMemoryControllerHeaders(env, {
-      "content-type": "application/json",
-    }),
-    body: JSON.stringify({ reason }),
-  });
-
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`group archive failed: ${res.status} ${body}`);
+  extra: Record<string, string | null> = {},
+): Promise<Headers> {
+  const headers = new Headers();
+  const now = Math.floor(Date.now() / 1000);
+  const payload = {
+    sub: "orchestrator",
+    iat: now,
+    exp: now + 60,
+    jti: crypto.randomUUID(),
+  };
+  const encodedPayload = btoa(JSON.stringify(payload));
+  const signature = await sign(env.ORCHESTRATOR_PRIVATE_KEY, encodedPayload);
+  headers.set("Authorization", `Bearer ${encodedPayload}.${signature}`);
+  for (const [key, value] of Object.entries(extra)) {
+    if (value) headers.set(key, value);
   }
+  return headers;
+}
 
-  const archivePayload = (await res.json()) as GroupArchiveResponse;
-  if (!archivePayload.ok || !archivePayload.snapshot) {
-    throw new Error("group archive failed: missing snapshot payload");
+function parseConfigId(pathname: string, prefix: string) {
+  const parts = pathname.split("/");
+  const idx = parts.indexOf(prefix.replace(/\//g, ""));
+  if (idx !== -1 && parts.length > idx + 1) {
+    return parts[idx + 1];
   }
-
-  const snapshotBody = JSON.stringify(archivePayload.snapshot);
-  const key = archiveR2Path(configId, archivedAt);
-  await env.ARCHIVES_BUCKET.put(key, snapshotBody, {
-    httpMetadata: {
-      contentType: "application/json",
-    },
-  });
-
-  await recordGroupArchive({
-    groupId: configId,
-    r2Path: key,
-    sizeBytes: snapshotBody.length,
-    at: archivedAt,
-  });
-  await markGroupArchived(configId);
+  return null;
 }
 
 export async function handleRequest(
   request: Request,
-  env: Env
+  env: Env,
 ): Promise<Response> {
-  const url = new URL(request.url);
-
-  if (url.pathname === "/health") {
-    return json({ ok: true, service: "orchestrator", env: env.ENVIRONMENT });
+  if (env.NEON_DATABASE_URL) {
+    initDb(env.NEON_DATABASE_URL);
   }
 
-  if (request.method === "POST" && url.pathname === "/infra/groups") {
+  const url = new URL(request.url);
+
+  if (request.method === "GET" && url.pathname === "/health") {
+    return json({ ok: true, service: "orchestrator" });
+  }
+
+  // Dev Routes (Only available in development)
+  if (env.ENVIRONMENT === "dev" && url.pathname.startsWith("/dev/")) {
+    const configId = parseConfigId(url.pathname, "dev");
+    if (!configId)
+      return new Response("Missing configId in /dev route", { status: 400 });
+
+    const id = env.MEMORY_CONTROLLER.idFromName(configId);
+    const stub = env.MEMORY_CONTROLLER.get(id);
+
+    return stub.fetch(request);
+  }
+
+  // --- INFRA ROUTES (Server-to-Server) ---
+
+  if (request.method === "POST" && url.pathname === "/infra/chats") {
     try {
-      await requireAppSignature(request, env, "/infra/groups");
+      await requireAppSignature(request, env, "/infra/chats");
     } catch (error) {
       return errorResponse(
         401,
         "unauthorized",
-        error instanceof Error ? error.message : "invalid authentication"
+        error instanceof Error ? error.message : "invalid authentication",
       );
     }
 
     try {
-      const body = await readJson<GroupActivateRequest>(request);
+      const body = await readJson<ChatActivateRequest>(request);
       const configId = requireString(body.config_id, "config_id");
       const orgId = requireString(body.org_id, "org_id");
-      const historyMode: HistoryMode =
-        body.history_mode === "external" ? "external" : "internal";
+      const historyMode = body.history_mode ?? "internal";
 
-      const existing = await getGroupRuntime(configId);
-      const activeCount = await countOrgActiveGroups(orgId, configId);
-      const activeLimit = resolveActiveGroupLimit(env);
+      const activeLimit = Number(env.ORG_ACTIVE_GROUP_LIMIT ?? "5");
+      const activeCount = await countOrgActiveChats(orgId, configId);
+      const existingRuntime = await getChatRuntime(configId);
       const alreadyActive =
-        existing?.status === "active" || existing?.status === "idle";
+        existingRuntime && existingRuntime.status !== "archived";
 
       if (!alreadyActive && activeCount >= activeLimit) {
         return errorResponse(
           429,
-          "active_group_limit_exceeded",
-          `org reached active group limit (${activeLimit})`
+          "active_chat_limit_exceeded",
+          `org reached active chat limit (${activeLimit})`,
         );
       }
 
       const doId = env.MEMORY_CONTROLLER.idFromName(configId);
       const doIdString = doId.toString();
-      await initializeGroupRuntime(configId, doIdString, null);
+      await initializeChatRuntime(configId, doIdString, null);
 
       const stub = env.MEMORY_CONTROLLER.get(doId);
-      const initResponse = await stub.fetch("http://internal/init", {
+      const initHeaders = await createMemoryControllerHeaders(env, {
+        "content-type": "application/json",
+      });
+      const initResponse = await stub.fetch("http://internal/chats/init", {
         method: "POST",
-        headers: createMemoryControllerHeaders(env, {
-          "content-type": "application/json",
-        }),
+        headers: initHeaders,
         body: JSON.stringify({
           config_id: configId,
           org_id: orgId,
+          type: "chat",
           history_mode: historyMode,
         }),
       });
@@ -228,11 +224,11 @@ export async function handleRequest(
         return errorResponse(
           502,
           "memory_controller_init_failed",
-          bodyText || "failed to initialize group controller"
+          bodyText || "failed to initialize chat controller",
         );
       }
 
-      await touchGroupActivity(configId);
+      await touchChatActivity(configId);
 
       return json({
         ok: true,
@@ -243,7 +239,7 @@ export async function handleRequest(
       return errorResponse(
         400,
         "invalid_request",
-        error instanceof Error ? error.message : "invalid request"
+        error instanceof Error ? error.message : "invalid request",
       );
     }
   }
@@ -255,7 +251,7 @@ export async function handleRequest(
       return errorResponse(
         401,
         "unauthorized",
-        error instanceof Error ? error.message : "invalid authentication"
+        error instanceof Error ? error.message : "invalid authentication",
       );
     }
 
@@ -269,7 +265,7 @@ export async function handleRequest(
         env.ORCHESTRATOR_PRIVATE_KEY,
         userId,
         configId,
-        role
+        role,
       );
 
       return json({ ok: true, routing_token: token });
@@ -277,20 +273,20 @@ export async function handleRequest(
       return errorResponse(
         400,
         "invalid_request",
-        error instanceof Error ? error.message : "invalid request"
+        error instanceof Error ? error.message : "invalid request",
       );
     }
   }
 
   if (
     request.method === "POST" &&
-    url.pathname.startsWith("/infra/groups/") &&
+    url.pathname.startsWith("/infra/chats/") &&
     url.pathname.endsWith("/archive")
   ) {
     const parts = url.pathname.split("/").filter(Boolean);
     const configId = parts[2];
     if (!configId) {
-      return errorResponse(400, "invalid_request", "missing group id");
+      return errorResponse(400, "invalid_request", "missing chat id");
     }
 
     try {
@@ -299,30 +295,117 @@ export async function handleRequest(
       return errorResponse(
         401,
         "unauthorized",
-        error instanceof Error ? error.message : "invalid authentication"
+        error instanceof Error ? error.message : "invalid authentication",
       );
     }
 
     try {
-      await archiveGroup(env, configId, "manual");
-      return json({ ok: true, config_id: configId, status: "archived" });
+      const doId = env.MEMORY_CONTROLLER.idFromName(configId);
+      const stub = env.MEMORY_CONTROLLER.get(doId);
+
+      const archiveHeaders = await createMemoryControllerHeaders(env);
+      const archiveRequest = new Request(
+        `http://internal/chats/${configId}/archive`,
+        {
+          method: "POST",
+          headers: archiveHeaders,
+        },
+      );
+
+      const res = await stub.fetch(archiveRequest);
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+
+      const body = await res.json<ChatArchiveResponse>();
+      if (!body.snapshot) {
+        throw new Error("missing snapshot in archive response");
+      }
+
+      const snapshotKey = `chats/${configId}/archives/${Date.now()}.json`;
+      await env.ARCHIVES_BUCKET.put(snapshotKey, JSON.stringify(body.snapshot));
+
+      await recordChatArchive({
+        chatId: configId,
+        r2Path: snapshotKey,
+        sizeBytes: JSON.stringify(body.snapshot).length,
+      });
+
+      await markChatArchived(configId);
+
+      return json({ ok: true, r2_path: snapshotKey });
     } catch (error) {
       return errorResponse(
         500,
         "archive_failed",
-        error instanceof Error ? error.message : "archive failed"
+        error instanceof Error ? error.message : "archive failed",
       );
     }
   }
 
-  if (request.method === "POST" && url.pathname === "/infra/cleanup") {
+  // DELETE /infra/chats/:id — destroy DO + delete all DB records
+  if (
+    request.method === "DELETE" &&
+    url.pathname.startsWith("/infra/chats/") &&
+    !url.pathname.endsWith("/archive") &&
+    !url.pathname.endsWith("/history")
+  ) {
+    const parts = url.pathname.split("/").filter(Boolean);
+    const configId = parts[2];
+    if (!configId) {
+      return errorResponse(400, "invalid_request", "missing chat id");
+    }
+
     try {
-      await requireAppSignature(request, env, "/infra/cleanup");
+      await requireAppSignature(request, env, url.pathname);
     } catch (error) {
       return errorResponse(
         401,
         "unauthorized",
-        error instanceof Error ? error.message : "invalid authentication"
+        error instanceof Error ? error.message : "invalid authentication",
+      );
+    }
+
+    try {
+      // 1. Destroy DO SQLite + storage
+      const doId = env.MEMORY_CONTROLLER.idFromName(configId);
+      const stub = env.MEMORY_CONTROLLER.get(doId);
+      const destroyHeaders = await createMemoryControllerHeaders(env);
+      const destroyRequest = new Request(
+        `http://internal/chats/${configId}/destroy`,
+        {
+          method: "POST",
+          headers: destroyHeaders,
+        },
+      );
+      const res = await stub.fetch(destroyRequest);
+      if (!res.ok) {
+        const text = await res.text();
+        console.error("DO destroy failed:", text);
+        // Continue with DB cleanup even if DO destroy fails
+      }
+
+      // 2. Delete all DB records
+      await deleteChatRuntime(configId);
+
+      return json({ ok: true });
+    } catch (error) {
+      return errorResponse(
+        500,
+        "delete_failed",
+        error instanceof Error ? error.message : "delete failed",
+      );
+    }
+  }
+
+  if (request.method === "POST" && url.pathname === "/infra/chats/cleanup") {
+    try {
+      await requireAppSignature(request, env, "/infra/chats/cleanup");
+    } catch (error) {
+      return errorResponse(
+        401,
+        "unauthorized",
+        error instanceof Error ? error.message : "invalid authentication",
       );
     }
 
@@ -331,35 +414,64 @@ export async function handleRequest(
       const configId = requireString(body.config_id, "config_id");
       const status = parseCleanupStatus(body.status);
 
-      await updateGroupRuntimeStatus(configId, status);
+      await updateChatRuntimeStatus(configId, status);
 
       return json({ ok: true, config_id: configId, status });
     } catch (error) {
       return errorResponse(
         400,
         "cleanup_failed",
-        error instanceof Error ? error.message : "cleanup request failed"
+        error instanceof Error ? error.message : "cleanup request failed",
       );
     }
   }
 
-  if (url.pathname.startsWith("/groups/") && url.pathname.endsWith("/ws")) {
-    const configId = url.pathname.split("/")[2];
+  // GET /infra/chats/:id/history — server-to-server history fetch
+  if (
+    request.method === "GET" &&
+    url.pathname.match(/^\/infra\/chats\/[^/]+\/history$/)
+  ) {
+    const parts = url.pathname.split("/").filter(Boolean);
+    const configId = parts[2];
     if (!configId) {
-      return new Response("Invalid group id", { status: 400 });
+      return errorResponse(400, "invalid_request", "missing chat id");
     }
 
     try {
       await requireAppSignature(request, env, url.pathname);
     } catch (error) {
-      return new Response(
-        error instanceof Error ? error.message : "Unauthorized",
-        { status: 401 }
+      return errorResponse(
+        401,
+        "unauthorized",
+        error instanceof Error ? error.message : "invalid authentication",
       );
     }
 
+    const doId = env.MEMORY_CONTROLLER.idFromName(configId);
+    const stub = env.MEMORY_CONTROLLER.get(doId);
+
+    const queryString = url.search;
+    const historyHeaders = await createMemoryControllerHeaders(env);
+    const forwardRequest = new Request(
+      `http://internal/chats/${configId}/messages${queryString}`,
+      {
+        method: "GET",
+        headers: historyHeaders,
+      },
+    );
+    return stub.fetch(forwardRequest);
+  }
+
+  // --- CLIENT ROUTES (User/Browser) ---
+
+  if (url.pathname.startsWith("/chats/") && url.pathname.endsWith("/ws")) {
+    const configId = url.pathname.split("/")[2];
+    if (!configId) {
+      return new Response("Invalid chat id", { status: 400 });
+    }
+
     const token =
-      request.headers.get("x-routing-token") ?? url.searchParams.get("token");
+      url.searchParams.get("token") ?? request.headers.get("x-routing-token");
     if (!token) {
       return new Response("Missing routing token", { status: 401 });
     }
@@ -372,39 +484,83 @@ export async function handleRequest(
     }
 
     if (payload.config_id !== configId) {
-      return new Response("Routing token group mismatch", { status: 403 });
+      return new Response("Routing token chat mismatch", { status: 403 });
     }
 
     if (request.headers.get("Upgrade") !== "websocket") {
       return new Response("Expected Upgrade: websocket", { status: 426 });
     }
 
-    await touchGroupActivity(configId);
+    await touchChatActivity(configId);
     const doId = env.MEMORY_CONTROLLER.idFromName(configId);
     const stub = env.MEMORY_CONTROLLER.get(doId);
-    const forwardRequest = new Request(request, {
-      headers: createMemoryControllerHeaders(env, request.headers),
-    });
+
+    // Preserve original request's WebSocket upgrade semantics and overlay auth headers
+    const authHeaders = await createMemoryControllerHeaders(env);
+    const forwardHeaders = new Headers(request.headers);
+    for (const [key, value] of authHeaders.entries()) {
+      forwardHeaders.set(key, value);
+    }
+
+    const forwardRequest = new Request(
+      `http://internal/chats/${configId}/ws`,
+      {
+        method: "GET",
+        headers: forwardHeaders,
+      },
+    );
     return stub.fetch(forwardRequest);
   }
 
   if (
     request.method === "GET" &&
-    url.pathname.startsWith("/groups/") &&
+    url.pathname.startsWith("/chats/") &&
     url.pathname.endsWith("/history")
   ) {
     const configId = url.pathname.split("/")[2];
     if (!configId) {
-      return new Response("Invalid group id", { status: 400 });
+      return new Response("Invalid chat id", { status: 400 });
     }
 
+    const token =
+      url.searchParams.get("token") ?? request.headers.get("x-routing-token");
+    if (!token) {
+      return new Response("Missing routing token", { status: 401 });
+    }
+
+    let payload: Awaited<ReturnType<typeof verifyRoutingToken>>;
     try {
-      await requireAppSignature(request, env, url.pathname);
-    } catch (error) {
-      return new Response(
-        error instanceof Error ? error.message : "Unauthorized",
-        { status: 401 }
-      );
+      payload = await verifyRoutingToken(env.ORCHESTRATOR_PUBLIC_KEY, token);
+    } catch {
+      return new Response("Invalid routing token", { status: 403 });
+    }
+
+    if (payload.config_id !== configId) {
+      return new Response("Routing token chat mismatch", { status: 403 });
+    }
+
+    await touchChatActivity(configId);
+    const doId = env.MEMORY_CONTROLLER.idFromName(configId);
+    const stub = env.MEMORY_CONTROLLER.get(doId);
+    const clientHistoryHeaders = await createMemoryControllerHeaders(env);
+    const forwardRequest = new Request(
+      `http://internal/chats/${configId}/messages${url.search}`,
+      {
+        method: "GET",
+        headers: clientHistoryHeaders,
+      },
+    );
+    return stub.fetch(forwardRequest);
+  }
+
+  if (
+    request.method === "POST" &&
+    url.pathname.startsWith("/chats/") &&
+    url.pathname.endsWith("/messages")
+  ) {
+    const configId = url.pathname.split("/")[2];
+    if (!configId) {
+      return new Response("Invalid chat id", { status: 400 });
     }
 
     const token =
@@ -421,15 +577,24 @@ export async function handleRequest(
     }
 
     if (payload.config_id !== configId) {
-      return new Response("Routing token group mismatch", { status: 403 });
+      return new Response("Routing token chat mismatch", { status: 403 });
     }
 
-    await touchGroupActivity(configId);
+    await touchChatActivity(configId);
+
     const doId = env.MEMORY_CONTROLLER.idFromName(configId);
     const stub = env.MEMORY_CONTROLLER.get(doId);
-    const forwardRequest = new Request(request, {
-      headers: createMemoryControllerHeaders(env, request.headers),
+    const postHeaders = await createMemoryControllerHeaders(env, {
+      "content-type": "application/json",
     });
+    const forwardRequest = new Request(
+      `http://internal/chats/${configId}/messages`,
+      {
+        method: "POST",
+        headers: postHeaders,
+        body: request.body,
+      },
+    );
     return stub.fetch(forwardRequest);
   }
 
@@ -438,20 +603,7 @@ export async function handleRequest(
 
 export async function handleScheduled(
   _controller: ScheduledController,
-  env: Env
+  _env: Env,
 ): Promise<void> {
-  const inactiveDays = Number(env.GROUP_AUTO_ARCHIVE_DAYS ?? "7");
-  const thresholdDays = Number.isFinite(inactiveDays) && inactiveDays > 0 ? inactiveDays : 7;
-  const candidates = await listGroupsForAutoArchive(thresholdDays);
-
-  for (const group of candidates) {
-    try {
-      await archiveGroup(env, group.id, "auto");
-    } catch (error) {
-      console.warn("auto_archive_failed", {
-        config_id: group.id,
-        error: error instanceof Error ? error.message : "unknown",
-      });
-    }
-  }
+  // Auto-archive is disabled
 }

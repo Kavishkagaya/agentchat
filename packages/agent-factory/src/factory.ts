@@ -1,4 +1,4 @@
-import { ToolLoopAgent, type LanguageModel, type ToolSet, tool } from "ai";
+import { ToolLoopAgent, type LanguageModel, type ToolSet, tool, streamText } from "ai";
 import { z } from "zod";
 import { ModelRegistry } from "./models/registry";
 import type {
@@ -6,6 +6,7 @@ import type {
   AgentFactoryOptions,
   AgentRunInput,
   AgentRunResult,
+  AgentStreamEvent,
   ModelEnv,
   ToolRegistry,
 } from "./types";
@@ -113,6 +114,82 @@ export function createAgentRunner(params: {
       });
 
       return result;
+    },
+
+    async *runStream(input: AgentRunInput): AsyncGenerator<AgentStreamEvent> {
+      const messages = [...(input.messages ?? [])];
+      if (messages.length === 0 && input.prompt) {
+        messages.push({
+          role: "user",
+          content: [{ type: "text", text: input.prompt }],
+        });
+      }
+
+      if (messages.length === 0) {
+        throw new Error("missing prompt or messages");
+      }
+
+      const result = streamText({
+        model,
+        system: params.config.system_prompt,
+        messages,
+        tools,
+        temperature: params.config.temperature,
+        maxTokens: params.config.max_tokens,
+        topP: params.config.top_p,
+        presencePenalty: params.config.presence_penalty,
+        frequencyPenalty: params.config.frequency_penalty,
+        stopSequences: params.config.stop,
+        seed: params.config.seed,
+        maxSteps: params.options?.maxSteps ?? 10,
+      } as any);
+
+      for await (const part of result.fullStream) {
+        const p = part as any;
+        switch (p.type) {
+          case "text-delta":
+            yield { type: "text_delta", text: p.textDelta || p.text || "" };
+            break;
+          case "reasoning":
+            yield { type: "reasoning", text: p.textDelta || p.text || "" };
+            break;
+          case "tool-call":
+            params.options?.onToolCall?.(p.toolCallId, p.args || p.input, p.toolName);
+            yield {
+              type: "tool_call",
+              tool_call_id: p.toolCallId,
+              name: p.toolName,
+              args: p.args || p.input,
+            };
+            break;
+          case "tool-result":
+            yield {
+              type: "tool_result",
+              tool_call_id: p.toolCallId,
+              name: p.toolName,
+              result: p.result,
+            };
+            break;
+          case "error":
+            yield { type: "error", error: String(p.error) };
+            break;
+          case "step-finish":
+            yield {
+              type: "step_finish",
+              finish_reason: p.finishReason,
+              usage: p.usage,
+            };
+            break;
+        }
+      }
+
+      const finalResult = await result as any;
+      yield {
+        type: "final",
+        text: (await finalResult.text) || finalResult.text || "",
+        usage: await finalResult.usage || finalResult.usage,
+        finish_reason: (await finalResult.finishReason) || finalResult.finishReason || "stop",
+      };
     },
   };
 }

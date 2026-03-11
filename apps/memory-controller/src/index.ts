@@ -1,4 +1,5 @@
 import { getDb, initDb, schema } from "@axon/worker-database";
+import { verify } from "@axon/shared";
 import { eq } from "drizzle-orm";
 import { ChatHandler } from "./chat/handler";
 import { WorkflowHandler } from "./workflow/handler";
@@ -8,7 +9,7 @@ export interface Env {
   MEMORY_CONTROLLER: DurableObjectNamespace;
   ENVIRONMENT: string;
   GC_PRIVATE_KEY: string;
-  ORCHESTRATOR_SERVICE_TOKEN?: string;
+  ORCHESTRATOR_PUBLIC_KEY: string;
   DATABASE_URL?: string;
 }
 
@@ -26,20 +27,38 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
-function hasOrchestratorToken(request: Request, env: Env) {
+async function verifyOrchestratorToken(request: Request, env: Env): Promise<boolean> {
   if (
     env.ENVIRONMENT === "dev" &&
     new URL(request.url).pathname.startsWith("/dev")
   ) {
-    return true; // Bypass for dev routes
-  }
-  if (!env.ORCHESTRATOR_SERVICE_TOKEN) {
     return true;
   }
-  return (
-    request.headers.get("x-orchestrator-service-token") ===
-    env.ORCHESTRATOR_SERVICE_TOKEN
-  );
+
+  const authHeader = request.headers.get("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return false;
+  }
+
+  const token = authHeader.slice(7);
+  const [encodedPayload, signature] = token.split(".");
+  if (!encodedPayload || !signature) {
+    return false;
+  }
+
+  try {
+    const isValid = await verify(env.ORCHESTRATOR_PUBLIC_KEY, encodedPayload, signature);
+    if (!isValid) return false;
+
+    const payload = JSON.parse(atob(encodedPayload));
+    const now = Math.floor(Date.now() / 1000);
+    if (payload.exp < now) return false;
+    if (payload.sub !== "orchestrator") return false;
+
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function pathSuffix(pathname: string): string {
@@ -64,7 +83,7 @@ export class MemoryController extends DurableObject<Env> {
   }
 
   async fetch(request: Request): Promise<Response> {
-    if (!hasOrchestratorToken(request, this.env)) {
+    if (!(await verifyOrchestratorToken(request, this.env))) {
       return json({ ok: false, error: "forbidden" }, 403);
     }
 
@@ -112,6 +131,104 @@ export class MemoryController extends DurableObject<Env> {
             error: err instanceof Error ? err.message : "archive failed",
           },
           500,
+        );
+      }
+    }
+
+    if (request.method === "POST" && route === "/destroy") {
+      try {
+        const sql = this.ctx.storage.sql;
+        if (!sql) throw new Error("SQLite storage not available");
+
+        // Drop all user tables
+        const tableNames = Array.from(
+          sql.exec<{ name: string }>(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+          ),
+        ).map((row) => row.name);
+
+        for (const tableName of tableNames) {
+          sql.exec(`DROP TABLE IF EXISTS ${tableName}`);
+        }
+
+        // Clear all DO storage keys
+        await this.ctx.storage.deleteAll();
+
+        return json({ ok: true });
+      } catch (err) {
+        return json(
+          {
+            ok: false,
+            error: err instanceof Error ? err.message : "destroy failed",
+          },
+          500,
+        );
+      }
+    }
+
+    if (request.method === "POST" && route === "/restore") {
+      try {
+        const sql = this.ctx.storage.sql;
+        if (!sql) throw new Error("SQLite storage not available");
+
+        let body: any;
+        try {
+          body = await request.json();
+        } catch {
+          return json({ ok: false, error: "invalid JSON body" }, 400);
+        }
+
+        const snapshot = body?.snapshot;
+        if (
+          !snapshot ||
+          typeof snapshot.tables !== "object" ||
+          Array.isArray(snapshot.tables)
+        ) {
+          return json(
+            { ok: false, error: "missing or invalid snapshot.tables" },
+            400
+          );
+        }
+
+        let totalRows = 0;
+        const restoredTables: string[] = [];
+
+        for (const [tableName, rows] of Object.entries(
+          snapshot.tables as Record<string, unknown[]>
+        )) {
+          try {
+            const rowsArr = rows as Record<string, unknown>[];
+            if (!rowsArr.length) continue; // nothing to restore for empty table
+
+            const cols = Object.keys(rowsArr[0]);
+            const colDefs = cols.join(", ");
+            const placeholders = cols.map(() => "?").join(", ");
+
+            sql.exec(`DROP TABLE IF EXISTS ${tableName}`);
+            sql.exec(`CREATE TABLE ${tableName} (${colDefs})`);
+
+            const insertSql = `INSERT INTO ${tableName} (${colDefs}) VALUES (${placeholders})`;
+            for (const row of rowsArr) {
+              sql.exec(insertSql, ...cols.map((c) => row[c]));
+              totalRows++;
+            }
+            restoredTables.push(tableName);
+          } catch (tableErr) {
+            console.error(`Failed to restore table ${tableName}:`, tableErr);
+          }
+        }
+
+        return json({
+          ok: true,
+          restored: { tables: restoredTables, rows_inserted: totalRows },
+        });
+      } catch (err) {
+        return json(
+          {
+            ok: false,
+            error: err instanceof Error ? err.message : "restore failed",
+          },
+          500
         );
       }
     }
@@ -195,11 +312,26 @@ export class MemoryController extends DurableObject<Env> {
 
     // Determine type for routing
     const type = await this.ctx.storage.get("type");
+
+    // ── WebSocket upgrade ──────────────────────────────
+    if (route === "/ws" && request.headers.get("Upgrade") === "websocket") {
+      if (type !== "chat") {
+        return json({ ok: false, error: "only chat type supports websocket" }, 400);
+      }
+
+      const pair = new WebSocketPair();
+      const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
+
+      this.ctx.acceptWebSocket(server);
+      this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
+
+      server.send(JSON.stringify({ type: "ready" }));
+
+      return new Response(null, { status: 101, webSocket: client });
+    }
+
     if (!type) {
-      return json(
-        { ok: false, error: "memory controller not initialized", type: type },
-        409,
-      );
+      return json({ ok: false, error: "memory controller not initialized", type: type }, 409);
     }
 
     try {
@@ -225,6 +357,18 @@ export class MemoryController extends DurableObject<Env> {
     }
 
     return new Response("Not Found", { status: 404 });
+  }
+
+  async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+    const type = await this.ctx.storage.get("type");
+    if (type !== "chat") return;
+
+    const handler = new ChatHandler(this.ctx, this.env);
+    await handler.handleWebSocketMessage(ws, message);
+  }
+
+  async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): Promise<void> {
+    ws.close(code, reason);
   }
 }
 
@@ -263,7 +407,7 @@ export default {
     }
 
     // Production/Orchestrator Routes
-    if (!hasOrchestratorToken(request, env)) {
+    if (!(await verifyOrchestratorToken(request, env))) {
       return json({ ok: false, error: "forbidden" }, 403);
     }
 

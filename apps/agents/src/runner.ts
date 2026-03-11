@@ -1,5 +1,6 @@
 import {
   type AgentRunInput,
+  type AgentStreamEvent,
   createAgentRunner,
   normalizeAgentConfig,
 } from "@axon/agent-factory";
@@ -72,4 +73,14 @@ export async function runAgent(
   const runner = await buildAgentRunner(record, env, callbacks);
   const result = await runner.run(input);
   return result;
+}
+
+export async function* streamAgent(
+  record: AgentConfigRecord,
+  env: Env,
+  input: AgentRunInput,
+  callbacks?: ToolEventCallbacks
+): AsyncGenerator<AgentStreamEvent> {
+  const runner = await buildAgentRunner(record, env, callbacks);
+  yield* runner.runStream(input);
 }

@@ -119,7 +119,7 @@ export default function McpsPage() {
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {mcpServers?.map((server) => (
+          {mcpServers?.map((server: any) => (
             <Card key={server.id}>
               <CardHeader className="space-y-2">
                 <div className="flex items-start justify-between gap-2">

@@ -261,7 +261,7 @@ export default function ModelsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {modelsQuery.data?.map((model) => {
+              {modelsQuery.data?.map((model: any) => {
                 const kind = model.kind;
                 const modelLabel = getModelLabel(kind, catalog);
                 return (
@@ -428,11 +428,12 @@ export default function ModelsPage() {
                 }
                 value={form.secretRef}
               >
-                <SelectTrigger id="model-secret">
-                  <SelectValue placeholder="Select an API key" />
+                <SelectTrigger>
+                  <SelectValue placeholder="Select API Key" />
                 </SelectTrigger>
                 <SelectContent>
-                  {secretsQuery.data?.map((secret) => (
+                  <SelectItem value="none">(None / Use Environment)</SelectItem>
+                  {secretsQuery.data?.map((secret: any) => (
                     <SelectItem key={secret.id} value={secret.id}>
                       {secret.name} ({secret.namespace})
                     </SelectItem>
@@ -579,7 +580,7 @@ export default function ModelsPage() {
                   <SelectValue placeholder="Select an API key" />
                 </SelectTrigger>
                 <SelectContent>
-                  {secretsQuery.data?.map((secret) => (
+                  {secretsQuery.data?.map((secret: any) => (
                     <SelectItem key={secret.id} value={secret.id}>
                       {secret.name} ({secret.namespace})
                     </SelectItem>

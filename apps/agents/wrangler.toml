@@ -6,6 +6,8 @@ compatibility_flags = ["nodejs_compat"]
 [vars]
 ENVIRONMENT = "dev"
 CLOUDFLARE_AIG_TOKEN = ""
+CLOUDFLARE_AIG_ACCOUNT_ID = ""
+CLOUDFLARE_AIG_GATEWAY_ID = ""
 DATABASE_URL = ""
 GC_PUBLIC_KEY = ""
 SECRETS_ENCRYPTION_KEY = ""

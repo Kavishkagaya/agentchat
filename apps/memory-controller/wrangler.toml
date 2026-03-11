@@ -6,8 +6,9 @@ compatibility_flags = ["nodejs_compat"]
 [vars]
 ENVIRONMENT = "dev"
 AGENTS_BASE_URL = "http://localhost:8787"
-ORCHESTRATOR_SERVICE_TOKEN = ""
-GC_PRIVATE_KEY = "MC4CAQAwBQYDK2VwBCIEIFzeVcu66S+AwVn5bV5HCOeNtxbPRhcj3GgE7kfbdUYd"
+DATABASE_URL = ""
+ORCHESTRATOR_PUBLIC_KEY = ""
+GC_PRIVATE_KEY = ""
 
 [[durable_objects.bindings]]
 name = "MEMORY_CONTROLLER"

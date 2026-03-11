@@ -50,7 +50,7 @@ export default function AgentCreatePage() {
   const [publishPrompt, setPublishPrompt] = useState<string | null>(null);
 
   const selectedModel = useMemo(
-    () => modelsQuery.data?.find((model) => model.id === form.modelId),
+    () => modelsQuery.data?.find((model: any) => model.id === form.modelId),
     [modelsQuery.data, form.modelId]
   );
 
@@ -136,7 +136,7 @@ export default function AgentCreatePage() {
                 }
               >
                 <option value="">Select a model</option>
-                {modelsQuery.data?.map((model) => (
+                {modelsQuery.data?.map((model: any) => (
                   <option key={model.id} value={model.id}>
                     {model.name} ({model.kind}/{model.modelId})
                   </option>
@@ -175,7 +175,7 @@ export default function AgentCreatePage() {
 
         {selectedServers.length > 0 ? (
           <div className="space-y-3">
-            {selectedServers.map((server) => (
+            {selectedServers.map((server: any) => (
               <Card key={server.id}>
                 <CardHeader className="flex flex-row items-start justify-between space-y-0">
                   <div>
@@ -224,7 +224,7 @@ export default function AgentCreatePage() {
             {mcpQuery.isLoading ? (
               <Skeleton className="h-[80px] w-full rounded-xl" />
             ) : (
-              mcpQuery.data?.map((server) => {
+              mcpQuery.data?.map((server: any) => {
                 const isAlreadyAdded = selectedServers.some(
                   (s) => s.id === server.id
                 );

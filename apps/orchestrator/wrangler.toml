@@ -16,11 +16,10 @@ bucket_name = "agentchat-archives"
 
 [vars]
 ENVIRONMENT = "dev"
-MAX_ACTIVE_GROUPS_PER_ORG = "25"
-GROUP_AUTO_ARCHIVE_DAYS = "7"
 APP_PUBLIC_KEY = ""
-GC_SERVICE_TOKEN = ""
+ORCHESTRATOR_PRIVATE_KEY = ""
 ORCHESTRATOR_PUBLIC_KEY = ""
+NEON_DATABASE_URL = ""
 
 [[durable_objects.bindings]]
 name = "MEMORY_CONTROLLER"

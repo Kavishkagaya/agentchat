@@ -49,7 +49,7 @@ export async function loadAgentConfig(
   if (runtimeId) {
     const db = getDb();
     const runtime = await db.query.agentRuntimes.findFirst({
-      where: eq(agentRuntimes.id, runtimeId),
+      where: eq(agentRuntimes.id as any, runtimeId),
     });
     if (!runtime) {
       throw new Error("agent runtime not found");
@@ -84,7 +84,7 @@ export async function loadAgentConfig(
   const started = Date.now();
   const db = getDb();
   const agent = await db.query.agents.findFirst({
-    where: eq(agents.id, targetAgentId),
+    where: eq(agents.id as any, targetAgentId),
   });
   if (!agent) {
     recordResolutionMetric("agent", Date.now() - started, false);

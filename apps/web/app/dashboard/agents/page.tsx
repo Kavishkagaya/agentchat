@@ -131,7 +131,7 @@ export default function AgentsPage() {
             {publicAgentsQuery.isLoading ? (
               <Skeleton className="h-[140px] w-full rounded-xl" />
             ) : (
-              publicAgentsQuery.data?.map((agent) => (
+              publicAgentsQuery.data?.map((agent: any) => (
                 <Card key={agent.id}>
                   <CardHeader className="space-y-2">
                     <CardTitle className="text-base">{agent.name}</CardTitle>

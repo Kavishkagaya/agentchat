@@ -60,7 +60,7 @@ async function fetchMcpTools(
 export const mcpRouter = createTRPCRouter({
   list: orgProcedure.query(async ({ ctx }) => {
     const servers = await listMcpServers(ctx.auth.orgId);
-    return servers.map((server) => ({
+    return servers.map((server: any) => ({
       id: server.id,
       name: server.name,
       url: server.url,

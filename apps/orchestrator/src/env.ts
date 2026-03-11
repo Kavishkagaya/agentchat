@@ -15,4 +15,5 @@ export interface Env {
   // Secrets
   ORCHESTRATOR_PRIVATE_KEY: string;
   ORCHESTRATOR_PUBLIC_KEY: string;
+  ORG_ACTIVE_GROUP_LIMIT?: string;
 }

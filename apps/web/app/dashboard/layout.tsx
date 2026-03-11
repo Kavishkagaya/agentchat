@@ -1,13 +1,5 @@
 import { OrganizationSwitcher, UserButton } from "@clerk/nextjs";
-import {
-  Bot,
-  Command,
-  Database,
-  LayoutDashboard,
-  Lock,
-  Plug,
-  Settings,
-} from "lucide-react";
+import { LayoutDashboard, Settings, User, Users, MessageSquare, Command, Bot, Plug, Lock, Database } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
@@ -42,15 +34,14 @@ export default function DashboardLayout({
               />
             </div>
 
-            <Link href="/dashboard">
-              <Button
-                className="w-full justify-start gap-3 text-muted-foreground hover:text-foreground"
-                variant="ghost"
-              >
-                <LayoutDashboard className="h-4 w-4" />
-                Groups
-              </Button>
-            </Link>
+          <Link
+            href="/dashboard"
+            className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary"
+          >
+            <MessageSquare className="h-4 w-4" />
+            Chats
+          </Link>
+
             <Link href="/dashboard/agents">
               <Button
                 className="w-full justify-start gap-3 text-muted-foreground hover:text-foreground"

@@ -56,15 +56,16 @@ export default function AgentEditPage() {
   useMemo(() => {
     if (agentQuery.data && !isInitialized) {
       const agent = agentQuery.data;
+      const config = agent.config as any;
       setForm({
         name: agent.name,
         description: agent.description || "",
-        systemPrompt: (agent.config?.systemPrompt as string) || "",
+        systemPrompt: (config?.systemPrompt as string) || "",
         modelId: agent.modelId || "",
       });
-      if (agent.config?.mcpServers && Array.isArray(agent.config.mcpServers)) {
-        const mcpIds = agent.config.mcpServers;
-        const servers = mcpQuery.data?.filter((mcp) =>
+      if (config?.mcpServers && Array.isArray(config.mcpServers)) {
+        const mcpIds = config.mcpServers;
+        const servers = mcpQuery.data?.filter((mcp: any) =>
           mcpIds.includes(mcp.id)
         ) as McpServer[];
         if (servers) {
@@ -76,7 +77,7 @@ export default function AgentEditPage() {
   }, [agentQuery.data, isInitialized, mcpQuery.data]);
 
   const selectedModel = useMemo(
-    () => modelsQuery.data?.find((model) => model.id === form.modelId),
+    () => modelsQuery.data?.find((model: any) => model.id === form.modelId),
     [modelsQuery.data, form.modelId]
   );
 
@@ -173,7 +174,7 @@ export default function AgentEditPage() {
                 }
               >
                 <option value="">Select a model</option>
-                {modelsQuery.data?.map((model) => (
+                {modelsQuery.data?.map((model: any) => (
                   <option key={model.id} value={model.id}>
                     {model.name} ({model.kind}/{model.modelId})
                   </option>
@@ -261,7 +262,7 @@ export default function AgentEditPage() {
             {mcpQuery.isLoading ? (
               <Skeleton className="h-[80px] w-full rounded-xl" />
             ) : (
-              mcpQuery.data?.map((server) => {
+              mcpQuery.data?.map((server: any) => {
                 const isAlreadyAdded = selectedServers.some(
                   (s) => s.id === server.id
                 );

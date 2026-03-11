@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev src/index.ts",
+    "dev": "wrangler dev src/index.ts --port 8789",
     "deploy": "wrangler deploy",
     "lint": "biome lint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -13,6 +13,7 @@
     "@ai-sdk/openai": "^3.0.30",
     "@axon/database": "workspace:*",
     "@axon/shared": "workspace:^",
+    "@axon/worker-database": "workspace:*",
     "@neondatabase/serverless": "0.10.4",
     "drizzle-orm": "0.45.1",
     "zod": "^4.3.6"

@@ -17,7 +17,7 @@ import postgres from "postgres";
 // eslint-disable-next-line import/no-namespace
 import * as schemaModule from "./schema";
 
-let db: ReturnType<typeof drizzle> | null = null;
+let db: ReturnType<typeof drizzle<typeof schemaModule>> | null = null;
 
 export function initDb(connectionString: string) {
   if (!db && connectionString) {

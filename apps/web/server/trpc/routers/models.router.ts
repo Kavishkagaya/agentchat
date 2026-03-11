@@ -18,7 +18,7 @@ const secretIdSchema = z.string().uuid();
 async function fetchCatalog() {
   const stored = await getSystemConfig("provider_catalog");
   // Transform old structure { providers } to new structure { models }
-  if (stored && "providers" in stored) {
+  if (stored && typeof stored === "object" && "providers" in stored) {
     return { models: stored.providers };
   }
   return { models: [] };
@@ -58,7 +58,7 @@ export const modelsRouter = createTRPCRouter({
       throw new TRPCError({ code: "UNAUTHORIZED" });
     }
     const models = await listModels(ctx.auth.orgId);
-    return models.map((model) => ({
+    return models.map((model: any) => ({
       id: model.id,
       name: model.name,
       modelType: model.modelType,
