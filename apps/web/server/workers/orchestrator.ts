@@ -1,16 +1,14 @@
-import { createAppInfraToken } from "@axon/shared";
-
-type ChatActivateRequest = {
-  config_id: string;
-  history_mode?: "internal" | "external";
-  org_id: string;
-  user_id?: string;
-};
+import {
+  createAppInfraToken,
+  type ChatActivateRequestPayload,
+  type HistoryMode,
+  type RoutingTokenRequestPayload,
+} from "@axon/shared";
 
 type ChatActivateResponse = {
   ok: boolean;
   memory_controller_id?: string;
-  history_mode?: string;
+  history_mode?: HistoryMode;
 };
 
 type RoutingTokenResponse = {
@@ -20,15 +18,11 @@ type RoutingTokenResponse = {
 
 export type OrchestratorClient = {
   activateChat: (
-    payload: ChatActivateRequest
+    payload: ChatActivateRequestPayload
   ) => Promise<ChatActivateResponse>;
   deleteChat: (configId: string) => Promise<{ ok: boolean }>;
   getChatHistory: (configId: string, token: string) => Promise<any>;
-  getRoutingToken: (payload: {
-    config_id: string;
-    user_id: string;
-    role?: string;
-  }) => Promise<RoutingTokenResponse>;
+  getRoutingToken: (payload: RoutingTokenRequestPayload) => Promise<RoutingTokenResponse>;
 };
 
 async function requestOrchestrator<T>(

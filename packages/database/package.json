@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.30",
+    "@axon/shared": "workspace:*",
     "@neondatabase/serverless": "0.10.4",
     "@types/pg": "^8.16.0",
     "drizzle-orm": "0.45.1",

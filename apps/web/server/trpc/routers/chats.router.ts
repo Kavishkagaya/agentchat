@@ -1,32 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { createChat, deleteChat, getChat, getOrgChats, updateChat } from "@axon/database";
+import {
+  buildChatConfig,
+  chatConfigPatchSchema,
+  chatCreateInputSchema,
+  chatUpdateInputSchema,
+  normalizeChatRoutingConfig,
+  type ChatRoutingConfig,
+} from "@axon/shared";
 import { z } from "zod";
 import { getOrchestratorClient } from "../../workers/orchestrator";
 import { createTRPCRouter, orgProcedure } from "../trpc";
-
-const chatConfigSchema = z
-  .object({
-    topology: z.enum(["chat", "workflow"]).default("chat"),
-    history_mode: z.enum(["internal", "external"]).default("internal"),
-    auto: z.boolean().default(true),
-    default_agent: z.string().optional(),
-    system_prompt: z.string().optional(),
-    compaction_threshold: z.number().int().min(10).max(1000).default(50),
-    max_tokens: z.number().int().min(1).max(32000).default(4096),
-    temperature: z.number().min(0).max(2).default(0.7),
-  })
-  .passthrough();
-
-function buildDefaultChatConfig() {
-  return {
-    topology: "chat" as const,
-    history_mode: "internal" as const,
-    auto: true,
-    compaction_threshold: 50,
-    max_tokens: 4096,
-    temperature: 0.7,
-  };
-}
 
 export const chatsRouter = createTRPCRouter({
   list: orgProcedure.query(async ({ ctx }) => {
@@ -35,19 +19,14 @@ export const chatsRouter = createTRPCRouter({
   }),
 
   create: orgProcedure
-    .input(
-      z.object({
-        title: z.string().min(1).max(255),
-        agentIds: z.array(z.string()).default([]),
-        config: chatConfigSchema.optional(),
-      })
-    )
+    .input(chatCreateInputSchema)
     .mutation(async ({ ctx, input }) => {
       const chatId = `chat_${randomUUID()}`;
-      const config = {
-        ...buildDefaultChatConfig(),
-        ...input.config,
-      };
+      const config = buildChatConfig({
+        config: input.config,
+        agentSetup: input.agentSetup,
+      });
+      const agentIds = input.agentSetup.map((agent) => agent.agentId);
 
       // 1. Create in DB
       await createChat({
@@ -57,7 +36,7 @@ export const chatsRouter = createTRPCRouter({
         isPrivate: false,
         createdBy: ctx.auth.userId as string,
         memberIds: [ctx.auth.userId as string],
-        agentIds: input.agentIds,
+        agentIds,
         config,
       });
 
@@ -117,17 +96,58 @@ export const chatsRouter = createTRPCRouter({
       z.object({
         chatId: z.string(),
         title: z.string().min(1).max(255).optional(),
+        agentSetup: chatUpdateInputSchema.shape.agentSetup,
         agentIds: z.array(z.string()).optional(),
-        config: chatConfigSchema.optional(),
+        config: chatConfigPatchSchema.optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      let configToPersist: ChatRoutingConfig | undefined;
+      let agentIdsToPersist: string[] | undefined;
+
+      if (input.config || input.agentSetup || input.agentIds) {
+        const existing = await getChat(input.chatId);
+        if (!existing || existing.orgId !== ctx.auth.orgId) {
+          throw new Error("Chat not found");
+        }
+
+        const existingConfig = normalizeChatRoutingConfig(
+          (existing.config as Record<string, unknown> | undefined) ?? {}
+        );
+        const nextAgentSetup =
+          input.agentSetup ??
+          (input.agentIds
+            ? input.agentIds.map((agentId) => ({
+                agentId,
+                nickname: `agent_${agentId.slice(-6).toLowerCase()}`,
+                responsibility: "General assistance for this chat.",
+              }))
+            : existingConfig.agent_setups);
+        const mergedConfig = {
+          ...existingConfig,
+          ...input.config,
+        };
+        if (
+          mergedConfig.auto === true &&
+          (!mergedConfig.default_agent ||
+            !nextAgentSetup.some((agent) => agent.agentId === mergedConfig.default_agent))
+        ) {
+          mergedConfig.default_agent = nextAgentSetup[0]?.agentId;
+        }
+
+        configToPersist = buildChatConfig({
+          config: mergedConfig,
+          agentSetup: nextAgentSetup,
+        });
+        agentIdsToPersist = nextAgentSetup.map((agent) => agent.agentId);
+      }
+
       return await updateChat({
         chatId: input.chatId,
         orgId: ctx.auth.orgId,
         title: input.title,
-        config: input.config,
-        agentIds: input.agentIds,
+        config: configToPersist,
+        agentIds: agentIdsToPersist,
       });
     }),
 

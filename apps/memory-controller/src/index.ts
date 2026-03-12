@@ -1,11 +1,12 @@
 import { getDb, initDb, schema } from "@axon/worker-database";
-import { verify } from "@axon/shared";
+import { normalizeChatRoutingConfig, verify } from "@axon/shared";
 import { eq } from "drizzle-orm";
 import { ChatHandler } from "./chat/handler";
 import { WorkflowHandler } from "./workflow/handler";
 
 export interface Env {
   AGENTS_BASE_URL?: string;
+  CHAT_MENTION_ROUTING_ENABLED?: string;
   MEMORY_CONTROLLER: DurableObjectNamespace;
   ENVIRONMENT: string;
   GC_PRIVATE_KEY: string;
@@ -17,7 +18,7 @@ type InitRequest = {
   config_id: string;
   type: "chat" | "workflow";
   org_id?: string;
-  config?: any;
+  config?: Record<string, unknown>;
 };
 
 function json(data: unknown, status = 200): Response {
@@ -245,9 +246,10 @@ export class MemoryController extends DurableObject<Env> {
         return json({ ok: false, error: "missing config_id" }, 400);
       }
 
-      let config = body.config;
+      let config: Record<string, unknown> | undefined = body.config;
       let type = body.type;
       let org_id = body.org_id;
+      let configSource: "database" | "request" = config ? "request" : "database";
 
       if (!config || !type) {
         // Fetch from Postgres if not provided
@@ -268,7 +270,10 @@ export class MemoryController extends DurableObject<Env> {
               // If not, we'll need to decide how to map groups to types.
               // For legacy compatibility, maybe we check the config for clues.
               type =
-                (config as any)?.type || (config as any)?.topology || "chat";
+                (config?.type as "chat" | "workflow" | undefined) ||
+                (config?.topology as "chat" | "workflow" | undefined) ||
+                "chat";
+              configSource = "database";
             } else {
               return json(
                 { ok: false, error: "configuration not found in database" },
@@ -293,6 +298,10 @@ export class MemoryController extends DurableObject<Env> {
         }
       }
 
+      if (type === "chat") {
+        config = normalizeChatRoutingConfig(config);
+      }
+
       await this.ctx.storage.put("config_id", body.config_id);
       await this.ctx.storage.put("type", type);
       if (org_id) await this.ctx.storage.put("org_id", org_id);
@@ -307,7 +316,12 @@ export class MemoryController extends DurableObject<Env> {
         await handler.ensureSchema();
       }
 
-      return json({ ok: true, config_id: body.config_id, type: type });
+      return json({
+        ok: true,
+        config_id: body.config_id,
+        type: type,
+        config_source: configSource,
+      });
     }
 
     // Determine type for routing

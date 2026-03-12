@@ -1,5 +1,11 @@
-import { createAgentAccessToken } from "@axon/shared";
+import {
+  chatMessageRequestSchema,
+  createAgentAccessToken,
+  type ChatMessageRequest,
+  type MessageOrigin,
+} from "@axon/shared";
 import { ContextManager } from "../context-manager";
+import { getTriggerDepthLimit, resolveChatTargets } from "./decision-maker";
 import type { Env } from "../index";
 
 export class ChatHandler {
@@ -378,18 +384,167 @@ export class ChatHandler {
     return { ...finalResult, agent_id: agentId, message_id: agentMsgId };
   }
 
-  public async handleWebSocketMessage(ws: WebSocket, rawMessage: string | ArrayBuffer): Promise<void> {
-    // 1. Parse incoming JSON
-    let msg: {
-      type: string;
-      text?: string;
-      agent_ids?: string[];
-      sender_id?: string;
-      sender_name?: string;
-      message_id?: string;
+  private isMentionRoutingEnabled(): boolean {
+    return this.env.CHAT_MENTION_ROUTING_ENABLED !== "false";
+  }
+
+  private emitRoutingWarnings(params: {
+    messageId: string;
+    unknownMentions: string[];
+    source: string;
+    origin: MessageOrigin;
+  }) {
+    if (params.unknownMentions.length === 0) return;
+
+    const payload = {
+      unknown_mentions: params.unknownMentions,
+      source: params.source,
+      origin: params.origin,
     };
+    this.insertEvent(params.messageId, "routing_warning", payload);
+    this.broadcast({
+      type: "routing_warning",
+      message_id: params.messageId,
+      ...payload,
+    });
+  }
+
+  private async routeAndRunAgents(params: {
+    text: string;
+    messageId: string;
+    explicitAgentIds?: string[];
+    origin: MessageOrigin;
+    configId: string;
+    orgId: string;
+    config: Record<string, unknown> | undefined;
+    streamDeltas: boolean;
+  }): Promise<{
+    agentMessages: Array<{
+      text: string;
+      agent_nickname: string;
+      usage?: unknown;
+      agent_id: string;
+      message_id: string;
+    }>;
+  }> {
+    const initialDecision = resolveChatTargets({
+      config: params.config,
+      text: params.text,
+      explicitAgentIds: params.explicitAgentIds,
+      origin: params.origin,
+      mentionRoutingEnabled: this.isMentionRoutingEnabled(),
+    });
+    this.insertEvent(params.messageId, "routing_decision", {
+      origin: params.origin,
+      source: initialDecision.source,
+      targets: initialDecision.targetAgentIds,
+    });
+
+    this.emitRoutingWarnings({
+      messageId: params.messageId,
+      unknownMentions: initialDecision.unknownMentions,
+      source: initialDecision.source,
+      origin: params.origin,
+    });
+
+    const maxDepth = getTriggerDepthLimit(initialDecision.config);
+    const dedupeTargets = new Set<string>();
+    const queue = initialDecision.targetAgentIds.map((agentId) => {
+      dedupeTargets.add(agentId);
+      return { agentId, prompt: params.text, depth: 0 };
+    });
+
+    const agentMessages: Array<{
+      text: string;
+      agent_nickname: string;
+      usage?: unknown;
+      agent_id: string;
+      message_id: string;
+    }> = [];
+
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (!current) break;
+
+      const context = ContextManager.assembleContext(
+        this.ctx.storage.sql,
+        initialDecision.config.system_prompt
+      );
+
+      const eventStream = params.streamDeltas
+        ? this.invokeAgentStream(
+            current.agentId,
+            current.prompt,
+            context,
+            params.configId,
+            params.orgId
+          )
+        : this.invokeAgentCoarse(
+            current.agentId,
+            current.prompt,
+            context,
+            params.configId,
+            params.orgId
+          );
+
+      const result = await this.processAgentEvents(current.agentId, eventStream, {
+        broadcast: true,
+        streamDeltas: params.streamDeltas,
+      });
+      if (!result) continue;
+
+      agentMessages.push(result);
+
+      if (current.depth >= maxDepth) {
+        this.insertEvent(result.message_id, "routing_depth_cap", {
+          depth: current.depth,
+          max_depth: maxDepth,
+        });
+        continue;
+      }
+
+      const chainedDecision = resolveChatTargets({
+        config: initialDecision.config,
+        text: result.text,
+        origin: "agent",
+        mentionRoutingEnabled: this.isMentionRoutingEnabled(),
+      });
+      this.insertEvent(result.message_id, "routing_decision", {
+        origin: "agent",
+        source: chainedDecision.source,
+        targets: chainedDecision.targetAgentIds,
+      });
+
+      this.emitRoutingWarnings({
+        messageId: result.message_id,
+        unknownMentions: chainedDecision.unknownMentions,
+        source: chainedDecision.source,
+        origin: "agent",
+      });
+
+      for (const targetAgentId of chainedDecision.targetAgentIds) {
+        if (dedupeTargets.has(targetAgentId)) {
+          this.insertEvent(result.message_id, "routing_deduped_target", {
+            target_agent_id: targetAgentId,
+          });
+          continue;
+        }
+        dedupeTargets.add(targetAgentId);
+        queue.push({
+          agentId: targetAgentId,
+          prompt: result.text,
+          depth: current.depth + 1,
+        });
+      }
+    }
+
+    return { agentMessages };
+  }
+
+  public async handleWebSocketMessage(ws: WebSocket, rawMessage: string | ArrayBuffer): Promise<void> {
+    let parsed: unknown;
     try {
-      msg = JSON.parse(
+      parsed = JSON.parse(
         typeof rawMessage === "string" ? rawMessage : new TextDecoder().decode(rawMessage)
       );
     } catch {
@@ -397,23 +552,23 @@ export class ChatHandler {
       return;
     }
 
-    if (msg.type !== "message" || !msg.text) {
+    const parsedMessage = chatMessageRequestSchema.safeParse(parsed);
+    if (!parsedMessage.success) {
       ws.send(
         JSON.stringify({
           type: "error",
           code: "invalid_message",
-          message: "missing text or wrong type",
+          message: parsedMessage.error.issues[0]?.message ?? "invalid payload",
         })
       );
       return;
     }
+    const msg = parsedMessage.data;
 
-    // 2. Load config
     const configId = (await this.ctx.storage.get("config_id")) as string;
     const orgId = ((await this.ctx.storage.get("org_id")) as string) ?? "dev_org";
     const config = (await this.ctx.storage.get("config")) as Record<string, unknown> | undefined;
 
-    // 3. Store & broadcast user message
     const messageId = msg.message_id ?? `msg_${crypto.randomUUID()}`;
     const userText = msg.sender_name ? `[${msg.sender_name}]: ${msg.text}` : msg.text;
     this.insertMessage({
@@ -432,31 +587,19 @@ export class ChatHandler {
       text: msg.text,
     });
 
-    // 4. Determine agents
-    let agentIds: string[] = [];
-    if (Array.isArray(msg.agent_ids)) {
-      agentIds = msg.agent_ids.filter(Boolean);
-    } else if (config?.auto === true && config?.default_agent) {
-      agentIds = [config.default_agent as string];
-    }
+    await this.routeAndRunAgents({
+      text: msg.text,
+      messageId,
+      explicitAgentIds: msg.agent_ids,
+      origin: msg.origin ?? "user",
+      configId,
+      orgId,
+      config,
+      streamDeltas: true,
+    });
 
-    // 5. Snapshot context ONCE
-    const systemPrompt = config?.system_prompt as string | undefined;
-    const context = ContextManager.assembleContext(this.ctx.storage.sql, systemPrompt);
-
-    // 6. Invoke agents with FINE-GRAINED stream (token-by-token via WS)
-    for (const agentId of agentIds) {
-      const eventStream = this.invokeAgentStream(agentId, msg.text, context, configId, orgId);
-      await this.processAgentEvents(agentId, eventStream, {
-        broadcast: true, // push everything to WS clients
-        streamDeltas: true, // FINE — text_delta per token
-      });
-    }
-
-    // 7. Signal completion
     this.broadcast({ type: "done" });
 
-    // 8. Compact if needed
     ContextManager.maybeCompact(
       this.ctx.storage.sql,
       config?.compaction_threshold as number | undefined
@@ -497,15 +640,22 @@ export class ChatHandler {
     }
 
     if (request.method === "POST" && route === "/messages") {
-      const body = (await request.json()) as {
-        text?: string;
-        agent_ids?: string[];
-        sender_id?: string;
-        sender_name?: string;
-        message_id?: string;
+      const rawBody = (await request.json()) as Record<string, unknown>;
+      const bodyPayload = {
+        ...rawBody,
+        type: "message",
       };
-
-      if (!body.text) return json({ ok: false, error: "missing text" }, 400);
+      const parsedBody = chatMessageRequestSchema.safeParse(bodyPayload);
+      if (!parsedBody.success) {
+        return json(
+          {
+            ok: false,
+            error: parsedBody.error.issues[0]?.message ?? "invalid payload",
+          },
+          400
+        );
+      }
+      const body = parsedBody.data;
 
       const configId = (await this.ctx.storage.get("config_id")) as string;
       const orgId = ((await this.ctx.storage.get("org_id")) as string) ?? "dev_org";
@@ -533,42 +683,19 @@ export class ChatHandler {
         text: body.text,
       });
 
-      // Unified agent activation: message specifies agent_ids, or use default_agent if auto is enabled
-      let agentIds: string[] = [];
-      if (Array.isArray(body.agent_ids)) {
-        agentIds = body.agent_ids.filter(Boolean);
-      } else if (config?.auto === true) {
-        const defaultAgent = config?.default_agent as string | undefined;
-        if (defaultAgent) {
-          agentIds = [defaultAgent];
-        }
-      }
+      const { agentMessages } = await this.routeAndRunAgents({
+        text: body.text,
+        messageId,
+        explicitAgentIds: body.agent_ids,
+        origin: body.origin ?? "user",
+        configId,
+        orgId,
+        config,
+        streamDeltas: false,
+      });
 
-      // Snapshot context ONCE before invoking any agent with system prompt
-      const systemPrompt = config?.system_prompt as string | undefined;
-      const context = ContextManager.assembleContext(this.ctx.storage.sql, systemPrompt);
-
-      // Invoke agents sequentially using COARSE stream (no text_delta)
-      const agentMessages: unknown[] = [];
-      for (const agentId of agentIds) {
-        const eventStream = this.invokeAgentCoarse(
-          agentId,
-          body.text || "",
-          context,
-          configId,
-          orgId
-        );
-        const result = await this.processAgentEvents(agentId, eventStream, {
-          broadcast: true, // push events to WS clients
-          streamDeltas: false, // coarse — no text_delta
-        });
-        if (result) agentMessages.push(result);
-      }
-
-      // Signal completion to WS clients
       this.broadcast({ type: "done" });
 
-      // Compact once after all inserts
       ContextManager.maybeCompact(
         this.ctx.storage.sql,
         config?.compaction_threshold as number | undefined

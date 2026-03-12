@@ -10,3 +10,4 @@ export type SandboxStatus =
   | "error";
 
 export * from "./auth";
+export * from "./chat-contract";

@@ -10,26 +10,15 @@ import {
   updateChatRuntimeStatus,
 } from "@axon/worker-database";
 import {
+  type ChatActivateRequestPayload,
   createRoutingToken,
+  type HistoryMode,
+  type RoutingTokenRequestPayload,
   sign,
   verifyAppInfraToken,
   verifyRoutingToken,
 } from "@axon/shared";
 import type { Env } from "./env";
-
-type HistoryMode = "internal" | "external";
-
-interface ChatActivateRequest {
-  config_id: string;
-  history_mode?: HistoryMode;
-  org_id: string;
-}
-
-interface RoutingTokenRequest {
-  config_id: string;
-  role?: string;
-  user_id: string;
-}
 
 interface CleanupRequest {
   config_id: string;
@@ -181,7 +170,7 @@ export async function handleRequest(
     }
 
     try {
-      const body = await readJson<ChatActivateRequest>(request);
+      const body = await readJson<ChatActivateRequestPayload>(request);
       const configId = requireString(body.config_id, "config_id");
       const orgId = requireString(body.org_id, "org_id");
       const historyMode = body.history_mode ?? "internal";
@@ -228,6 +217,21 @@ export async function handleRequest(
         );
       }
 
+      let initPayload: { config_source?: string; ok?: boolean } | null = null;
+      try {
+        initPayload = (await initResponse.json()) as { config_source?: string; ok?: boolean };
+      } catch {
+        initPayload = null;
+      }
+
+      if (!initPayload || initPayload.config_source !== "database") {
+        return errorResponse(
+          502,
+          "memory_controller_init_source_invalid",
+          "memory controller init must use persisted database config",
+        );
+      }
+
       await touchChatActivity(configId);
 
       return json({
@@ -256,7 +260,7 @@ export async function handleRequest(
     }
 
     try {
-      const body = await readJson<RoutingTokenRequest>(request);
+      const body = await readJson<RoutingTokenRequestPayload>(request);
       const configId = requireString(body.config_id, "config_id");
       const userId = requireString(body.user_id, "user_id");
       const role = typeof body.role === "string" ? body.role : "member";

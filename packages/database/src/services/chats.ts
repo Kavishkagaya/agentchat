@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { ChatRoutingConfig } from "@axon/shared";
 import { and, desc, eq, inArray, lte, ne, or, sql } from "drizzle-orm";
 import { getDb } from "../client";
 import {
@@ -12,7 +13,7 @@ import {
 
 export interface CreateChatParams {
   agentIds: string[];
-  config: Record<string, unknown>;
+  config: ChatRoutingConfig;
   createdBy: string;
   chatId: string;
   isPrivate: boolean;
@@ -35,42 +36,44 @@ export async function createChat(params: CreateChatParams) {
   const db = getDb();
   const now = new Date();
 
-  await db.insert(configs).values({
-    id: params.chatId,
-    orgId: params.orgId,
-    title: params.title,
-    status: "active",
-    isPrivate: params.isPrivate,
-    config: params.config,
-    agentPolicy: extractAgentPolicy(params.config),
-    createdBy: params.createdBy,
-    createdAt: now,
-    updatedAt: now,
-    lastActiveAt: now,
+  await db.transaction(async (tx) => {
+    await tx.insert(configs).values({
+      id: params.chatId,
+      orgId: params.orgId,
+      title: params.title,
+      status: "active",
+      isPrivate: params.isPrivate,
+      config: params.config,
+      agentPolicy: extractAgentPolicy(params.config),
+      createdBy: params.createdBy,
+      createdAt: now,
+      updatedAt: now,
+      lastActiveAt: now,
+    });
+
+    if (params.memberIds.length > 0) {
+      await tx.insert(configMembers).values(
+        params.memberIds.map((userId) => ({
+          groupId: params.chatId,
+          userId,
+          role: userId === params.createdBy ? "owner" : "member",
+          addedBy: params.createdBy,
+          createdAt: now,
+        }))
+      );
+    }
+
+    if (params.agentIds.length > 0) {
+      await tx.insert(configAgents).values(
+        params.agentIds.map((agentId) => ({
+          groupId: params.chatId,
+          agentId,
+          addedBy: params.createdBy,
+          createdAt: now,
+        }))
+      );
+    }
   });
-
-  if (params.memberIds.length > 0) {
-    await db.insert(configMembers).values(
-      params.memberIds.map((userId) => ({
-        groupId: params.chatId,
-        userId,
-        role: userId === params.createdBy ? "owner" : "member",
-        addedBy: params.createdBy,
-        createdAt: now,
-      }))
-    );
-  }
-
-  if (params.agentIds.length > 0) {
-    await db.insert(configAgents).values(
-      params.agentIds.map((agentId) => ({
-        groupId: params.chatId,
-        agentId,
-        addedBy: params.createdBy,
-        createdAt: now,
-      }))
-    );
-  }
 
   return params.chatId;
 }
@@ -293,44 +296,45 @@ export interface UpdateChatParams {
   chatId: string;
   orgId: string;
   title?: string;
-  config?: Record<string, unknown>;
+  config?: ChatRoutingConfig;
   agentIds?: string[];
 }
 
 export async function updateChat(params: UpdateChatParams) {
   const db = getDb();
   const now = new Date();
-
-  const updates: Record<string, unknown> = { updatedAt: now };
-  if (params.title !== undefined) {
-    updates.title = params.title;
-  }
-  if (params.config !== undefined) {
-    updates.config = params.config;
-    updates.agentPolicy = extractAgentPolicy(params.config);
-  }
-
-  await db
-    .update(configs)
-    .set(updates)
-    .where(and(eq(configs.id, params.chatId), eq(configs.orgId, params.orgId)));
-
-  if (params.agentIds !== undefined) {
-    await db
-      .delete(configAgents)
-      .where(eq(configAgents.groupId, params.chatId));
-
-    if (params.agentIds.length > 0) {
-      await db.insert(configAgents).values(
-        params.agentIds.map((agentId) => ({
-          groupId: params.chatId,
-          agentId,
-          addedBy: null,
-          createdAt: now,
-        }))
-      );
+  await db.transaction(async (tx) => {
+    const updates: Record<string, unknown> = { updatedAt: now };
+    if (params.title !== undefined) {
+      updates.title = params.title;
     }
-  }
+    if (params.config !== undefined) {
+      updates.config = params.config;
+      updates.agentPolicy = extractAgentPolicy(params.config);
+    }
+
+    await tx
+      .update(configs)
+      .set(updates)
+      .where(and(eq(configs.id, params.chatId), eq(configs.orgId, params.orgId)));
+
+    if (params.agentIds !== undefined) {
+      await tx
+        .delete(configAgents)
+        .where(eq(configAgents.groupId, params.chatId));
+
+      if (params.agentIds.length > 0) {
+        await tx.insert(configAgents).values(
+          params.agentIds.map((agentId) => ({
+            groupId: params.chatId,
+            agentId,
+            addedBy: null,
+            createdAt: now,
+          }))
+        );
+      }
+    }
+  });
 
   return getChat(params.chatId);
 }
