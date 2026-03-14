@@ -1,4 +1,10 @@
-import { ToolLoopAgent, type LanguageModel, type ToolSet, tool, streamText } from "ai";
+import {
+  type LanguageModel,
+  streamText,
+  ToolLoopAgent,
+  type ToolSet,
+  tool,
+} from "ai";
 import { z } from "zod";
 import { ModelRegistry } from "./models/registry";
 import type {
@@ -15,7 +21,7 @@ function resolveTools(
   agentId: string,
   tools: AgentConfig["tools"],
   registry: ToolRegistry,
-  options?: AgentFactoryOptions
+  options?: AgentFactoryOptions,
 ): ToolSet | undefined {
   if (!tools || tools.length === 0) {
     return undefined;
@@ -72,13 +78,13 @@ export function createAgentRunner(params: {
 
   const model = adapter.createModel(
     params.config.model,
-    params.env
+    params.env,
   ) as LanguageModel;
   const tools = resolveTools(
     params.config.agent_id,
     params.config.tools,
     params.toolRegistry,
-    params.options
+    params.options,
   );
 
   return {
@@ -154,7 +160,11 @@ export function createAgentRunner(params: {
             yield { type: "reasoning", text: p.textDelta || p.text || "" };
             break;
           case "tool-call":
-            params.options?.onToolCall?.(p.toolCallId, p.args || p.input, p.toolName);
+            params.options?.onToolCall?.(
+              p.toolCallId,
+              p.args || p.input,
+              p.toolName,
+            );
             yield {
               type: "tool_call",
               tool_call_id: p.toolCallId,
@@ -183,12 +193,12 @@ export function createAgentRunner(params: {
         }
       }
 
-      const finalResult = await result as any;
+      const finalResult = (await result) as any;
       yield {
         type: "final",
-        text: (await finalResult.text) || finalResult.text || "",
-        usage: await finalResult.usage || finalResult.usage,
-        finish_reason: (await finalResult.finishReason) || finalResult.finishReason || "stop",
+        text: (await finalResult.text) ?? "",
+        usage: (await finalResult.usage) ?? undefined,
+        finish_reason: (await finalResult.finishReason) ?? "stop",
       };
     },
   };

@@ -1,5 +1,3 @@
-import { resolveWorkerBaseUrl } from "./cloudflare";
-
 type AgentRuntimeRef = {
   agent_id: string;
   runtime_id: string;
@@ -36,7 +34,7 @@ async function requestChatController<T>(
   payload?: unknown,
   method: "POST" | "GET" = "POST"
 ): Promise<T> {
-  const baseUrl = await resolveWorkerBaseUrl("chat-controller");
+  const baseUrl = (process.env.CHAT_CONTROLLER_URL || "http://localhost:8790").replace(/\/$/, "");
   const response = await fetch(`${baseUrl}${path}`, {
     method,
     headers: { "content-type": "application/json" },

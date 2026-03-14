@@ -48,7 +48,7 @@ export async function activateChat(
     throw new ServiceError(
       502,
       "memory_controller_init_failed",
-      bodyText || "failed to initialize chat controller",
+      `DO responded ${initResponse.status}: ${bodyText || "empty body"}`,
     );
   }
 
@@ -66,7 +66,7 @@ export async function activateChat(
     throw new ServiceError(
       502,
       "memory_controller_init_source_invalid",
-      "memory controller init must use persisted database config",
+      `expected config_source "database", got "${initPayload?.config_source ?? "null"}"`,
     );
   }
 

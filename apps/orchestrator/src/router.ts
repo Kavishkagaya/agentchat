@@ -25,6 +25,21 @@ import {
 } from "./services/chat.service";
 import { ServiceError } from "./services/errors";
 
+function handleError(
+  error: unknown,
+  route: string,
+  fallbackStatus: number,
+  fallbackCode: string,
+): Response {
+  if (error instanceof ServiceError) {
+    console.error(`[${route}] ServiceError ${error.status} ${error.code}:`, error.message);
+    return errorResponse(error.status, error.code, error.message);
+  }
+  const msg = errorMessage(error);
+  console.error(`[${route}] Unhandled error:`, msg, error);
+  return errorResponse(fallbackStatus, fallbackCode, msg);
+}
+
 export async function handleRequest(
   request: Request,
   env: Env,
@@ -77,10 +92,7 @@ export async function handleRequest(
       });
       return json({ ok: true, ...result });
     } catch (error) {
-      if (error instanceof ServiceError) {
-        return errorResponse(error.status, error.code, error.message);
-      }
-      return errorResponse(400, "invalid_request", errorMessage(error));
+      return handleError(error, "POST /infra/chats", 400, "invalid_request");
     }
   }
 
@@ -102,10 +114,7 @@ export async function handleRequest(
       });
       return json({ ok: true, ...result });
     } catch (error) {
-      if (error instanceof ServiceError) {
-        return errorResponse(error.status, error.code, error.message);
-      }
-      return errorResponse(400, "invalid_request", errorMessage(error));
+      return handleError(error, "POST /infra/routing-token", 400, "invalid_request");
     }
   }
 
@@ -123,10 +132,7 @@ export async function handleRequest(
       const result = await archiveChat(env, configId);
       return json({ ok: true, ...result });
     } catch (error) {
-      if (error instanceof ServiceError) {
-        return errorResponse(error.status, error.code, error.message);
-      }
-      return errorResponse(500, "archive_failed", errorMessage(error));
+      return handleError(error, `POST /infra/chats/${configId}/archive`, 500, "archive_failed");
     }
   }
 
@@ -145,10 +151,7 @@ export async function handleRequest(
       await destroyChat(env, configId);
       return json({ ok: true });
     } catch (error) {
-      if (error instanceof ServiceError) {
-        return errorResponse(error.status, error.code, error.message);
-      }
-      return errorResponse(500, "delete_failed", errorMessage(error));
+      return handleError(error, `DELETE /infra/chats/${configId}`, 500, "delete_failed");
     }
   }
 
@@ -164,10 +167,7 @@ export async function handleRequest(
       });
       return json({ ok: true, ...result });
     } catch (error) {
-      if (error instanceof ServiceError) {
-        return errorResponse(error.status, error.code, error.message);
-      }
-      return errorResponse(400, "cleanup_failed", errorMessage(error));
+      return handleError(error, "POST /infra/chats/cleanup", 400, "cleanup_failed");
     }
   }
 
@@ -183,7 +183,7 @@ export async function handleRequest(
       await requireAppSignature(request, env, url.pathname);
       return getHistory(env, configId, url.search);
     } catch (error) {
-      return errorResponse(401, "unauthorized", errorMessage(error));
+      return handleError(error, `GET /infra/chats/${configId}/history`, 401, "unauthorized");
     }
   }
 

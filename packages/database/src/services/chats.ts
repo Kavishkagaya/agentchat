@@ -59,7 +59,7 @@ export async function createChat(params: CreateChatParams) {
           role: userId === params.createdBy ? "owner" : "member",
           addedBy: params.createdBy,
           createdAt: now,
-        }))
+        })),
       );
     }
 
@@ -70,7 +70,7 @@ export async function createChat(params: CreateChatParams) {
           agentId,
           addedBy: params.createdBy,
           createdAt: now,
-        }))
+        })),
       );
     }
   });
@@ -124,7 +124,7 @@ export const getGroupRuntime = getChatRuntime;
 export async function initializeChatRuntime(
   chatId: string,
   controllerId: string,
-  publicKey?: string | null
+  publicKey?: string | null,
 ) {
   const db = getDb();
   const now = new Date();
@@ -175,10 +175,7 @@ export async function updateChatRuntimeStatus(chatId: string, status: string) {
     chatUpdate.archivedAt = now;
   }
 
-  await db
-    .update(configs)
-    .set(chatUpdate)
-    .where(eq(configs.id, chatId));
+  await db.update(configs).set(chatUpdate).where(eq(configs.id, chatId));
 
   await db
     .update(configRuntime)
@@ -193,11 +190,14 @@ export async function updateChatRuntimeStatus(chatId: string, status: string) {
 
 export const updateGroupRuntimeStatus = updateChatRuntimeStatus;
 
-export async function countOrgActiveChats(orgId: string, excludeChatId?: string) {
+export async function countOrgActiveChats(
+  orgId: string,
+  excludeChatId?: string,
+) {
   const db = getDb();
   const activePredicate = and(
     eq(configs.orgId, orgId),
-    inArray(configs.status, ["active", "idle"])
+    inArray(configs.status, ["active", "idle"]),
   );
   const wherePredicate =
     excludeChatId && excludeChatId.length > 0
@@ -316,7 +316,9 @@ export async function updateChat(params: UpdateChatParams) {
     await tx
       .update(configs)
       .set(updates)
-      .where(and(eq(configs.id, params.chatId), eq(configs.orgId, params.orgId)));
+      .where(
+        and(eq(configs.id, params.chatId), eq(configs.orgId, params.orgId)),
+      );
 
     if (params.agentIds !== undefined) {
       await tx
@@ -330,7 +332,7 @@ export async function updateChat(params: UpdateChatParams) {
             agentId,
             addedBy: null,
             createdAt: now,
-          }))
+          })),
         );
       }
     }
@@ -351,12 +353,14 @@ export async function deleteChat(chatId: string, orgId: string) {
   }
 
   // Delete in FK order: children first, then parent
-  await db.delete(configAgents).where(eq(configAgents.groupId, chatId));
-  await db.delete(configMembers).where(eq(configMembers.groupId, chatId));
-  await db.delete(configArchives).where(eq(configArchives.groupId, chatId));
-  await db.delete(configSnapshots).where(eq(configSnapshots.groupId, chatId));
-  await db.delete(configRuntime).where(eq(configRuntime.groupId, chatId));
-  await db.delete(configs).where(eq(configs.id, chatId));
+  await db.transaction(async (tx) => {
+    await tx.delete(configAgents).where(eq(configAgents.groupId, chatId));
+    await tx.delete(configMembers).where(eq(configMembers.groupId, chatId));
+    await tx.delete(configArchives).where(eq(configArchives.groupId, chatId));
+    await tx.delete(configSnapshots).where(eq(configSnapshots.groupId, chatId));
+    await tx.delete(configRuntime).where(eq(configRuntime.groupId, chatId));
+    await tx.delete(configs).where(eq(configs.id, chatId));
+  });
 
   return { deleted: true };
 }

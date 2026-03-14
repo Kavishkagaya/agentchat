@@ -5,7 +5,7 @@ import * as relationsModule from "./schema/relations";
 
 const schema = { ...schemaModule, ...relationsModule };
 
-let db: any = null;
+let db: ReturnType<typeof drizzle<typeof schema>> | null = null;
 
 export function initDb(connectionString: string) {
   if (!db && connectionString) {

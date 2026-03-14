@@ -179,17 +179,18 @@ export async function recordChatArchive(params: {
 export async function deleteChatRuntime(chatId: string) {
   const db = getDb();
 
-  // Delete in FK order: junction/child tables first
-  await db.delete(groupAgentRuntimes).where(eq(groupAgentRuntimes.configId, chatId));
-  await db.delete(groupAgents).where(eq(groupAgents.configId, chatId));
-  await db.delete(groupMembers).where(eq(groupMembers.configId, chatId));
-  await db.delete(groupSecrets).where(eq(groupSecrets.configId, chatId));
-  await db.delete(groupArchives).where(eq(groupArchives.configId, chatId));
-  await db.delete(groupSnapshots).where(eq(groupSnapshots.configId, chatId));
-  await db.delete(groupTasks).where(eq(groupTasks.configId, chatId));
-  await db.delete(agentRuntimes).where(eq(agentRuntimes.configId, chatId));
-  await db.delete(groupRuntime).where(eq(groupRuntime.configId, chatId));
-  await db.delete(configs).where(eq(configs.id, chatId));
+  // Delete runtime data only (config is owned by main DB)
+  await db.transaction(async (tx) => {
+    await tx.delete(groupAgentRuntimes).where(eq(groupAgentRuntimes.configId, chatId));
+    await tx.delete(groupAgents).where(eq(groupAgents.configId, chatId));
+    await tx.delete(groupMembers).where(eq(groupMembers.configId, chatId));
+    await tx.delete(groupSecrets).where(eq(groupSecrets.configId, chatId));
+    await tx.delete(groupArchives).where(eq(groupArchives.configId, chatId));
+    await tx.delete(groupSnapshots).where(eq(groupSnapshots.configId, chatId));
+    await tx.delete(groupTasks).where(eq(groupTasks.configId, chatId));
+    await tx.delete(agentRuntimes).where(eq(agentRuntimes.configId, chatId));
+    await tx.delete(groupRuntime).where(eq(groupRuntime.configId, chatId));
+  });
 
   return { deleted: true };
 }

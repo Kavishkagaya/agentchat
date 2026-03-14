@@ -74,7 +74,7 @@ class ControllerClient {
     configId: string,
     body: { config_id: string; org_id: string; type: string },
   ): Promise<Response> {
-    return this.fetch(env, configId, "/chats/init", {
+    return this.fetch(env, configId, `/chats/${configId}/init`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),

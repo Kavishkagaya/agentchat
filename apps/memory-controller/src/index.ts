@@ -1,5 +1,5 @@
-import { getDb, initDb, schema } from "@axon/worker-database";
 import { normalizeChatRoutingConfig, verify } from "@axon/shared";
+import { getDb, initDb, schema } from "@axon/worker-database";
 import { eq } from "drizzle-orm";
 import { ChatHandler } from "./chat/handler";
 import { WorkflowHandler } from "./workflow/handler";
@@ -28,7 +28,10 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
-async function verifyOrchestratorToken(request: Request, env: Env): Promise<boolean> {
+async function verifyOrchestratorToken(
+  request: Request,
+  env: Env,
+): Promise<boolean> {
   if (
     env.ENVIRONMENT === "dev" &&
     new URL(request.url).pathname.startsWith("/dev")
@@ -48,7 +51,11 @@ async function verifyOrchestratorToken(request: Request, env: Env): Promise<bool
   }
 
   try {
-    const isValid = await verify(env.ORCHESTRATOR_PUBLIC_KEY, encodedPayload, signature);
+    const isValid = await verify(
+      env.ORCHESTRATOR_PUBLIC_KEY,
+      encodedPayload,
+      signature,
+    );
     if (!isValid) return false;
 
     const payload = JSON.parse(atob(encodedPayload));
@@ -79,10 +86,6 @@ function pathSuffix(pathname: string): string {
 import { DurableObject } from "cloudflare:workers";
 
 export class MemoryController extends DurableObject<Env> {
-  constructor(ctx: DurableObjectState, env: Env) {
-    super(ctx, env);
-  }
-
   async fetch(request: Request): Promise<Response> {
     if (!(await verifyOrchestratorToken(request, this.env))) {
       return json({ ok: false, error: "forbidden" }, 403);
@@ -138,23 +141,7 @@ export class MemoryController extends DurableObject<Env> {
 
     if (request.method === "POST" && route === "/destroy") {
       try {
-        const sql = this.ctx.storage.sql;
-        if (!sql) throw new Error("SQLite storage not available");
-
-        // Drop all user tables
-        const tableNames = Array.from(
-          sql.exec<{ name: string }>(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
-          ),
-        ).map((row) => row.name);
-
-        for (const tableName of tableNames) {
-          sql.exec(`DROP TABLE IF EXISTS ${tableName}`);
-        }
-
-        // Clear all DO storage keys
         await this.ctx.storage.deleteAll();
-
         return json({ ok: true });
       } catch (err) {
         return json(
@@ -187,7 +174,7 @@ export class MemoryController extends DurableObject<Env> {
         ) {
           return json(
             { ok: false, error: "missing or invalid snapshot.tables" },
-            400
+            400,
           );
         }
 
@@ -195,7 +182,7 @@ export class MemoryController extends DurableObject<Env> {
         const restoredTables: string[] = [];
 
         for (const [tableName, rows] of Object.entries(
-          snapshot.tables as Record<string, unknown[]>
+          snapshot.tables as Record<string, unknown[]>,
         )) {
           try {
             const rowsArr = rows as Record<string, unknown>[];
@@ -229,7 +216,7 @@ export class MemoryController extends DurableObject<Env> {
             ok: false,
             error: err instanceof Error ? err.message : "restore failed",
           },
-          500
+          500,
         );
       }
     }
@@ -249,7 +236,9 @@ export class MemoryController extends DurableObject<Env> {
       let config: Record<string, unknown> | undefined = body.config;
       let type = body.type;
       let org_id = body.org_id;
-      let configSource: "database" | "request" = config ? "request" : "database";
+      let configSource: "database" | "request" = config
+        ? "request"
+        : "database";
 
       if (!config || !type) {
         // Fetch from Postgres if not provided
@@ -330,14 +319,19 @@ export class MemoryController extends DurableObject<Env> {
     // ── WebSocket upgrade ──────────────────────────────
     if (route === "/ws" && request.headers.get("Upgrade") === "websocket") {
       if (type !== "chat") {
-        return json({ ok: false, error: "only chat type supports websocket" }, 400);
+        return json(
+          { ok: false, error: "only chat type supports websocket" },
+          400,
+        );
       }
 
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
 
       this.ctx.acceptWebSocket(server);
-      this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
+      this.ctx.setWebSocketAutoResponse(
+        new WebSocketRequestResponsePair("ping", "pong"),
+      );
 
       server.send(JSON.stringify({ type: "ready" }));
 
@@ -345,7 +339,10 @@ export class MemoryController extends DurableObject<Env> {
     }
 
     if (!type) {
-      return json({ ok: false, error: "memory controller not initialized", type: type }, 409);
+      return json(
+        { ok: false, error: "memory controller not initialized", type: type },
+        409,
+      );
     }
 
     try {
@@ -373,7 +370,10 @@ export class MemoryController extends DurableObject<Env> {
     return new Response("Not Found", { status: 404 });
   }
 
-  async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+  async webSocketMessage(
+    ws: WebSocket,
+    message: string | ArrayBuffer,
+  ): Promise<void> {
     const type = await this.ctx.storage.get("type");
     if (type !== "chat") return;
 
@@ -381,7 +381,12 @@ export class MemoryController extends DurableObject<Env> {
     await handler.handleWebSocketMessage(ws, message);
   }
 
-  async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): Promise<void> {
+  async webSocketClose(
+    ws: WebSocket,
+    code: number,
+    reason: string,
+    wasClean: boolean,
+  ): Promise<void> {
     ws.close(code, reason);
   }
 }
