@@ -25,9 +25,7 @@ const chatRoutingConfigBaseSchema = z.object({
   default_agent: z.string().optional(),
   system_prompt: z.string().trim().min(1).optional(),
   compaction_threshold: z.number().int().min(10).max(1000).default(50),
-  max_tokens: z.number().int().min(1).max(32000).default(4096),
-  temperature: z.number().min(0).max(2).default(0.7),
-  trigger_depth_limit: z.number().int().min(1).max(8).default(2),
+  trigger_depth_limit: z.number().int().min(1).max(100).default(10),
   mention_routing_enabled: z.boolean().default(true),
   mention_map: z.record(z.string(), z.string()).default({}),
   agent_setups: z.array(chatAgentSetupSchema).default([]),
@@ -59,14 +57,6 @@ export const chatRoutingConfigSchema = chatRoutingConfigBaseSchema
         });
       }
       seenNicknames.add(normalizedNickname);
-    }
-
-    if (config.auto && !config.default_agent) {
-      ctx.addIssue({
-        code: "custom",
-        message: "default_agent is required when auto is enabled",
-        path: ["default_agent"],
-      });
     }
 
     if (
@@ -320,9 +310,7 @@ export function buildChatConfig(input: {
     history_mode: "internal",
     auto: true,
     compaction_threshold: 50,
-    max_tokens: 4096,
-    temperature: 0.7,
-    trigger_depth_limit: 2,
+    trigger_depth_limit: 10,
     mention_routing_enabled: true,
     ...input.config,
     agent_setups: input.agentSetup,

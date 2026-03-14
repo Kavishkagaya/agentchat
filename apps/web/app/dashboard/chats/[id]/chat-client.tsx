@@ -1,9 +1,10 @@
 "use client";
 
-import { Edit, Loader2, Send, Trash2 } from "lucide-react";
+import { Loader2, Edit, Send, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/app/trpc/client";
+import { normalizeChatRoutingConfig } from "@axon/shared";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -15,7 +16,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import {
+  ChatFormDialog,
+  type ChatFormData,
+  type ChatFormInitialData,
+} from "@/components/chat-form-dialog";
 
 type Message = {
   role: string;
@@ -25,8 +30,6 @@ type Message = {
   message_id: string;
   isStreaming?: boolean;
 };
-
-type AgentItem = { id: string; name: string };
 
 export function ChatClient({ chatId }: { chatId: string }) {
   const router = useRouter();
@@ -38,8 +41,6 @@ export function ChatClient({ chatId }: { chatId: string }) {
 
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [editForm, setEditForm] = useState({ title: "", agentIds: [] as string[] });
-  const [editInitialized, setEditInitialized] = useState(false);
 
   const chatQuery = api.chats.get.useQuery({ chatId });
   const agentsQuery = api.agents.list.useQuery();
@@ -48,16 +49,24 @@ export function ChatClient({ chatId }: { chatId: string }) {
   const updateChat = api.chats.update.useMutation();
   const deleteChatMutation = api.chats.delete.useMutation();
 
-  // Initialize edit form from chat data
-  useMemo(() => {
-    if (chatQuery.data && !editInitialized) {
-      setEditForm({
-        title: chatQuery.data.title,
-        agentIds: chatQuery.data.agents?.map((a: { agentId: string }) => a.agentId) ?? [],
-      });
-      setEditInitialized(true);
-    }
-  }, [chatQuery.data, editInitialized]);
+  const editInitialData = useMemo((): ChatFormInitialData | undefined => {
+    if (!chatQuery.data) return undefined;
+    const rawConfig = chatQuery.data.config as Record<string, unknown> | null;
+    const config = normalizeChatRoutingConfig(rawConfig);
+    return {
+      title: chatQuery.data.title,
+      agentSetups: config.agent_setups,
+      config: {
+        auto: config.auto,
+        default_agent: config.default_agent,
+        trigger_depth_limit: config.trigger_depth_limit,
+        mention_routing_enabled: config.mention_routing_enabled,
+        history_mode: config.history_mode,
+        compaction_threshold: config.compaction_threshold,
+        system_prompt: config.system_prompt,
+      },
+    };
+  }, [chatQuery.data]);
 
   useEffect(() => {
     if (historyData?.messages) {
@@ -191,12 +200,12 @@ export function ChatClient({ chatId }: { chatId: string }) {
     setInputText("");
   };
 
-  const handleUpdate = async () => {
-    if (!editForm.title.trim()) return;
+  const handleUpdate = async (data: ChatFormData) => {
     await updateChat.mutateAsync({
       chatId,
-      title: editForm.title,
-      agentIds: editForm.agentIds,
+      title: data.title,
+      agentSetup: data.agentSetup,
+      config: data.config,
     });
     await chatQuery.refetch();
     setEditOpen(false);
@@ -205,15 +214,6 @@ export function ChatClient({ chatId }: { chatId: string }) {
   const handleDelete = async () => {
     await deleteChatMutation.mutateAsync({ chatId });
     router.push("/dashboard");
-  };
-
-  const toggleAgent = (agentId: string) => {
-    setEditForm((prev) => ({
-      ...prev,
-      agentIds: prev.agentIds.includes(agentId)
-        ? prev.agentIds.filter((id) => id !== agentId)
-        : [...prev.agentIds, agentId],
-    }));
   };
 
   const chatTitle = chatQuery.data?.title ?? "Loading...";
@@ -227,13 +227,7 @@ export function ChatClient({ chatId }: { chatId: string }) {
             <Button
               size="icon"
               variant="ghost"
-              onClick={() => {
-                setEditForm({
-                  title: chatQuery.data?.title ?? "",
-                  agentIds: chatQuery.data?.agents?.map((a: { agentId: string }) => a.agentId) ?? [],
-                });
-                setEditOpen(true);
-              }}
+              onClick={() => setEditOpen(true)}
             >
               <Edit className="h-4 w-4" />
             </Button>
@@ -295,64 +289,16 @@ export function ChatClient({ chatId }: { chatId: string }) {
       </Card>
 
       {/* Edit Chat Dialog */}
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Chat</DialogTitle>
-            <DialogDescription>
-              Update the chat title and agent assignments.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="grid gap-2">
-              <Label htmlFor="edit-title">Title</Label>
-              <Input
-                id="edit-title"
-                value={editForm.title}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, title: e.target.value })
-                }
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label>Agents</Label>
-              {agentsQuery.isLoading ? (
-                <p className="text-sm text-muted-foreground">Loading agents...</p>
-              ) : agentsQuery.data?.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No agents available.</p>
-              ) : (
-                <div className="grid gap-2 max-h-48 overflow-y-auto">
-                  {agentsQuery.data?.map((agent: AgentItem) => (
-                    <button
-                      key={agent.id}
-                      type="button"
-                      className={`rounded-md border p-2 text-left text-sm transition-colors ${
-                        editForm.agentIds.includes(agent.id)
-                          ? "border-primary bg-primary/10"
-                          : "hover:bg-muted"
-                      }`}
-                      onClick={() => toggleAgent(agent.id)}
-                    >
-                      {agent.name}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleUpdate}
-              disabled={!editForm.title.trim() || updateChat.isPending}
-            >
-              {updateChat.isPending ? "Saving..." : "Save"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ChatFormDialog
+        mode="edit"
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        onSubmit={handleUpdate}
+        agents={agentsQuery.data ?? []}
+        agentsLoading={agentsQuery.isLoading}
+        isPending={updateChat.isPending}
+        initialData={editInitialData}
+      />
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>

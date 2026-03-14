@@ -1,12 +1,18 @@
 import { randomUUID } from "node:crypto";
-import { createChat, deleteChat, getChat, getOrgChats, updateChat } from "@axon/database";
+import {
+  createChat,
+  deleteChat,
+  getChat,
+  getOrgChats,
+  updateChat,
+} from "@axon/database";
 import {
   buildChatConfig,
+  type ChatRoutingConfig,
   chatConfigPatchSchema,
   chatCreateInputSchema,
   chatUpdateInputSchema,
   normalizeChatRoutingConfig,
-  type ChatRoutingConfig,
 } from "@axon/shared";
 import { z } from "zod";
 import { getOrchestratorClient } from "../../workers/orchestrator";
@@ -77,7 +83,7 @@ export const chatsRouter = createTRPCRouter({
     .input(
       z.object({
         chatId: z.string(),
-      })
+      }),
     )
     .query(async ({ input }) => {
       const orchestrator = getOrchestratorClient();
@@ -99,7 +105,7 @@ export const chatsRouter = createTRPCRouter({
         agentSetup: chatUpdateInputSchema.shape.agentSetup,
         agentIds: z.array(z.string()).optional(),
         config: chatConfigPatchSchema.optional(),
-      })
+      }),
     )
     .mutation(async ({ ctx, input }) => {
       let configToPersist: ChatRoutingConfig | undefined;
@@ -112,7 +118,7 @@ export const chatsRouter = createTRPCRouter({
         }
 
         const existingConfig = normalizeChatRoutingConfig(
-          (existing.config as Record<string, unknown> | undefined) ?? {}
+          (existing.config as Record<string, unknown> | undefined) ?? {},
         );
         const nextAgentSetup =
           input.agentSetup ??
@@ -130,7 +136,9 @@ export const chatsRouter = createTRPCRouter({
         if (
           mergedConfig.auto === true &&
           (!mergedConfig.default_agent ||
-            !nextAgentSetup.some((agent) => agent.agentId === mergedConfig.default_agent))
+            !nextAgentSetup.some(
+              (agent) => agent.agentId === mergedConfig.default_agent,
+            ))
         ) {
           mergedConfig.default_agent = nextAgentSetup[0]?.agentId;
         }

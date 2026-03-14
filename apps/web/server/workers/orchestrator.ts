@@ -1,6 +1,6 @@
 import {
-  createAppInfraToken,
   type ChatActivateRequestPayload,
+  createAppInfraToken,
   type HistoryMode,
   type RoutingTokenRequestPayload,
 } from "@axon/shared";
@@ -18,11 +18,13 @@ type RoutingTokenResponse = {
 
 export type OrchestratorClient = {
   activateChat: (
-    payload: ChatActivateRequestPayload
+    payload: ChatActivateRequestPayload,
   ) => Promise<ChatActivateResponse>;
   deleteChat: (configId: string) => Promise<{ ok: boolean }>;
   getChatHistory: (configId: string, token: string) => Promise<any>;
-  getRoutingToken: (payload: RoutingTokenRequestPayload) => Promise<RoutingTokenResponse>;
+  getRoutingToken: (
+    payload: RoutingTokenRequestPayload,
+  ) => Promise<RoutingTokenResponse>;
 };
 
 async function requestOrchestrator<T>(
@@ -30,7 +32,7 @@ async function requestOrchestrator<T>(
   payload: unknown | undefined,
   method: "POST" | "GET" | "DELETE" = "POST",
   headers: Record<string, string> = {},
-  authClaims?: { org_id?: string; sub?: string }
+  authClaims?: { org_id?: string; sub?: string },
 ): Promise<T> {
   // Use explicit URL or resolve (assuming internal network or public if exposed)
   // For dev, might be localhost:8787.
@@ -54,7 +56,7 @@ async function requestOrchestrator<T>(
       org_id: authClaims?.org_id,
       sub: authClaims?.sub ?? "web-app",
     },
-    60
+    60,
   );
   requestHeaders.authorization = `Bearer ${infraToken}`;
 
@@ -85,13 +87,13 @@ export function getOrchestratorClient(): OrchestratorClient {
         payload,
         "POST",
         {},
-        { org_id: payload.org_id, sub: payload.user_id }
+        { org_id: payload.org_id, sub: payload.user_id },
       ),
     deleteChat: (configId) =>
       requestOrchestrator<{ ok: boolean }>(
         `/infra/chats/${configId}`,
         undefined,
-        "DELETE"
+        "DELETE",
       ),
     getRoutingToken: (payload) =>
       requestOrchestrator<RoutingTokenResponse>(
@@ -99,14 +101,11 @@ export function getOrchestratorClient(): OrchestratorClient {
         payload,
         "POST",
         {},
-        { sub: payload.user_id }
+        { sub: payload.user_id },
       ),
     getChatHistory: (configId, token) =>
-      requestOrchestrator<any>(
-        `/chats/${configId}/history`,
-        undefined,
-        "GET",
-        { "X-Routing-Token": token }
-      ),
+      requestOrchestrator<any>(`/chats/${configId}/history`, undefined, "GET", {
+        "X-Routing-Token": token,
+      }),
   };
 }
