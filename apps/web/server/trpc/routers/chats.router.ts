@@ -48,12 +48,10 @@ export const chatsRouter = createTRPCRouter({
 
       // 2. Activate Chat Infrastructure (Warm Up)
       const orchestrator = getOrchestratorClient();
-      await orchestrator.activateChat({
-        config_id: chatId,
-        org_id: ctx.auth.orgId,
-        user_id: ctx.auth.userId as string,
-        history_mode: config.history_mode,
-      });
+      await orchestrator.activateChat(
+        { config_id: chatId },
+        { org_id: ctx.auth.orgId, sub: ctx.auth.userId as string },
+      );
 
       return { chatId };
     }),
@@ -72,11 +70,10 @@ export const chatsRouter = createTRPCRouter({
     .input(z.object({ chatId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const orchestrator = getOrchestratorClient();
-      return await orchestrator.getRoutingToken({
-        config_id: input.chatId,
-        user_id: ctx.auth.userId as string,
-        role: "owner",
-      });
+      return await orchestrator.getRoutingToken(
+        { config_id: input.chatId, role: "owner" },
+        { sub: ctx.auth.userId as string },
+      );
     }),
 
   getHistory: orgProcedure
@@ -88,11 +85,10 @@ export const chatsRouter = createTRPCRouter({
     .query(async ({ input }) => {
       const orchestrator = getOrchestratorClient();
       // Get routing token for client-side use
-      const { routing_token } = await orchestrator.getRoutingToken({
-        config_id: input.chatId,
-        user_id: "system", // Internal fetch doesn't strictly need a user, but orchestrator requires one
-        role: "admin",
-      });
+      const { routing_token } = await orchestrator.getRoutingToken(
+        { config_id: input.chatId, role: "admin" },
+        { sub: "system" },
+      );
 
       return await orchestrator.getChatHistory(input.chatId, routing_token);
     }),

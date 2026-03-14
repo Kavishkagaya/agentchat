@@ -14,10 +14,11 @@ Central gateway and lifecycle manager for the multi-agent chat system. Handles c
 
 ```
 Client / Backend App
-  → [router.ts] HTTP handler
-  → Auth verification (App Signature or Routing Token)
-  → Database operations (chat runtime CRUD)
-  → Forward to Memory Controller Durable Object
+  → [router.ts] Thin route dispatch (URL matching, auth, response formatting)
+  → [auth/] Auth guards (App Signature or Routing Token verification)
+  → [services/] Business logic (chat lifecycle, token creation)
+  → [do/] Memory Controller DO communication
+  → [@axon/worker-database] Database operations (chat runtime CRUD)
   → Return response
 ```
 
@@ -26,8 +27,15 @@ Client / Backend App
 | File | Role |
 |------|------|
 | `src/index.ts` | Worker entry point, exports fetch() and scheduled() handlers |
-| `src/router.ts` | All endpoint handlers and request routing logic |
+| `src/router.ts` | Thin route dispatch — URL matching, auth, call service, format response |
 | `src/env.ts` | Environment type definitions |
+| `src/services/chat.service.ts` | Business logic: activate, archive, destroy, cleanup, history, routing token |
+| `src/services/errors.ts` | ServiceError class for typed business errors |
+| `src/auth/infra-auth.ts` | Server-to-server auth guard (App Signature → AppInfraTokenPayload) |
+| `src/auth/routing-auth.ts` | Client auth guard (Routing Token verification + configId match) |
+| `src/do/controller-client.ts` | Memory Controller DO helpers: stub, headers, forwarding |
+| `src/http/response.ts` | Response utilities: json(), errorResponse() |
+| `src/http/request.ts` | Request parsing: readJson(), requireString(), getBearerToken() |
 
 ## Endpoints
 
@@ -63,9 +71,17 @@ Client / Backend App
 2. **User → Orchestrator**: Routing Token (signed JWT, created via `/infra/routing-token`, 5 min TTL)
 3. **Orchestrator → Memory Controller**: Internal Token (per-request Ed25519 JWT)
 
+## Layering Rules
+
+- **Router** — HTTP concerns only. No DB calls, no DO communication. Calls auth guards, parses params, calls service, formats Response.
+- **Services** — Business logic. Takes typed params, returns plain objects. Throws `ServiceError` for known errors. Does NOT import from `http/` or `auth/`.
+- **Auth** — Guards return verified token payloads. Router extracts `org_id`/`user_id` from token, not from request body.
+- **DO Client** — Encapsulates Memory Controller communication. Used by services only.
+- **API types** — All request/response payload types live in `@axon/shared/src/chat-contract.ts`.
+
 ## Monorepo Dependencies
 
-- `@axon/shared` — Token creation/verification, chat contract types
+- `@axon/shared` — Token creation/verification, chat contract types, API payload types
 - `@axon/worker-database` — DB client, chat runtime services (getChatRuntime, initializeChatRuntime, etc.)
 
 ## Dev

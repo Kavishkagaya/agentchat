@@ -108,16 +108,32 @@ export type ChatMessageRequest = z.infer<typeof chatMessageRequestSchema>;
 
 export type ChatActivateRequestPayload = {
   config_id: string;
-  history_mode?: HistoryMode;
-  org_id: string;
-  user_id?: string;
 };
 
 export type RoutingTokenRequestPayload = {
   config_id: string;
-  user_id: string;
   role?: string;
 };
+
+export type ChatActivateResponse = {
+  ok: boolean;
+  memory_controller_id?: string;
+};
+
+export type RoutingTokenResponse = {
+  ok: boolean;
+  routing_token: string;
+};
+
+export interface CleanupRequestPayload {
+  config_id: string;
+  status?: "active" | "idle" | "archived";
+}
+
+export interface ChatArchiveSnapshotResponse {
+  ok: boolean;
+  snapshot?: Record<string, unknown>;
+}
 
 export type MessageOrigin = "user" | "agent";
 
