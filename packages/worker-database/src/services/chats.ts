@@ -179,13 +179,12 @@ export async function deleteChatRuntime(chatId: string) {
   const db = getDb();
 
   // Delete runtime data only (chat is owned by main DB)
-  await db.transaction(async (tx) => {
-    await tx.delete(chatAgentRuntimes).where(eq(chatAgentRuntimes.configId, chatId));
-    await tx.delete(chatArchives).where(eq(chatArchives.configId, chatId));
-    await tx.delete(chatSnapshots).where(eq(chatSnapshots.configId, chatId));
-    await tx.delete(agentRuntimes).where(eq(agentRuntimes.configId, chatId));
-    await tx.delete(chatRuntime).where(eq(chatRuntime.configId, chatId));
-  });
+  // neon-http driver does not support transactions — delete sequentially in FK order
+  await db.delete(chatAgentRuntimes).where(eq(chatAgentRuntimes.configId, chatId));
+  await db.delete(chatArchives).where(eq(chatArchives.configId, chatId));
+  await db.delete(chatSnapshots).where(eq(chatSnapshots.configId, chatId));
+  await db.delete(agentRuntimes).where(eq(agentRuntimes.configId, chatId));
+  await db.delete(chatRuntime).where(eq(chatRuntime.configId, chatId));
 
   return { deleted: true };
 }

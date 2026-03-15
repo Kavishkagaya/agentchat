@@ -18,9 +18,11 @@ import { errorMessage, errorResponse, json } from "./http/response";
 import {
   activateChat,
   archiveChat,
+  clearChatHistory,
   createRoutingToken,
   destroyChat,
   getHistory,
+  syncChatConfig,
   updateChatStatus,
 } from "./services/chat.service";
 import { ServiceError } from "./services/errors";
@@ -172,6 +174,23 @@ export async function handleRequest(
   }
 
   if (
+    request.method === "DELETE" &&
+    url.pathname.match(/^\/infra\/chats\/[^/]+\/history$/)
+  ) {
+    const configId = url.pathname.split("/").filter(Boolean)[2];
+    if (!configId) {
+      return errorResponse(400, "invalid_request", "missing chat id");
+    }
+    try {
+      await requireAppSignature(request, env, url.pathname);
+      await clearChatHistory(env, configId);
+      return json({ ok: true });
+    } catch (error) {
+      return handleError(error, `DELETE /infra/chats/${configId}/history`, 500, "clear_history_failed");
+    }
+  }
+
+  if (
     request.method === "GET" &&
     url.pathname.match(/^\/infra\/chats\/[^/]+\/history$/)
   ) {
@@ -184,6 +203,27 @@ export async function handleRequest(
       return getHistory(env, configId, url.search);
     } catch (error) {
       return handleError(error, `GET /infra/chats/${configId}/history`, 401, "unauthorized");
+    }
+  }
+
+  if (
+    request.method === "POST" &&
+    url.pathname.match(/^\/infra\/chats\/[^/]+\/sync-config$/)
+  ) {
+    const configId = url.pathname.split("/").filter(Boolean)[2];
+    if (!configId) {
+      return errorResponse(400, "invalid_request", "missing chat id");
+    }
+    try {
+      await requireAppSignature(request, env, url.pathname);
+      const body = await readJson<{ config: Record<string, unknown> }>(request);
+      if (!body.config) {
+        return errorResponse(400, "invalid_request", "missing config");
+      }
+      const result = await syncChatConfig(env, configId, body.config);
+      return json(result);
+    } catch (error) {
+      return handleError(error, `POST /infra/chats/${configId}/sync-config`, 500, "config_sync_failed");
     }
   }
 

@@ -11,12 +11,10 @@ export type ChatRoutingContext = {
   text: string;
   explicitAgentIds?: string[];
   origin: MessageOrigin;
-  mentionRoutingEnabled: boolean;
 };
 
 export type ChatRoutingResult = MessageRoutingDecision & {
   config: ChatRoutingConfig;
-  routingEnabled: boolean;
 };
 
 export function getTriggerDepthLimit(config: ChatRoutingConfig): number {
@@ -25,24 +23,9 @@ export function getTriggerDepthLimit(config: ChatRoutingConfig): number {
 
 export function resolveChatTargets(input: ChatRoutingContext): ChatRoutingResult {
   const config = normalizeChatRoutingConfig(input.config);
-  const routingEnabled = input.mentionRoutingEnabled && config.mention_routing_enabled !== false;
-
-  if (!routingEnabled) {
-    const fallbackTarget =
-      config.auto === true && config.default_agent ? [config.default_agent] : [];
-    return {
-      config,
-      routingEnabled: false,
-      source: fallbackTarget.length > 0 ? "default" : "none",
-      targetAgentIds: fallbackTarget,
-      validMentions: [],
-      unknownMentions: [],
-    };
-  }
 
   return {
     config,
-    routingEnabled: true,
     ...resolveMessageTargets({
       text: input.text,
       explicitAgentIds: input.explicitAgentIds,

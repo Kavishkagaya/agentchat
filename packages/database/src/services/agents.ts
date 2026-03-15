@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "../client";
-import { agents, modelCatalog } from "../schema";
+import { agents, chatAgents, modelCatalog } from "../schema";
 
 export interface CreateAgentParams {
   config: any;
@@ -167,6 +167,31 @@ export async function updateAgent(params: UpdateAgentParams) {
     .where(and(eq(agents.id, params.agentId), eq(agents.orgId, params.orgId)));
 
   return { agentId: params.agentId, updatedAt: now };
+}
+
+export async function getAgentChatCount(agentId: string) {
+  const db = getDb();
+  const rows = await db
+    .select({ configId: chatAgents.configId })
+    .from(chatAgents)
+    .where(eq(chatAgents.agentId, agentId));
+  return rows.length;
+}
+
+export async function deleteAgent(params: { agentId: string; orgId: string }) {
+  const db = getDb();
+
+  const chatCount = await getAgentChatCount(params.agentId);
+  if (chatCount > 0) {
+    throw new Error("Cannot delete agent that is assigned to chats");
+  }
+
+  const result = await db
+    .delete(agents)
+    .where(and(eq(agents.id, params.agentId), eq(agents.orgId, params.orgId)))
+    .returning({ id: agents.id });
+
+  return result.length > 0;
 }
 
 export async function copyPublicAgent(params: {

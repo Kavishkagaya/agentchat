@@ -1,7 +1,9 @@
 import {
   copyPublicAgent,
   createAgent,
+  deleteAgent,
   getAgent,
+  getAgentChatCount,
   getAgents,
   getModel,
   getPublicAgents,
@@ -37,7 +39,8 @@ export const agentsRouter = createTRPCRouter({
       if (!agent) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Agent not found" });
       }
-      return agent;
+      const chatCount = await getAgentChatCount(input.agentId);
+      return { ...agent, chatCount };
     }),
 
   listPublic: orgProcedure.query(async () => {
@@ -140,5 +143,29 @@ export const agentsRouter = createTRPCRouter({
         agentId: input.agentId,
         createdBy: ctx.auth.userId as string,
       });
+    }),
+
+  delete: orgProcedure
+    .input(z.object({ agentId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const deleted = await deleteAgent({
+          agentId: input.agentId,
+          orgId: ctx.auth.orgId,
+        });
+        if (!deleted) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Agent not found" });
+        }
+        return { success: true };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        if (error instanceof Error && error.message.includes("assigned to chats")) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: error.message,
+          });
+        }
+        throw error;
+      }
     }),
 });

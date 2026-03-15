@@ -23,10 +23,8 @@ const chatRoutingConfigBaseSchema = z.object({
   history_mode: historyModeSchema.default("internal"),
   auto: z.boolean().default(true),
   default_agent: z.string().optional(),
-  system_prompt: z.string().trim().min(1).optional(),
-  compaction_threshold: z.number().int().min(10).max(1000).default(50),
+  compaction_threshold: z.number().int().min(1000).max(200000).default(50000),
   trigger_depth_limit: z.number().int().min(1).max(100).default(10),
-  mention_routing_enabled: z.boolean().default(true),
   mention_map: z.record(z.string(), z.string()).default({}),
   agent_setups: z.array(chatAgentSetupSchema).default([]),
 });
@@ -187,6 +185,7 @@ export type AgentSseEvent =
 // ── Server → Client WebSocket events ────────────────────────
 
 export type ChatWsEvent =
+  | { type: "initializing" }
   | { type: "ready" }
   | { type: "user_message_stored"; message_id: string; sender_id?: string; sender_name?: string; text: string }
   | { type: "agent_start"; agent_id: string; agent_nickname: string; message_id: string }
@@ -198,6 +197,7 @@ export type ChatWsEvent =
   | { type: "agent_message"; message_id: string; agent_id: string; agent_nickname: string; text: string }
   | { type: "agent_error"; agent_id: string; message_id: string; code: string; message: string }
   | { type: "routing_warning"; message_id: string; unknown_mentions: string[]; source: string; origin: string }
+  | { type: "history_cleared" }
   | { type: "done" }
   | { type: "error"; code: string; message: string };
 
@@ -248,20 +248,64 @@ export function buildMentionMap(agentSetup: ChatAgentSetup[]): Record<string, st
   return mentionMap;
 }
 
-export function buildDefaultSystemPrompt(agentSetup: ChatAgentSetup[]): string {
-  const lines: string[] = [];
-  lines.push("You are collaborating in a multi-agent chat.");
-  lines.push("Team members and responsibilities:");
-  for (const setup of agentSetup) {
-    lines.push(
-      `- @${normalizeNickname(setup.nickname)} (${setup.agentId}): ${setup.responsibility}`
-    );
-  }
-  lines.push("When another agent should take ownership, mention them with @nickname.");
-  lines.push(
-    "Only mention agents when necessary. Keep responses concise, actionable, and role-aligned."
+export type AgentChatContext = {
+  identity: string;
+  team: string;
+};
+
+export function buildAgentChatContext(params: {
+  agentNickname: string;
+  agentSetups: ChatAgentSetup[];
+}): AgentChatContext {
+  const normalizedSelf = normalizeNickname(params.agentNickname);
+  const selfSetup = params.agentSetups.find(
+    (s) => normalizeNickname(s.nickname) === normalizedSelf,
   );
-  return lines.join("\n");
+
+  const identityLines: string[] = [];
+  identityLines.push(`Your name is ${params.agentNickname}.`);
+  if (selfSetup) {
+    identityLines.push(`Your responsibility: ${selfSetup.responsibility}`);
+  }
+  identityLines.push("");
+  identityLines.push("Identity rules:");
+  identityLines.push(`- You ARE ${params.agentNickname}. Fully embody this identity throughout the conversation.`);
+  identityLines.push(`- Refer to yourself naturally as "I" — never write @${params.agentNickname} or tag yourself.`);
+  identityLines.push(`- Never say "As an AI", "As a language model", or "As an assistant".`);
+  identityLines.push(`- Do not echo or repeat name tags like [${params.agentNickname}] from message history.`);
+
+  const teamLines: string[] = [];
+  const others = params.agentSetups.filter(
+    (s) => normalizeNickname(s.nickname) !== normalizedSelf,
+  );
+  if (others.length > 0) {
+    teamLines.push("You are collaborating in a multi-agent chat.");
+    teamLines.push("Other team members:");
+    for (const setup of others) {
+      teamLines.push(`- ${setup.nickname}: ${setup.responsibility}`);
+    }
+    teamLines.push("");
+    teamLines.push("@mention rules (CRITICAL — using @ TRIGGERS that agent to run, so misuse causes unwanted invocations):");
+    teamLines.push("- ONLY use @name when you intentionally want to hand off or delegate work to that agent.");
+    teamLines.push("- When just referring to or talking about a team member, use their name WITHOUT @ prefix.");
+    teamLines.push(`- NEVER @mention yourself (@${params.agentNickname}).`);
+    teamLines.push("- Use plain text only — no JSON, structured formats, or special syntax.");
+
+    const otherNames = others.map((s) => s.nickname);
+    const exampleOther = otherNames[0];
+    teamLines.push("");
+    teamLines.push("Examples:");
+    teamLines.push(`  WRONG: "I discussed this with @${exampleOther} earlier" (this will trigger ${exampleOther} to respond)`);
+    teamLines.push(`  RIGHT: "I discussed this with ${exampleOther} earlier"`);
+    teamLines.push(`  RIGHT: "@${exampleOther} can you review this?" (intentional hand-off)`);
+    teamLines.push("");
+    teamLines.push("Keep responses concise, actionable, and role-aligned.");
+  }
+
+  return {
+    identity: identityLines.join("\n"),
+    team: teamLines.join("\n"),
+  };
 }
 
 function extractMentions(text: string): string[] {
@@ -325,7 +369,7 @@ export function resolveMessageTargets(input: MessageRoutingInput): MessageRoutin
     };
   }
 
-  if (input.config.auto === true && input.config.default_agent) {
+  if (input.origin !== "agent" && input.config.auto === true && input.config.default_agent) {
     return {
       targetAgentIds: [input.config.default_agent],
       source: "default",
@@ -391,8 +435,6 @@ export function normalizeChatRoutingConfig(
     auto: false,
     default_agent:
       typeof rawConfig?.default_agent === "string" ? rawConfig.default_agent : undefined,
-    system_prompt:
-      typeof rawConfig?.system_prompt === "string" ? rawConfig.system_prompt : undefined,
     mention_map: normalizedMentionMap,
     agent_setups: [],
   });
@@ -403,19 +445,15 @@ export function buildChatConfig(input: {
   agentSetup: ChatAgentSetup[];
 }): ChatRoutingConfig {
   const mentionMap = buildMentionMap(input.agentSetup);
-  const systemPrompt =
-    input.config?.system_prompt?.trim() || buildDefaultSystemPrompt(input.agentSetup);
 
   return chatRoutingConfigSchema.parse({
     topology: "chat",
     history_mode: "internal",
     auto: true,
-    compaction_threshold: 50,
+    compaction_threshold: 50000,
     trigger_depth_limit: 10,
-    mention_routing_enabled: true,
     ...input.config,
     agent_setups: input.agentSetup,
     mention_map: mentionMap,
-    system_prompt: systemPrompt,
   });
 }

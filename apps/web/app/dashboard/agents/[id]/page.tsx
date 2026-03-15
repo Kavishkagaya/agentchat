@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Edit } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useParams } from "next/navigation";
 import { api } from "@/app/trpc/client";
@@ -37,10 +37,12 @@ export default function AgentEditPage() {
   const params = useParams();
   const agentId = params.id as string;
 
+  const utils = api.useUtils();
   const agentQuery = api.agents.get.useQuery({ agentId });
   const mcpQuery = api.mcp.list.useQuery();
   const modelsQuery = api.models.list.useQuery();
   const updateAgent = api.agents.update.useMutation();
+  const deleteAgent = api.agents.delete.useMutation();
 
   const [form, setForm] = useState({
     name: "",
@@ -50,6 +52,7 @@ export default function AgentEditPage() {
   });
   const [selectedServers, setSelectedServers] = useState<McpServer[]>([]);
   const [mcpDialogOpen, setMcpDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
 
   // Initialize form from agent data
@@ -97,6 +100,13 @@ export default function AgentEditPage() {
         mcpServers: selectedServers.map((s) => s.id),
       },
     });
+    router.push("/dashboard/agents");
+  };
+
+  const handleDelete = async () => {
+    await deleteAgent.mutateAsync({ agentId });
+    utils.agents.get.setData({ agentId }, undefined);
+    utils.agents.list.invalidate();
     router.push("/dashboard/agents");
   };
 
@@ -248,6 +258,22 @@ export default function AgentEditPage() {
           Cancel
         </Button>
         <Button onClick={handleUpdate}>Update agent</Button>
+        <div className="flex-1" />
+        <div className="flex items-center gap-2">
+          {(agentQuery.data.chatCount ?? 0) > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Used in {agentQuery.data.chatCount} chat{agentQuery.data.chatCount === 1 ? "" : "s"}
+            </p>
+          )}
+          <Button
+            variant="destructive"
+            onClick={() => setDeleteDialogOpen(true)}
+            disabled={(agentQuery.data.chatCount ?? 0) > 0}
+          >
+            <Trash2 className="mr-1 h-4 w-4" />
+            Delete
+          </Button>
+        </div>
       </div>
 
       <Dialog open={mcpDialogOpen} onOpenChange={setMcpDialogOpen}>
@@ -307,6 +333,33 @@ export default function AgentEditPage() {
               Add new MCP
             </Button>
             <Button onClick={() => setMcpDialogOpen(false)}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete agent</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this agent? This action cannot be
+              undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={deleteAgent.isPending}
+            >
+              {deleteAgent.isPending ? "Deleting…" : "Delete agent"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

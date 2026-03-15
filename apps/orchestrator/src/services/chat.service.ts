@@ -141,10 +141,37 @@ export async function updateChatStatus(
   return { config_id: params.config_id, status: params.status };
 }
 
+export async function clearChatHistory(
+  env: Env,
+  configId: string,
+): Promise<{ ok: boolean }> {
+  const res = await controllerClient.clearHistory(env, configId);
+
+  if (!res.ok) {
+    throw new ServiceError(500, "clear_history_failed", await res.text());
+  }
+
+  return { ok: true };
+}
+
 export async function getHistory(
   env: Env,
   configId: string,
   queryString: string,
 ): Promise<Response> {
   return controllerClient.getMessages(env, configId, queryString);
+}
+
+export async function syncChatConfig(
+  env: Env,
+  configId: string,
+  config: Record<string, unknown>,
+): Promise<{ ok: boolean }> {
+  const res = await controllerClient.updateConfig(env, configId, config);
+
+  if (!res.ok) {
+    throw new ServiceError(500, "config_sync_failed", await res.text());
+  }
+
+  return { ok: true };
 }

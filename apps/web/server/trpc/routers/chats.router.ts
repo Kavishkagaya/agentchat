@@ -146,13 +146,33 @@ export const chatsRouter = createTRPCRouter({
         agentIdsToPersist = nextAgentSetup.map((agent) => agent.agentId);
       }
 
-      return await updateChat({
+      const result = await updateChat({
         chatId: input.chatId,
         orgId: ctx.auth.orgId,
         title: input.title,
         config: configToPersist,
         agentIds: agentIdsToPersist,
       });
+
+      // Sync config to Memory Controller (best-effort, don't block on failure)
+      if (configToPersist) {
+        try {
+          const orchestrator = getOrchestratorClient();
+          await orchestrator.syncConfig(input.chatId, configToPersist as Record<string, unknown>);
+        } catch (err) {
+          console.error("Failed to sync config to memory controller:", err);
+          // Non-fatal: next /init or restart will pick up the DB config
+        }
+      }
+
+      return result;
+    }),
+
+  clearHistory: orgProcedure
+    .input(z.object({ chatId: z.string() }))
+    .mutation(async ({ input }) => {
+      const orchestrator = getOrchestratorClient();
+      return await orchestrator.clearHistory(input.chatId);
     }),
 
   delete: orgProcedure

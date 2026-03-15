@@ -8,6 +8,7 @@ import {
 import { z } from "zod";
 import { ModelRegistry } from "./models/registry";
 import type {
+  AgentChatContext,
   AgentConfig,
   AgentFactoryOptions,
   AgentRunInput,
@@ -16,6 +17,42 @@ import type {
   ModelEnv,
   ToolRegistry,
 } from "./types";
+
+function buildSystemPrompt(
+  agentSystemPrompt: string | undefined,
+  chatContext: AgentChatContext | undefined,
+): string | undefined {
+  const parts = [
+    chatContext?.identity,
+    agentSystemPrompt,
+    chatContext?.team,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join("\n\n") : undefined;
+}
+
+function resolveMessages(input: AgentRunInput) {
+  const messages = [...(input.messages ?? [])];
+  if (messages.length === 0 && input.prompt) {
+    messages.push({
+      role: "user" as const,
+      content: [{ type: "text" as const, text: input.prompt }],
+    });
+  } else if (messages.length > 0) {
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg.role === "assistant" || lastMsg.role === "system") {
+      messages.push({
+        role: "user" as const,
+        content: [{ type: "text" as const, text: "Please review and respond." }],
+      });
+    }
+  }
+
+  if (messages.length === 0) {
+    throw new Error("missing prompt or messages");
+  }
+
+  return messages;
+}
 
 function resolveTools(
   agentId: string,
@@ -89,71 +126,25 @@ export function createAgentRunner(params: {
 
   return {
     async run(input: AgentRunInput): Promise<AgentRunResult> {
-      const messages = [...(input.messages ?? [])];
-      if (messages.length === 0 && input.prompt) {
-        messages.push({
-          role: "user",
-          content: [{ type: "text", text: input.prompt }],
-        });
-      } else if (messages.length > 0) {
-        const lastMsg = messages[messages.length - 1];
-        if (lastMsg.role === "assistant" || lastMsg.role === "system") {
-          messages.push({
-            role: "user",
-            content: [{ type: "text", text: "Please review and respond." }],
-          });
-        }
-      }
+      const messages = resolveMessages(input);
+      const systemPrompt = buildSystemPrompt(params.config.system_prompt, input.chat_context);
 
-      if (messages.length === 0) {
-        throw new Error("missing prompt or messages");
-      }
-
-      const agentSettings = {
+      const agent = new ToolLoopAgent({
         model,
-        instructions: params.config.system_prompt,
+        instructions: systemPrompt,
         tools,
-        temperature: params.config.temperature,
-        maxTokens: params.config.max_tokens,
-        topP: params.config.top_p,
-        presencePenalty: params.config.presence_penalty,
-        frequencyPenalty: params.config.frequency_penalty,
-        stopSequences: params.config.stop,
-        seed: params.config.seed,
-      };
-
-      const agent = new ToolLoopAgent(agentSettings);
-      const result = await agent.generate({
-        messages,
       });
 
-      return result;
+      return agent.generate({ messages });
     },
 
     async *runStream(input: AgentRunInput): AsyncGenerator<AgentStreamEvent> {
-      const messages = [...(input.messages ?? [])];
-      if (messages.length === 0 && input.prompt) {
-        messages.push({
-          role: "user",
-          content: [{ type: "text", text: input.prompt }],
-        });
-      } else if (messages.length > 0) {
-        const lastMsg = messages[messages.length - 1];
-        if (lastMsg.role === "assistant" || lastMsg.role === "system") {
-          messages.push({
-            role: "user",
-            content: [{ type: "text", text: "Please review and respond." }],
-          });
-        }
-      }
-
-      if (messages.length === 0) {
-        throw new Error("missing prompt or messages");
-      }
+      const messages = resolveMessages(input);
+      const systemPrompt = buildSystemPrompt(params.config.system_prompt, input.chat_context);
 
       const result = streamText({
         model,
-        system: params.config.system_prompt,
+        system: systemPrompt,
         messages,
         tools,
         temperature: params.config.temperature,

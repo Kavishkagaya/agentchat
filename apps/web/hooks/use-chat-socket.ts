@@ -6,9 +6,9 @@ import type { ChatWsEvent, ChatHistoryMessage } from "@axon/shared";
 import type { ChatMessage } from "@/types/chat";
 
 function mapHistoryMessage(m: ChatHistoryMessage): ChatMessage {
-  // Legacy data may have "[agent_name]: text" prefix — strip it for display
+  // Strip "[agent_name]: " prefix — agents may echo this from context format
   let text = m.text;
-  if (m.role === "assistant" && !m.agent_nickname && text.match(/^\[.+?\]: /)) {
+  if (m.role === "assistant" && text.match(/^\[.+?\]: /)) {
     text = text.replace(/^\[.+?\]: /, "");
   }
 
@@ -26,6 +26,7 @@ export function useChatSocket(chatId: string) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isThinking, setIsThinking] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(false);
 
   const socketRef = useRef<WebSocket | null>(null);
   const connectingRef = useRef(false);
@@ -72,8 +73,7 @@ export function useChatSocket(chatId: string) {
             socket.close();
             return;
           }
-          setIsConnected(true);
-          console.log("WS connected");
+          console.log("WS connected, waiting for ready...");
         };
 
         socket.onmessage = (event) => {
@@ -92,6 +92,15 @@ export function useChatSocket(chatId: string) {
 
     const handleEvent = (data: ChatWsEvent) => {
       switch (data.type) {
+        case "initializing":
+          setIsInitializing(true);
+          break;
+
+        case "ready":
+          setIsInitializing(false);
+          setIsConnected(true);
+          break;
+
         case "user_message_stored":
           setMessages((prev) => [
             ...prev,
@@ -159,6 +168,10 @@ export function useChatSocket(chatId: string) {
           setIsThinking(false);
           break;
 
+        case "history_cleared":
+          setMessages([]);
+          break;
+
         case "done":
           setIsThinking(false);
           break;
@@ -186,5 +199,5 @@ export function useChatSocket(chatId: string) {
     );
   }, []);
 
-  return { messages, isThinking, isConnected, sendMessage };
+  return { messages, isThinking, isConnected, isInitializing, sendMessage };
 }

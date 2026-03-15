@@ -1,6 +1,8 @@
 import {
+  buildAgentChatContext,
   chatMessageRequestSchema,
   createAgentAccessToken,
+  type AgentChatContext,
   type AgentUsage,
   type ChatRoutingConfig,
   type ChatWsEvent,
@@ -188,7 +190,8 @@ export class ChatHandler {
     prompt: string,
     context: Array<{ role: string; content: string }>,
     configId: string,
-    orgId: string
+    orgId: string,
+    chatContext?: AgentChatContext
   ) {
     let token = "";
     try {
@@ -211,6 +214,7 @@ export class ChatHandler {
         config_id: configId,
         prompt,
         messages: context,
+        chat_context: chatContext,
       }),
     };
   }
@@ -221,12 +225,13 @@ export class ChatHandler {
     prompt: string,
     context: Array<{ role: string; content: string }>,
     configId: string,
-    orgId: string
+    orgId: string,
+    chatContext?: AgentChatContext
   ): AsyncGenerator<{ event: string; data: unknown }> {
     const baseUrl = this.env.AGENTS_BASE_URL;
     if (!baseUrl) return;
 
-    const opts = await this.buildAgentFetchOptions(agentId, prompt, context, configId, orgId);
+    const opts = await this.buildAgentFetchOptions(agentId, prompt, context, configId, orgId, chatContext);
 
     const res = await fetch(`${baseUrl.replace(/\/$/, "")}/agents/run`, {
       method: "POST",
@@ -247,12 +252,13 @@ export class ChatHandler {
     prompt: string,
     context: Array<{ role: string; content: string }>,
     configId: string,
-    orgId: string
+    orgId: string,
+    chatContext?: AgentChatContext
   ): AsyncGenerator<{ event: string; data: unknown }> {
     const baseUrl = this.env.AGENTS_BASE_URL;
     if (!baseUrl) return;
 
-    const opts = await this.buildAgentFetchOptions(agentId, prompt, context, configId, orgId);
+    const opts = await this.buildAgentFetchOptions(agentId, prompt, context, configId, orgId, chatContext);
 
     const res = await fetch(`${baseUrl.replace(/\/$/, "")}/agents/run-stream`, {
       method: "POST",
@@ -422,10 +428,17 @@ export class ChatHandler {
 
     const agentNickname = finalResult.agent_nickname || knownNickname;
 
+    // Strip "[AgentName]: " prefix that agents echo back from context format
+    let cleanText = finalResult.text;
+    const bracketPrefix = cleanText.match(/^\[.+?\]:\s*/);
+    if (bracketPrefix) {
+      cleanText = cleanText.slice(bracketPrefix[0].length);
+    }
+
     this.insertMessage({
       messageId: agentMsgId,
       role: "assistant",
-      text: finalResult.text,
+      text: cleanText,
       agentId,
       agentNickname,
       tokens: finalResult.usage?.completionTokens,
@@ -438,15 +451,11 @@ export class ChatHandler {
         message_id: agentMsgId,
         agent_id: agentId,
         agent_nickname: agentNickname,
-        text: finalResult.text,
+        text: cleanText,
       });
     }
 
-    return { ...finalResult, agent_id: agentId, message_id: agentMsgId };
-  }
-
-  private isMentionRoutingEnabled(): boolean {
-    return this.env.CHAT_MENTION_ROUTING_ENABLED !== "false";
+    return { ...finalResult, text: cleanText, agent_id: agentId, message_id: agentMsgId };
   }
 
   private emitRoutingWarnings(params: {
@@ -493,7 +502,6 @@ export class ChatHandler {
       text: params.text,
       explicitAgentIds: params.explicitAgentIds,
       origin: params.origin,
-      mentionRoutingEnabled: this.isMentionRoutingEnabled(),
     });
     this.insertEvent(params.messageId, "routing_decision", {
       origin: params.origin,
@@ -509,9 +517,12 @@ export class ChatHandler {
     });
 
     const maxDepth = getTriggerDepthLimit(initialDecision.config);
-    const dedupeTargets = new Set<string>();
+    // Track agents currently running — prevents the same agent being queued
+    // twice concurrently. Removed once the agent finishes so it can be
+    // re-triggered in a later round.
+    const runningAgents = new Set<string>();
     const queue = initialDecision.targetAgentIds.map((agentId) => {
-      dedupeTargets.add(agentId);
+      runningAgents.add(agentId);
       return { agentId, prompt: params.text, depth: 0 };
     });
 
@@ -528,14 +539,12 @@ export class ChatHandler {
       if (!current) break;
 
       const agentNickname = this.resolveAgentNickname(current.agentId, initialDecision.config);
-      const systemPrompt = initialDecision.config.system_prompt
-        ? `${initialDecision.config.system_prompt}\n\nIMPORTANT: Your name is @${agentNickname}. You are currently acting as this agent. Do not mention yourself.`
-        : `IMPORTANT: Your name is @${agentNickname}. You are currently acting as this agent. Do not mention yourself.`;
+      const chatContext = buildAgentChatContext({
+        agentNickname,
+        agentSetups: initialDecision.config.agent_setups ?? [],
+      });
 
-      const context = ContextManager.assembleContext(
-        this.ctx.storage.sql,
-        systemPrompt
-      );
+      const context = ContextManager.assembleContext(this.ctx.storage.sql);
 
       const eventStream = params.streamDeltas
         ? this.invokeAgentStream(
@@ -543,14 +552,16 @@ export class ChatHandler {
             current.prompt,
             context,
             params.configId,
-            params.orgId
+            params.orgId,
+            chatContext
           )
         : this.invokeAgentCoarse(
             current.agentId,
             current.prompt,
             context,
             params.configId,
-            params.orgId
+            params.orgId,
+            chatContext
           );
 
       const result = await this.processAgentEvents(current.agentId, eventStream, {
@@ -558,6 +569,10 @@ export class ChatHandler {
         streamDeltas: params.streamDeltas,
         config: initialDecision.config,
       });
+
+      // Agent finished — remove from running set so it can be re-triggered later
+      runningAgents.delete(current.agentId);
+
       if (!result) continue;
 
       agentMessages.push(result);
@@ -574,7 +589,6 @@ export class ChatHandler {
         config: initialDecision.config,
         text: result.text,
         origin: "agent",
-        mentionRoutingEnabled: this.isMentionRoutingEnabled(),
       });
       this.insertEvent(result.message_id, "routing_decision", {
         origin: "agent",
@@ -590,13 +604,11 @@ export class ChatHandler {
       });
 
       for (const targetAgentId of chainedDecision.targetAgentIds) {
-        if (dedupeTargets.has(targetAgentId)) {
-          this.insertEvent(result.message_id, "routing_deduped_target", {
-            target_agent_id: targetAgentId,
-          });
-          continue;
-        }
-        dedupeTargets.add(targetAgentId);
+        // No self-triggering
+        if (targetAgentId === current.agentId) continue;
+        // Skip if this agent is already queued / running
+        if (runningAgents.has(targetAgentId)) continue;
+        runningAgents.add(targetAgentId);
         queue.push({
           agentId: targetAgentId,
           prompt: result.text,
@@ -684,6 +696,13 @@ export class ChatHandler {
   }
 
 
+  public clearHistory() {
+    const sql = this.ctx.storage.sql;
+    sql.exec("DELETE FROM messages");
+    sql.exec("DELETE FROM context_messages");
+    sql.exec("DELETE FROM message_events");
+  }
+
   async handle(request: Request, route: string): Promise<Response> {
     const json = (data: unknown, status = 200) =>
       new Response(JSON.stringify(data), {
@@ -703,6 +722,12 @@ export class ChatHandler {
     if (request.method === "GET" && route.match(/^\/messages\/[^/]+\/events$/)) {
       const messageId = route.split("/")[2];
       return json({ events: this.getMessageEvents(messageId) });
+    }
+
+    if (request.method === "DELETE" && route === "/messages") {
+      this.clearHistory();
+      this.broadcast({ type: "history_cleared" });
+      return json({ ok: true });
     }
 
     if (request.method === "POST" && route === "/messages") {

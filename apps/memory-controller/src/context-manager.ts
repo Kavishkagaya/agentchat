@@ -54,22 +54,13 @@ export namespace ContextManager {
 
   export function assembleContext(
     sql: any,
-    systemPrompt?: string,
   ): Array<{ role: string; content: string }> {
     try {
       const rows = Array.from(
         sql.exec("SELECT role, text FROM context_messages ORDER BY id ASC"),
       ) as Array<{ role: string; text: string }>;
 
-      const ctx = builder();
-
-      if (systemPrompt) {
-        ctx.system(systemPrompt);
-      }
-
-      ctx.messages(rows.map((row) => ({ role: row.role, content: row.text })));
-
-      return ctx.build();
+      return rows.map((row) => ({ role: row.role, content: row.text }));
     } catch (error) {
       console.error("assembleContext failed:", error);
       return [];

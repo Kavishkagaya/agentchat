@@ -11,6 +11,7 @@ export type AgentRunRequest = {
   runtime_id?: string;
   prompt?: string;
   messages?: Array<{ role: "user" | "assistant" | "system"; content: string }>;
+  chat_context?: { identity: string; team: string };
 };
 
 function structuredError(code: string, message: string) {
@@ -54,6 +55,7 @@ async function executeAndStreamAgent(
     const input: AgentRunInput = {
       prompt: body.prompt,
       messages: body.messages,
+      chat_context: body.chat_context,
     };
 
     for await (const event of streamAgent(record, env, input, {
@@ -135,6 +137,7 @@ async function executeAgentCoarse(
     const input: AgentRunInput = {
       prompt: body.prompt,
       messages: body.messages,
+      chat_context: body.chat_context,
     };
 
     for await (const event of streamAgent(record, env, input, {

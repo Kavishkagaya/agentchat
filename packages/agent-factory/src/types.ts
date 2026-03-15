@@ -24,9 +24,15 @@ export type AgentConfig = {
   seed?: number;
 };
 
+export type AgentChatContext = {
+  identity: string;
+  team: string;
+};
+
 export type AgentRunInput = {
   prompt?: string;
   messages?: ModelMessage[];
+  chat_context?: AgentChatContext;
 };
 
 import type { ToolLoopAgent } from "ai";

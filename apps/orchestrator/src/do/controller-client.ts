@@ -114,6 +114,24 @@ class ControllerClient {
     });
   }
 
+  async clearHistory(env: Env, configId: string): Promise<Response> {
+    return this.fetch(env, configId, `/chats/${configId}/messages`, {
+      method: "DELETE",
+    });
+  }
+
+  async updateConfig(
+    env: Env,
+    configId: string,
+    config: Record<string, unknown>,
+  ): Promise<Response> {
+    return this.fetch(env, configId, `/chats/${configId}/update-config`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ config }),
+    });
+  }
+
   async websocket(
     env: Env,
     configId: string,

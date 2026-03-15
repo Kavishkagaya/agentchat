@@ -12,6 +12,11 @@ export type OrchestratorClient = {
     authClaims: { org_id: string; sub: string },
   ) => Promise<ChatActivateResponse>;
   deleteChat: (configId: string) => Promise<{ ok: boolean }>;
+  clearHistory: (configId: string) => Promise<{ ok: boolean }>;
+  syncConfig: (
+    configId: string,
+    config: Record<string, unknown>,
+  ) => Promise<{ ok: boolean }>;
   getChatHistory: (configId: string, token: string) => Promise<any>;
   getRoutingToken: (
     payload: RoutingTokenRequestPayload,
@@ -83,6 +88,18 @@ export function getOrchestratorClient(): OrchestratorClient {
         `/infra/chats/${configId}`,
         undefined,
         "DELETE",
+      ),
+    clearHistory: (configId) =>
+      requestOrchestrator<{ ok: boolean }>(
+        `/infra/chats/${configId}/history`,
+        undefined,
+        "DELETE",
+      ),
+    syncConfig: (configId, config) =>
+      requestOrchestrator<{ ok: boolean }>(
+        `/infra/chats/${configId}/sync-config`,
+        { config },
+        "POST",
       ),
     getRoutingToken: (payload, authClaims) =>
       requestOrchestrator<RoutingTokenResponse>(

@@ -6,7 +6,6 @@ import { WorkflowHandler } from "./workflow/handler";
 
 export interface Env {
   AGENTS_BASE_URL?: string;
-  CHAT_MENTION_ROUTING_ENABLED?: string;
   MEMORY_CONTROLLER: DurableObjectNamespace;
   ENVIRONMENT: string;
   GC_PRIVATE_KEY: string;
@@ -86,6 +85,39 @@ function pathSuffix(pathname: string): string {
 import { DurableObject } from "cloudflare:workers";
 
 export class MemoryController extends DurableObject<Env> {
+  private async initFromDb(
+    configId: string,
+  ): Promise<{ config: Record<string, unknown>; type: "chat" | "workflow"; org_id?: string } | null> {
+    if (!this.env.DATABASE_URL) return null;
+
+    try {
+      initDb(this.env.DATABASE_URL);
+      const db = getDb();
+      const rows = await db
+        .select()
+        .from(schema.chats)
+        .where(eq(schema.chats.id, configId))
+        .limit(1);
+      const groupRecord = rows[0];
+      if (!groupRecord) return null;
+
+      const config = groupRecord.config as Record<string, unknown> | undefined;
+      const type =
+        (config?.type as "chat" | "workflow" | undefined) ||
+        (config?.topology as "chat" | "workflow" | undefined) ||
+        "chat";
+
+      return {
+        config: config ?? {},
+        type,
+        org_id: groupRecord.orgId,
+      };
+    } catch (err) {
+      console.error("Failed to fetch config from DB:", err);
+      return null;
+    }
+  }
+
   async fetch(request: Request): Promise<Response> {
     if (!(await verifyOrchestratorToken(request, this.env))) {
       return json({ ok: false, error: "forbidden" }, 403);
@@ -242,48 +274,27 @@ export class MemoryController extends DurableObject<Env> {
 
       if (!config || !type) {
         // Fetch from Postgres if not provided
-        if (this.env.DATABASE_URL) {
-          try {
-            initDb(this.env.DATABASE_URL);
-            const db = getDb();
-      const rows = await db
-        .select()
-        .from(schema.chats)
-        .where(eq(schema.chats.id, body.config_id))
-        .limit(1);
-            const groupRecord = rows[0];
-            if (groupRecord) {
-              config = groupRecord.config as Record<string, unknown> | undefined;
-              org_id = groupRecord.orgId;
-              // For now, let's assume the config has a 'topology' field or similar
-              // If not, we'll need to decide how to map groups to types.
-              // For legacy compatibility, maybe we check the config for clues.
-              type =
-                (config?.type as "chat" | "workflow" | undefined) ||
-                (config?.topology as "chat" | "workflow" | undefined) ||
-                "chat";
-              configSource = "database";
-            } else {
-              return json(
-                { ok: false, error: "configuration not found in database" },
-                404,
-              );
-            }
-          } catch (err) {
-            console.error("Failed to fetch config from DB:", err);
+        const dbInit = await this.initFromDb(body.config_id);
+        if (dbInit) {
+          config = dbInit.config;
+          type = dbInit.type;
+          org_id = dbInit.org_id;
+          configSource = "database";
+        } else if (!config || !type) {
+          if (!this.env.DATABASE_URL) {
             return json(
-              { ok: false, error: "database connection failed during init" },
-              500,
+              {
+                ok: false,
+                error: "missing type/config and no DATABASE_URL provided",
+              },
+              400,
+            );
+          } else {
+            return json(
+              { ok: false, error: "configuration not found in database" },
+              404,
             );
           }
-        } else if (!config || !type) {
-          return json(
-            {
-              ok: false,
-              error: "missing type/config and no DATABASE_URL provided",
-            },
-            400,
-          );
         }
       }
 
@@ -313,18 +324,34 @@ export class MemoryController extends DurableObject<Env> {
       });
     }
 
+    if (request.method === "POST" && route === "/update-config") {
+      let body: { config: Record<string, unknown> };
+      try {
+        body = await request.json();
+      } catch {
+        return json({ ok: false, error: "invalid JSON body" }, 400);
+      }
+
+      if (!body.config || typeof body.config !== "object") {
+        return json({ ok: false, error: "missing config object" }, 400);
+      }
+
+      const type = await this.ctx.storage.get("type");
+      let config = body.config;
+
+      if (type === "chat") {
+        config = normalizeChatRoutingConfig(config);
+      }
+
+      await this.ctx.storage.put("config", config);
+      return json({ ok: true });
+    }
+
     // Determine type for routing
     const type = await this.ctx.storage.get("type");
 
     // ── WebSocket upgrade ──────────────────────────────
     if (route === "/ws" && request.headers.get("Upgrade") === "websocket") {
-      if (type !== "chat") {
-        return json(
-          { ok: false, error: "only chat type supports websocket" },
-          400,
-        );
-      }
-
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
 
@@ -332,6 +359,65 @@ export class MemoryController extends DurableObject<Env> {
       this.ctx.setWebSocketAutoResponse(
         new WebSocketRequestResponsePair("ping", "pong"),
       );
+
+      let currentType = type;
+
+      // Auto-init if not yet initialized
+      if (!currentType) {
+        server.send(JSON.stringify({ type: "initializing" }));
+        const configId = parseConfigId(url.pathname, "chats");
+        if (configId) {
+          const dbInit = await this.initFromDb(configId);
+          if (dbInit) {
+            let config = dbInit.config;
+            if (dbInit.type === "chat") {
+              config = normalizeChatRoutingConfig(config);
+            }
+            await this.ctx.storage.put("config_id", configId);
+            await this.ctx.storage.put("type", dbInit.type);
+            if (dbInit.org_id) await this.ctx.storage.put("org_id", dbInit.org_id);
+            if (config) await this.ctx.storage.put("config", config);
+
+            if (dbInit.type === "chat") {
+              const handler = new ChatHandler(this.ctx, this.env);
+              await handler.ensureSchema();
+            } else if (dbInit.type === "workflow") {
+              const handler = new WorkflowHandler(this.ctx, this.env);
+              await handler.ensureSchema();
+            }
+            currentType = dbInit.type;
+          } else {
+            server.send(
+              JSON.stringify({
+                type: "error",
+                code: "not_initialized",
+                message: "Could not initialize chat from database",
+              }),
+            );
+            return new Response(null, { status: 101, webSocket: client });
+          }
+        } else {
+          server.send(
+            JSON.stringify({
+              type: "error",
+              code: "not_initialized",
+              message: "Could not extract config ID from URL",
+            }),
+          );
+          return new Response(null, { status: 101, webSocket: client });
+        }
+      }
+
+      if (currentType !== "chat") {
+        server.send(
+          JSON.stringify({
+            type: "error",
+            code: "unsupported_type",
+            message: "only chat type supports websocket",
+          }),
+        );
+        return new Response(null, { status: 101, webSocket: client });
+      }
 
       server.send(JSON.stringify({ type: "ready" }));
 

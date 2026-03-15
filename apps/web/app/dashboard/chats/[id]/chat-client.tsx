@@ -1,7 +1,7 @@
 "use client";
 
 import { normalizeChatRoutingConfig } from "@axon/shared";
-import { Edit, Send, Trash2 } from "lucide-react";
+import { Edit, Eraser, Send, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { api } from "@/app/trpc/client";
@@ -28,6 +28,7 @@ export function ChatClient({ chatId }: { chatId: string }) {
   const router = useRouter();
   const [inputText, setInputText] = useState("");
   const [editOpen, setEditOpen] = useState(false);
+  const [clearOpen, setClearOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const { messages, isThinking, isConnected, sendMessage } =
@@ -36,6 +37,7 @@ export function ChatClient({ chatId }: { chatId: string }) {
   const chatQuery = api.chats.get.useQuery({ chatId });
   const agentsQuery = api.agents.list.useQuery();
   const updateChat = api.chats.update.useMutation();
+  const clearHistoryMutation = api.chats.clearHistory.useMutation();
   const deleteChatMutation = api.chats.delete.useMutation();
 
   const editInitialData = useMemo((): ChatFormInitialData | undefined => {
@@ -49,10 +51,8 @@ export function ChatClient({ chatId }: { chatId: string }) {
         auto: config.auto,
         default_agent: config.default_agent,
         trigger_depth_limit: config.trigger_depth_limit,
-        mention_routing_enabled: config.mention_routing_enabled,
         history_mode: config.history_mode,
         compaction_threshold: config.compaction_threshold,
-        system_prompt: config.system_prompt,
       },
     };
   }, [chatQuery.data]);
@@ -97,6 +97,13 @@ export function ChatClient({ chatId }: { chatId: string }) {
             <Button
               size="icon"
               variant="ghost"
+              onClick={() => setClearOpen(true)}
+            >
+              <Eraser className="h-4 w-4" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
               onClick={() => setDeleteOpen(true)}
             >
               <Trash2 className="h-4 w-4 text-destructive" />
@@ -127,6 +134,33 @@ export function ChatClient({ chatId }: { chatId: string }) {
         isPending={updateChat.isPending}
         initialData={editInitialData}
       />
+
+      <Dialog open={clearOpen} onOpenChange={setClearOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Clear chat history</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to clear all message history for &quot;{chatTitle}&quot;? This
+              action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setClearOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                await clearHistoryMutation.mutateAsync({ chatId });
+                setClearOpen(false);
+              }}
+              disabled={clearHistoryMutation.isPending}
+            >
+              {clearHistoryMutation.isPending ? "Clearing..." : "Clear history"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent>

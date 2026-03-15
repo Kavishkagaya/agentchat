@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { buildDefaultSystemPrompt } from "@axon/shared";
 import type { ChatAgentSetup } from "@axon/shared";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,7 +15,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { RefreshCw } from "lucide-react";
 
 type AgentItem = { id: string; name: string };
 type AgentSetupDraft = { nickname: string; responsibility: string };
@@ -28,10 +26,8 @@ export type ChatFormData = {
     auto?: boolean;
     default_agent?: string;
     trigger_depth_limit?: number;
-    mention_routing_enabled?: boolean;
     history_mode?: "internal" | "external";
     compaction_threshold?: number;
-    system_prompt?: string;
   };
 };
 
@@ -42,10 +38,8 @@ export type ChatFormInitialData = {
     auto?: boolean;
     default_agent?: string;
     trigger_depth_limit?: number;
-    mention_routing_enabled?: boolean;
     history_mode?: "internal" | "external";
     compaction_threshold?: number;
-    system_prompt?: string;
   };
 };
 
@@ -73,10 +67,8 @@ type FormState = {
   auto: boolean;
   defaultAgentId: string;
   triggerDepthLimit: number;
-  mentionRoutingEnabled: boolean;
   historyMode: "internal" | "external";
   compactionThreshold: number;
-  systemPrompt: string;
 };
 
 const DEFAULT_FORM: FormState = {
@@ -86,10 +78,8 @@ const DEFAULT_FORM: FormState = {
   auto: true,
   defaultAgentId: "",
   triggerDepthLimit: 10,
-  mentionRoutingEnabled: true,
   historyMode: "internal",
-  compactionThreshold: 50,
-  systemPrompt: "",
+  compactionThreshold: 50000,
 };
 
 function buildFormFromInitial(data: ChatFormInitialData): FormState {
@@ -108,10 +98,8 @@ function buildFormFromInitial(data: ChatFormInitialData): FormState {
     auto: data.config?.auto ?? true,
     defaultAgentId: data.config?.default_agent ?? "",
     triggerDepthLimit: data.config?.trigger_depth_limit ?? 10,
-    mentionRoutingEnabled: data.config?.mention_routing_enabled ?? true,
     historyMode: data.config?.history_mode ?? "internal",
-    compactionThreshold: data.config?.compaction_threshold ?? 50,
-    systemPrompt: data.config?.system_prompt ?? "",
+    compactionThreshold: data.config?.compaction_threshold ?? 50000,
   };
 }
 
@@ -194,25 +182,12 @@ export function ChatFormDialog({
     }));
   };
 
-  const regenerateSystemPrompt = () => {
-    if (selectedAgentSetup.length > 0) {
-      setForm((prev) => ({
-        ...prev,
-        systemPrompt: buildDefaultSystemPrompt(selectedAgentSetup),
-      }));
-    }
-  };
-
   const handleSubmit = async () => {
     if (!isValid) {
       setFormError("Complete all required fields in the Team tab.");
       return;
     }
     setFormError(null);
-
-    const systemPrompt =
-      form.systemPrompt.trim() ||
-      buildDefaultSystemPrompt(selectedAgentSetup);
 
     await onSubmit({
       title: form.title,
@@ -221,10 +196,8 @@ export function ChatFormDialog({
         auto: form.auto,
         default_agent: form.defaultAgentId || undefined,
         trigger_depth_limit: form.triggerDepthLimit,
-        mention_routing_enabled: form.mentionRoutingEnabled,
         history_mode: form.historyMode,
         compaction_threshold: form.compactionThreshold,
-        system_prompt: systemPrompt,
       },
     });
   };
@@ -244,10 +217,9 @@ export function ChatFormDialog({
         </DialogHeader>
 
         <Tabs defaultValue="team" className="flex-1 overflow-hidden flex flex-col">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="team">Team</TabsTrigger>
             <TabsTrigger value="routing">Routing</TabsTrigger>
-            <TabsTrigger value="prompt">System Prompt</TabsTrigger>
           </TabsList>
 
           {/* Tab 1: Team */}
@@ -402,24 +374,6 @@ export function ChatFormDialog({
               </>
             )}
 
-            <div className="flex items-center justify-between rounded-md border p-3">
-              <div>
-                <Label className="text-sm font-medium">Mention Routing</Label>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Resolve @nickname mentions to trigger agents
-                </p>
-              </div>
-              <Switch
-                checked={form.mentionRoutingEnabled}
-                onCheckedChange={(checked) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    mentionRoutingEnabled: checked,
-                  }))
-                }
-              />
-            </div>
-
             <div className="grid gap-2">
               <Label htmlFor="history-mode">History Mode</Label>
               <p className="text-xs text-muted-foreground">
@@ -442,63 +396,24 @@ export function ChatFormDialog({
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="compaction-threshold">Compaction Threshold</Label>
+              <Label htmlFor="compaction-threshold">Context Limit (tokens)</Label>
               <p className="text-xs text-muted-foreground">
-                Number of messages before context compaction triggers.
+                Token count before context compaction triggers.
               </p>
               <Input
                 id="compaction-threshold"
                 type="number"
-                min={10}
-                max={1000}
+                min={1000}
+                max={200000}
                 value={form.compactionThreshold}
                 onChange={(e) =>
                   setForm((prev) => ({
                     ...prev,
                     compactionThreshold: Math.max(
-                      10,
-                      Math.min(1000, parseInt(e.target.value) || 50)
+                      1000,
+                      Math.min(200000, parseInt(e.target.value) || 50000)
                     ),
                   }))
-                }
-              />
-            </div>
-          </TabsContent>
-
-          {/* Tab 3: System Prompt */}
-          <TabsContent value="prompt" className="flex-1 overflow-y-auto space-y-4 pr-1">
-            <div className="rounded-md border p-3">
-              <p className="text-sm text-muted-foreground">
-                This prompt is shared with all agents in the chat. It&apos;s auto-generated from
-                agent nicknames and responsibilities. You can edit it freely.
-              </p>
-            </div>
-            <div className="grid gap-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="system-prompt">System Prompt</Label>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={regenerateSystemPrompt}
-                  disabled={selectedAgentSetup.length === 0}
-                  className="h-7 text-xs"
-                >
-                  <RefreshCw className="mr-1 h-3 w-3" />
-                  Regenerate
-                </Button>
-              </div>
-              <textarea
-                id="system-prompt"
-                className="min-h-48 rounded-md border bg-background p-3 text-sm"
-                placeholder={
-                  selectedAgentSetup.length > 0
-                    ? "Click 'Regenerate' or type your own prompt..."
-                    : "Select agents in the Team tab first..."
-                }
-                value={form.systemPrompt}
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, systemPrompt: e.target.value }))
                 }
               />
             </div>
