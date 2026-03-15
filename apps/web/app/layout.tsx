@@ -1,4 +1,5 @@
 import "./globals.css";
+import "streamdown/styles.css";
 
 import { ClerkProvider } from "@clerk/nextjs";
 import { Toaster } from "sonner";
