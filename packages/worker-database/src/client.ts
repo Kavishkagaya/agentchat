@@ -1,9 +1,6 @@
 import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
-import * as schemaModule from "./schema/schema";
-import * as relationsModule from "./schema/relations";
-
-const schema = { ...schemaModule, ...relationsModule };
+import * as schema from "./schema";
 
 let db: ReturnType<typeof drizzle<typeof schema>> | null = null;
 

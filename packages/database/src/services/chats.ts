@@ -3,12 +3,12 @@ import type { ChatRoutingConfig } from "@axon/shared";
 import { and, desc, eq, inArray, lte, ne, or, sql } from "drizzle-orm";
 import { getDb } from "../client";
 import {
-  configAgents,
-  configArchives,
-  configMembers,
-  configRuntime,
-  configSnapshots,
-  configs,
+  chatAgents,
+  chatArchives,
+  chatMembers,
+  chatRuntime,
+  chatSnapshots,
+  chats,
 } from "../schema";
 
 export interface CreateChatParams {
@@ -37,7 +37,7 @@ export async function createChat(params: CreateChatParams) {
   const now = new Date();
 
   await db.transaction(async (tx) => {
-    await tx.insert(configs).values({
+    await tx.insert(chats).values({
       id: params.chatId,
       orgId: params.orgId,
       title: params.title,
@@ -52,9 +52,9 @@ export async function createChat(params: CreateChatParams) {
     });
 
     if (params.memberIds.length > 0) {
-      await tx.insert(configMembers).values(
+      await tx.insert(chatMembers).values(
         params.memberIds.map((userId) => ({
-          groupId: params.chatId,
+          configId: params.chatId,
           userId,
           role: userId === params.createdBy ? "owner" : "member",
           addedBy: params.createdBy,
@@ -64,9 +64,9 @@ export async function createChat(params: CreateChatParams) {
     }
 
     if (params.agentIds.length > 0) {
-      await tx.insert(configAgents).values(
+      await tx.insert(chatAgents).values(
         params.agentIds.map((agentId) => ({
-          groupId: params.chatId,
+          configId: params.chatId,
           agentId,
           addedBy: params.createdBy,
           createdAt: now,
@@ -82,8 +82,8 @@ export const createGroup = createChat;
 
 export async function getChat(chatId: string) {
   const db = getDb();
-  return await db.query.configs.findFirst({
-    where: eq(configs.id, chatId),
+  return await db.query.chats.findFirst({
+    where: eq(chats.id, chatId),
     with: {
       members: true,
       agents: true,
@@ -95,9 +95,9 @@ export const getGroup = getChat;
 
 export async function getOrgChats(orgId: string) {
   const db = getDb();
-  return await db.query.configs.findMany({
-    where: eq(configs.orgId, orgId),
-    orderBy: [desc(configs.lastActiveAt)],
+  return await db.query.chats.findMany({
+    where: eq(chats.orgId, orgId),
+    orderBy: [desc(chats.lastActiveAt)],
   });
 }
 
@@ -105,8 +105,8 @@ export const getOrgGroups = getOrgChats;
 
 export async function getAllChats() {
   const db = getDb();
-  return await db.query.configs.findMany({
-    orderBy: [desc(configs.createdAt)],
+  return await db.query.chats.findMany({
+    orderBy: [desc(chats.createdAt)],
   });
 }
 
@@ -114,8 +114,8 @@ export const getAllGroups = getAllChats;
 
 export async function getChatRuntime(chatId: string) {
   const db = getDb();
-  return await db.query.configRuntime.findFirst({
-    where: eq(configRuntime.groupId, chatId),
+  return await db.query.chatRuntime.findFirst({
+    where: eq(chatRuntime.configId, chatId),
   });
 }
 
@@ -132,7 +132,7 @@ export async function initializeChatRuntime(
 
   if (existing) {
     await db
-      .update(configRuntime)
+      .update(chatRuntime)
       .set({
         groupControllerId: controllerId,
         status: "active",
@@ -140,10 +140,10 @@ export async function initializeChatRuntime(
         lastActiveAt: now,
         updatedAt: now,
       })
-      .where(eq(configRuntime.groupId, chatId));
+      .where(eq(chatRuntime.configId, chatId));
   } else {
-    await db.insert(configRuntime).values({
-      groupId: chatId,
+    await db.insert(chatRuntime).values({
+      configId: chatId,
       groupControllerId: controllerId,
       status: "active",
       publicKey: publicKey ?? null,
@@ -175,17 +175,17 @@ export async function updateChatRuntimeStatus(chatId: string, status: string) {
     chatUpdate.archivedAt = now;
   }
 
-  await db.update(configs).set(chatUpdate).where(eq(configs.id, chatId));
+  await db.update(chats).set(chatUpdate).where(eq(chats.id, chatId));
 
   await db
-    .update(configRuntime)
+    .update(chatRuntime)
     .set({
       status,
       updatedAt: now,
       ...(status === "active" ? { lastActiveAt: now } : {}),
       ...(status === "idle" ? { idleAt: now } : {}),
     })
-    .where(eq(configRuntime.groupId, chatId));
+    .where(eq(chatRuntime.configId, chatId));
 }
 
 export const updateGroupRuntimeStatus = updateChatRuntimeStatus;
@@ -196,19 +196,19 @@ export async function countOrgActiveChats(
 ) {
   const db = getDb();
   const activePredicate = and(
-    eq(configs.orgId, orgId),
-    inArray(configs.status, ["active", "idle"]),
+    eq(chats.orgId, orgId),
+    inArray(chats.status, ["active", "idle"]),
   );
   const wherePredicate =
     excludeChatId && excludeChatId.length > 0
-      ? and(activePredicate, ne(configs.id, excludeChatId))
+      ? and(activePredicate, ne(chats.id, excludeChatId))
       : activePredicate;
 
   const rows = await db
     .select({
       value: sql<number>`count(*)`,
     })
-    .from(configs)
+    .from(chats)
     .where(wherePredicate);
   return Number(rows[0]?.value ?? 0);
 }
@@ -218,22 +218,22 @@ export const countOrgActiveGroups = countOrgActiveChats;
 export async function touchChatActivity(chatId: string, at = new Date()) {
   const db = getDb();
   await db
-    .update(configs)
+    .update(chats)
     .set({
       status: "active",
       lastActiveAt: at,
       updatedAt: at,
     })
-    .where(eq(configs.id, chatId));
+    .where(eq(chats.id, chatId));
 
   await db
-    .update(configRuntime)
+    .update(chatRuntime)
     .set({
       status: "active",
       lastActiveAt: at,
       updatedAt: at,
     })
-    .where(eq(configRuntime.groupId, chatId));
+    .where(eq(chatRuntime.configId, chatId));
 }
 
 export const touchGroupActivity = touchChatActivity;
@@ -241,21 +241,21 @@ export const touchGroupActivity = touchChatActivity;
 export async function markChatArchived(chatId: string, at = new Date()) {
   const db = getDb();
   await db
-    .update(configs)
+    .update(chats)
     .set({
       status: "archived",
       archivedAt: at,
       updatedAt: at,
     })
-    .where(eq(configs.id, chatId));
+    .where(eq(chats.id, chatId));
 
   await db
-    .update(configRuntime)
+    .update(chatRuntime)
     .set({
       status: "archived",
       updatedAt: at,
     })
-    .where(eq(configRuntime.groupId, chatId));
+    .where(eq(chatRuntime.configId, chatId));
 }
 
 export const markGroupArchived = markChatArchived;
@@ -271,17 +271,17 @@ export async function recordChatArchive(params: {
   const snapshotId = `snapshot_${randomUUID()}`;
   const archiveId = `archive_${randomUUID()}`;
 
-  await db.insert(configSnapshots).values({
+  await db.insert(chatSnapshots).values({
     id: snapshotId,
-    groupId: params.chatId,
+    configId: params.chatId,
     r2Path: params.r2Path,
     sizeBytes: params.sizeBytes ?? null,
     createdAt: now,
   });
 
-  await db.insert(configArchives).values({
+  await db.insert(chatArchives).values({
     id: archiveId,
-    groupId: params.chatId,
+    configId: params.chatId,
     snapshotId,
     r2Path: params.r2Path,
     createdAt: now,
@@ -314,21 +314,21 @@ export async function updateChat(params: UpdateChatParams) {
     }
 
     await tx
-      .update(configs)
+      .update(chats)
       .set(updates)
       .where(
-        and(eq(configs.id, params.chatId), eq(configs.orgId, params.orgId)),
+        and(eq(chats.id, params.chatId), eq(chats.orgId, params.orgId)),
       );
 
     if (params.agentIds !== undefined) {
       await tx
-        .delete(configAgents)
-        .where(eq(configAgents.groupId, params.chatId));
+        .delete(chatAgents)
+        .where(eq(chatAgents.configId, params.chatId));
 
       if (params.agentIds.length > 0) {
-        await tx.insert(configAgents).values(
+        await tx.insert(chatAgents).values(
           params.agentIds.map((agentId) => ({
-            groupId: params.chatId,
+            configId: params.chatId,
             agentId,
             addedBy: null,
             createdAt: now,
@@ -345,8 +345,8 @@ export async function deleteChat(chatId: string, orgId: string) {
   const db = getDb();
 
   // Verify ownership
-  const chat = await db.query.configs.findFirst({
-    where: and(eq(configs.id, chatId), eq(configs.orgId, orgId)),
+  const chat = await db.query.chats.findFirst({
+    where: and(eq(chats.id, chatId), eq(chats.orgId, orgId)),
   });
   if (!chat) {
     throw new Error("Chat not found");
@@ -354,12 +354,12 @@ export async function deleteChat(chatId: string, orgId: string) {
 
   // Delete in FK order: children first, then parent
   await db.transaction(async (tx) => {
-    await tx.delete(configAgents).where(eq(configAgents.groupId, chatId));
-    await tx.delete(configMembers).where(eq(configMembers.groupId, chatId));
-    await tx.delete(configArchives).where(eq(configArchives.groupId, chatId));
-    await tx.delete(configSnapshots).where(eq(configSnapshots.groupId, chatId));
-    await tx.delete(configRuntime).where(eq(configRuntime.groupId, chatId));
-    await tx.delete(configs).where(eq(configs.id, chatId));
+    await tx.delete(chatAgents).where(eq(chatAgents.configId, chatId));
+    await tx.delete(chatMembers).where(eq(chatMembers.configId, chatId));
+    await tx.delete(chatArchives).where(eq(chatArchives.configId, chatId));
+    await tx.delete(chatSnapshots).where(eq(chatSnapshots.configId, chatId));
+    await tx.delete(chatRuntime).where(eq(chatRuntime.configId, chatId));
+    await tx.delete(chats).where(eq(chats.id, chatId));
   });
 
   return { deleted: true };

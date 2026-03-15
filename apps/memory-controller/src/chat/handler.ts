@@ -1,7 +1,9 @@
 import {
   chatMessageRequestSchema,
   createAgentAccessToken,
-  type ChatMessageRequest,
+  type AgentUsage,
+  type ChatRoutingConfig,
+  type ChatWsEvent,
   type MessageOrigin,
 } from "@axon/shared";
 import { ContextManager } from "../context-manager";
@@ -23,10 +25,14 @@ export class ChatHandler {
         agent_id    TEXT,
         sender_id   TEXT,
         sender_name TEXT,
+        agent_nickname TEXT,
         tokens      INTEGER,
         created_at  TEXT NOT NULL
       )
     `);
+
+    // Migration: add agent_nickname column for existing tables
+    try { sql.exec("ALTER TABLE messages ADD COLUMN agent_nickname TEXT"); } catch { /* column already exists */ }
 
     sql.exec(`
       CREATE TABLE IF NOT EXISTS context_messages (
@@ -54,6 +60,7 @@ export class ChatHandler {
     role: "user" | "assistant" | "system";
     text: string;
     agentId?: string;
+    agentNickname?: string;
     senderId?: string;
     senderName?: string;
     tokens?: number;
@@ -63,20 +70,29 @@ export class ChatHandler {
     const tokens = params.tokens ?? ContextManager.estimateTokens(params.text);
 
     sql.exec(
-      "INSERT INTO messages (message_id, role, text, agent_id, sender_id, sender_name, tokens, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+      "INSERT INTO messages (message_id, role, text, agent_id, agent_nickname, sender_id, sender_name, tokens, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
       params.messageId,
       params.role,
       params.text,
       params.agentId ?? null,
+      params.agentNickname ?? null,
       params.senderId ?? null,
       params.senderName ?? null,
       tokens,
       createdAt
     );
 
+    // Context messages include attribution so the LLM knows who said what
+    let contextText = params.text;
+    if (params.role === "assistant" && params.agentNickname) {
+      contextText = `[${params.agentNickname}]: ${params.text}`;
+    } else if (params.role === "user" && params.senderName) {
+      contextText = `[${params.senderName}]: ${params.text}`;
+    }
+
     ContextManager.insertContextMessage(sql, {
       role: params.role,
-      text: params.text,
+      text: contextText,
       tokens,
     });
 
@@ -99,7 +115,7 @@ export class ChatHandler {
 
     const rows = Array.from(
       this.ctx.storage.sql.exec(
-        "SELECT message_id, role, text, agent_id, sender_id, sender_name, tokens, created_at FROM messages WHERE created_at < ?1 ORDER BY created_at DESC LIMIT ?2",
+        "SELECT message_id, role, text, agent_id, agent_nickname, sender_id, sender_name, tokens, created_at FROM messages WHERE created_at < ?1 ORDER BY created_at DESC LIMIT ?2",
         cursor,
         limit
       )
@@ -108,6 +124,7 @@ export class ChatHandler {
       role: string;
       text: string;
       agent_id: string | null;
+      agent_nickname: string | null;
       sender_id: string | null;
       sender_name: string | null;
       tokens: number;
@@ -134,7 +151,7 @@ export class ChatHandler {
   }
 
   // SSE line parser — shared by both methods
-  private async *consumeSSE(response: Response): AsyncGenerator<{ event: string; data: any }> {
+  private async *consumeSSE(response: Response): AsyncGenerator<{ event: string; data: unknown }> {
     const reader = response.body!.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
@@ -205,7 +222,7 @@ export class ChatHandler {
     context: Array<{ role: string; content: string }>,
     configId: string,
     orgId: string
-  ): AsyncGenerator<{ event: string; data: any }> {
+  ): AsyncGenerator<{ event: string; data: unknown }> {
     const baseUrl = this.env.AGENTS_BASE_URL;
     if (!baseUrl) return;
 
@@ -231,7 +248,7 @@ export class ChatHandler {
     context: Array<{ role: string; content: string }>,
     configId: string,
     orgId: string
-  ): AsyncGenerator<{ event: string; data: any }> {
+  ): AsyncGenerator<{ event: string; data: unknown }> {
     const baseUrl = this.env.AGENTS_BASE_URL;
     if (!baseUrl) return;
 
@@ -250,92 +267,127 @@ export class ChatHandler {
     yield* this.consumeSSE(res);
   }
 
+  private resolveAgentNickname(agentId: string, config: ChatRoutingConfig | undefined): string {
+    return config?.agent_setups?.find((s) => s.agentId === agentId)?.nickname ?? agentId;
+  }
+
+  /**
+   * Parse an SSE { event, data } pair into a typed AgentSseEvent.
+   * Returns undefined for unrecognised event names.
+   */
+  private static parseSseEvent(event: string, data: unknown): import("@axon/shared").AgentSseEvent | undefined {
+    // The SSE event name maps 1:1 to AgentSseEvent.type — attach it and return.
+    const obj = (typeof data === "object" && data !== null ? data : {}) as Record<string, unknown>;
+    return { type: event, ...obj } as import("@axon/shared").AgentSseEvent;
+  }
+
   public async processAgentEvents(
     agentId: string,
-    eventStream: AsyncGenerator<{ event: string; data: any }>,
+    eventStream: AsyncGenerator<{ event: string; data: unknown }>,
     options: {
-      broadcast: boolean; // true for WS, true for HTTP (pushes to WS clients)
-      streamDeltas: boolean; // true when using run-stream (forward text_delta to WS)
+      broadcast: boolean;
+      streamDeltas: boolean;
+      config?: ChatRoutingConfig;
     }
   ): Promise<{
     text: string;
     agent_nickname: string;
-    usage?: unknown;
+    usage: AgentUsage | null;
     agent_id: string;
     message_id: string;
   } | null> {
     const agentMsgId = `msg_${crypto.randomUUID()}`;
-    let finalResult: { text: string; agent_nickname: string; usage?: unknown } | null = null;
+    let finalResult: { text: string; agent_nickname: string; usage: AgentUsage | null } | null = null;
+    const knownNickname = this.resolveAgentNickname(agentId, options.config);
 
     // Broadcast that this agent started (so UI can show typing indicator)
     if (options.broadcast) {
       this.broadcast({
         type: "agent_start",
         agent_id: agentId,
+        agent_nickname: knownNickname,
         message_id: agentMsgId,
       });
     }
 
-    for await (const { event, data } of eventStream) {
-      switch (event) {
+    for await (const { event: rawEvent, data } of eventStream) {
+      const evt = ChatHandler.parseSseEvent(rawEvent, data);
+      if (!evt) continue;
+
+      switch (evt.type) {
         case "text_delta":
-          // Stream to WS clients only — NOT stored (final text has the complete version)
           if (options.streamDeltas && options.broadcast) {
             this.broadcast({
               type: "text_delta",
               agent_id: agentId,
               message_id: agentMsgId,
-              text: data.text,
+              text: evt.text,
             });
           }
           break;
 
-        case "event":
-          // tool_call, tool_result, tool_error — broadcast AND store
+        case "tool_call":
           if (options.broadcast) {
             this.broadcast({
-              type: data.eventType,
+              type: "tool_call",
               agent_id: agentId,
               message_id: agentMsgId,
-              ...data,
+              tool_call_id: evt.tool_call_id,
+              name: evt.name,
+              args: evt.args,
             });
           }
-          this.insertEvent(agentMsgId, data.eventType, data);
+          this.insertEvent(agentMsgId, "tool_call", evt);
+          break;
+
+        case "tool_result":
+          if (options.broadcast) {
+            this.broadcast({
+              type: "tool_result",
+              agent_id: agentId,
+              message_id: agentMsgId,
+              tool_call_id: evt.tool_call_id,
+              name: evt.name,
+              result: evt.result,
+            });
+          }
+          this.insertEvent(agentMsgId, "tool_result", evt);
+          break;
+
+        case "tool_error":
+          this.insertEvent(agentMsgId, "tool_error", evt);
           break;
 
         case "reasoning":
-          // Stream to WS clients only — NOT stored
           if (options.broadcast) {
             this.broadcast({
               type: "reasoning",
               agent_id: agentId,
               message_id: agentMsgId,
-              text: data.text,
+              text: evt.text,
             });
           }
           break;
 
         case "step_finish":
-          // NOT stored — usage stats already in final event
           break;
 
         case "status":
-          // Ephemeral — broadcast but don't store
           if (options.broadcast) {
             this.broadcast({
               type: "agent_status",
               agent_id: agentId,
               message_id: agentMsgId,
-              status: data.status,
+              status: evt.status,
             });
           }
           break;
 
         case "final":
           finalResult = {
-            text: data.text,
-            agent_nickname: data.agent_nickname ?? agentId,
-            usage: data.usage,
+            text: evt.text,
+            agent_nickname: evt.agent_nickname ?? knownNickname,
+            usage: evt.usage,
           };
           break;
 
@@ -345,29 +397,38 @@ export class ChatHandler {
               type: "agent_error",
               agent_id: agentId,
               message_id: agentMsgId,
-              error: data,
+              code: evt.code,
+              message: evt.message,
             });
           }
-          this.insertEvent(agentMsgId, "error", data);
+          this.insertEvent(agentMsgId, "error", evt);
           break;
       }
     }
 
     if (!finalResult?.text) {
       console.error(`Agent ${agentId}: no final text in stream`);
+      if (options.broadcast) {
+        this.broadcast({
+          type: "agent_error",
+          agent_id: agentId,
+          message_id: agentMsgId,
+          code: "no_response",
+          message: "Agent stream ended without producing a response",
+        });
+      }
       return null;
     }
 
-    // Store the final message (full text)
-    const agentName = finalResult.agent_nickname || agentId;
-    const text = `[${agentName}]: ${finalResult.text}`;
+    const agentNickname = finalResult.agent_nickname || knownNickname;
 
     this.insertMessage({
       messageId: agentMsgId,
       role: "assistant",
-      text,
+      text: finalResult.text,
       agentId,
-      tokens: (finalResult.usage as any)?.outputTokens,
+      agentNickname,
+      tokens: finalResult.usage?.completionTokens,
     });
 
     // Broadcast the complete message
@@ -376,7 +437,7 @@ export class ChatHandler {
         type: "agent_message",
         message_id: agentMsgId,
         agent_id: agentId,
-        agent_name: agentName,
+        agent_nickname: agentNickname,
         text: finalResult.text,
       });
     }
@@ -422,7 +483,7 @@ export class ChatHandler {
     agentMessages: Array<{
       text: string;
       agent_nickname: string;
-      usage?: unknown;
+      usage: AgentUsage | null;
       agent_id: string;
       message_id: string;
     }>;
@@ -457,7 +518,7 @@ export class ChatHandler {
     const agentMessages: Array<{
       text: string;
       agent_nickname: string;
-      usage?: unknown;
+      usage: AgentUsage | null;
       agent_id: string;
       message_id: string;
     }> = [];
@@ -466,9 +527,14 @@ export class ChatHandler {
       const current = queue.shift();
       if (!current) break;
 
+      const agentNickname = this.resolveAgentNickname(current.agentId, initialDecision.config);
+      const systemPrompt = initialDecision.config.system_prompt
+        ? `${initialDecision.config.system_prompt}\n\nIMPORTANT: Your name is @${agentNickname}. You are currently acting as this agent. Do not mention yourself.`
+        : `IMPORTANT: Your name is @${agentNickname}. You are currently acting as this agent. Do not mention yourself.`;
+
       const context = ContextManager.assembleContext(
         this.ctx.storage.sql,
-        initialDecision.config.system_prompt
+        systemPrompt
       );
 
       const eventStream = params.streamDeltas
@@ -490,6 +556,7 @@ export class ChatHandler {
       const result = await this.processAgentEvents(current.agentId, eventStream, {
         broadcast: true,
         streamDeltas: params.streamDeltas,
+        config: initialDecision.config,
       });
       if (!result) continue;
 
@@ -570,11 +637,10 @@ export class ChatHandler {
     const config = (await this.ctx.storage.get("config")) as Record<string, unknown> | undefined;
 
     const messageId = msg.message_id ?? `msg_${crypto.randomUUID()}`;
-    const userText = msg.sender_name ? `[${msg.sender_name}]: ${msg.text}` : msg.text;
     this.insertMessage({
       messageId,
       role: "user",
-      text: userText,
+      text: msg.text,
       senderId: msg.sender_id,
       senderName: msg.sender_name,
     });
@@ -606,7 +672,7 @@ export class ChatHandler {
     );
   }
 
-  private broadcast(event: object): void {
+  private broadcast(event: ChatWsEvent): void {
     const payload = JSON.stringify(event);
     for (const ws of this.ctx.getWebSockets()) {
       try {
@@ -664,12 +730,11 @@ export class ChatHandler {
       const messageId = body.message_id ?? `msg_${crypto.randomUUID()}`;
       const senderName: string | undefined = body.sender_name;
       const senderId: string | undefined = body.sender_id;
-      const userText = senderName ? `[${senderName}]: ${body.text}` : body.text;
 
       this.insertMessage({
         messageId,
         role: "user",
-        text: userText,
+        text: body.text,
         senderId,
         senderName,
       });

@@ -95,6 +95,14 @@ export function createAgentRunner(params: {
           role: "user",
           content: [{ type: "text", text: input.prompt }],
         });
+      } else if (messages.length > 0) {
+        const lastMsg = messages[messages.length - 1];
+        if (lastMsg.role === "assistant" || lastMsg.role === "system") {
+          messages.push({
+            role: "user",
+            content: [{ type: "text", text: "Please review and respond." }],
+          });
+        }
       }
 
       if (messages.length === 0) {
@@ -129,6 +137,14 @@ export function createAgentRunner(params: {
           role: "user",
           content: [{ type: "text", text: input.prompt }],
         });
+      } else if (messages.length > 0) {
+        const lastMsg = messages[messages.length - 1];
+        if (lastMsg.role === "assistant" || lastMsg.role === "system") {
+          messages.push({
+            role: "user",
+            content: [{ type: "text", text: "Please review and respond." }],
+          });
+        }
       }
 
       if (messages.length === 0) {

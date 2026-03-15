@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../client";
-import { mcpServers } from "../schema/schema";
+import { mcpServers } from "../schema";
 
 export async function getMcpServer(params: {
   orgId: string;

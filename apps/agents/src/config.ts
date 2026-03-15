@@ -1,5 +1,4 @@
-import { getDb, schema } from "@axon/worker-database";
-import { eq } from "drizzle-orm";
+import { eq, getDb, schema } from "@axon/worker-database";
 
 const { agentRuntimes, agents } = schema;
 
@@ -42,14 +41,14 @@ function runtimeCacheKey(agentId: string) {
 export async function loadAgentConfig(
   env: Env,
   agentId?: string,
-  runtimeId?: string
+  runtimeId?: string,
 ): Promise<AgentConfigRecord> {
   let targetAgentId = agentId;
 
   if (runtimeId) {
     const db = getDb();
     const runtime = await db.query.agentRuntimes.findFirst({
-      where: eq(agentRuntimes.id as any, runtimeId),
+      where: eq(agentRuntimes.id, runtimeId),
     });
     if (!runtime) {
       throw new Error("agent runtime not found");
@@ -84,7 +83,7 @@ export async function loadAgentConfig(
   const started = Date.now();
   const db = getDb();
   const agent = await db.query.agents.findFirst({
-    where: eq(agents.id as any, targetAgentId),
+    where: eq(agents.id, targetAgentId),
   });
   if (!agent) {
     recordResolutionMetric("agent", Date.now() - started, false);
@@ -93,7 +92,7 @@ export async function loadAgentConfig(
 
   const record: AgentConfigRecord = {
     agentId: targetAgentId,
-    config: agent.config as Record<string, unknown>,
+    config: agent.config,
     modelId: agent.modelId ?? null,
     orgId: agent.orgId,
     updatedAt: resolveUpdatedAt(agent.updatedAt),
@@ -106,7 +105,7 @@ export async function loadAgentConfig(
     cacheKey,
     version,
     record,
-    Math.ceil(ttlMs / 1000)
+    Math.ceil(ttlMs / 1000),
   );
   recordResolutionMetric("agent", Date.now() - started, true);
   return record;

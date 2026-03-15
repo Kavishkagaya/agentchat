@@ -6,8 +6,8 @@ import {
   chatArchives,
   chatRuntime,
   chatSnapshots,
-  configs,
-} from "../schema/schema";
+  chats,
+} from "../schema";
 
 export async function getChatRuntime(chatId: string) {
   const db = getDb();
@@ -22,7 +22,7 @@ export async function initializeChatRuntime(
   publicKey?: string | null,
 ) {
   const db = getDb();
-  const now = new Date().toISOString();
+  const now = new Date();
   const existing = await getChatRuntime(chatId);
 
   if (existing) {
@@ -50,9 +50,14 @@ export async function initializeChatRuntime(
 
 export async function updateChatRuntimeStatus(chatId: string, status: string) {
   const db = getDb();
-  const now = new Date().toISOString();
+  const now = new Date();
 
-  const chatUpdate: Record<string, string> = {
+  const chatUpdate: {
+    status: string;
+    updatedAt: Date;
+    lastActiveAt?: Date;
+    archivedAt?: Date;
+  } = {
     status,
     updatedAt: now,
   };
@@ -64,9 +69,9 @@ export async function updateChatRuntimeStatus(chatId: string, status: string) {
   }
 
   await db
-    .update(configs)
+    .update(chats)
     .set(chatUpdate)
-    .where(eq(configs.id, chatId));
+    .where(eq(chats.id, chatId));
 
   await db
     .update(chatRuntime)
@@ -82,62 +87,60 @@ export async function updateChatRuntimeStatus(chatId: string, status: string) {
 export async function countOrgActiveChats(orgId: string, excludeChatId?: string) {
   const db = getDb();
   const activePredicate = and(
-    eq(configs.orgId, orgId),
-    inArray(configs.status, ["active", "idle"]),
+    eq(chats.orgId, orgId),
+    inArray(chats.status, ["active", "idle"]),
   );
   const wherePredicate =
     excludeChatId && excludeChatId.length > 0
-      ? and(activePredicate, ne(configs.id, excludeChatId))
+      ? and(activePredicate, ne(chats.id, excludeChatId))
       : activePredicate;
 
   const rows = await db
     .select({
       value: sql<number>`count(*)`,
     })
-    .from(configs)
+    .from(chats)
     .where(wherePredicate);
   return Number(rows[0]?.value ?? 0);
 }
 
 export async function touchChatActivity(chatId: string, at = new Date()) {
   const db = getDb();
-  const iso = at.toISOString();
   await db
-    .update(configs)
+    .update(chats)
     .set({
       status: "active",
-      lastActiveAt: iso,
-      updatedAt: iso,
+      lastActiveAt: at,
+      updatedAt: at,
     })
-    .where(eq(configs.id, chatId));
+    .where(eq(chats.id, chatId));
 
   await db
     .update(chatRuntime)
     .set({
       status: "active",
-      lastActiveAt: iso,
-      updatedAt: iso,
+      lastActiveAt: at,
+      updatedAt: at,
     })
     .where(eq(chatRuntime.configId, chatId));
 }
 
 export async function markChatArchived(chatId: string, at = new Date()) {
   const db = getDb();
-  const iso = at.toISOString();
   await db
-    .update(configs)
+    .update(chats)
     .set({
       status: "archived",
-      archivedAt: iso,
-      updatedAt: iso,
+      archivedAt: at,
+      updatedAt: at,
     })
-    .where(eq(configs.id, chatId));
+    .where(eq(chats.id, chatId));
 
   await db
     .update(chatRuntime)
     .set({
       status: "archived",
-      updatedAt: iso,
+      updatedAt: at,
     })
     .where(eq(chatRuntime.configId, chatId));
 }
@@ -149,7 +152,7 @@ export async function recordChatArchive(params: {
   at?: Date;
 }) {
   const db = getDb();
-  const now = (params.at ?? new Date()).toISOString();
+  const now = params.at ?? new Date();
   const snapshotId = `snapshot_${crypto.randomUUID()}`;
   const archiveId = `archive_${crypto.randomUUID()}`;
 
@@ -175,7 +178,7 @@ export async function recordChatArchive(params: {
 export async function deleteChatRuntime(chatId: string) {
   const db = getDb();
 
-  // Delete runtime data only (config is owned by main DB)
+  // Delete runtime data only (chat is owned by main DB)
   await db.transaction(async (tx) => {
     await tx.delete(chatAgentRuntimes).where(eq(chatAgentRuntimes.configId, chatId));
     await tx.delete(chatArchives).where(eq(chatArchives.configId, chatId));

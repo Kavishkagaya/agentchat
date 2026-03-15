@@ -1,3 +1,4 @@
+import type { AgentConfigJson, ChatRoutingConfig } from "@axon/shared";
 import { relations } from "drizzle-orm";
 import {
   boolean,
@@ -80,8 +81,8 @@ export const orgMembers = pgTable(
 
 // --- Configs (Memory/Execution Contexts) ---
 
-export const configs = pgTable(
-  "configs",
+export const chats = pgTable(
+  "chats",
   {
     id: text("id").primaryKey(),
     orgId: text("org_id")
@@ -91,9 +92,9 @@ export const configs = pgTable(
     status: text("status").notNull(), // 'active', 'idle', 'archived'
     isPrivate: boolean("is_private").notNull().default(false),
     // Canonical workspace/group config payload (history mode, archive policy, agent policy, runtime flags).
-    config: jsonb("config").notNull(),
+    config: jsonb("config").$type<ChatRoutingConfig>().notNull(),
     // Legacy projection kept for compatibility while group config converges on `config`.
-    agentPolicy: jsonb("agent_policy").notNull(), // { auto_trigger, multi_agent, ... }
+    agentPolicy: jsonb("agent_policy").$type<Record<string, unknown>>().notNull(),
     createdBy: text("created_by").references(() => users.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
@@ -101,21 +102,21 @@ export const configs = pgTable(
     archivedAt: timestamp("archived_at", { withTimezone: true }),
   },
   (table) => ({
-    orgIdIdx: index("configs_org_id_idx").on(table.orgId),
+    orgIdIdx: index("chats_org_id_idx").on(table.orgId),
   })
 );
 
-export const configsRelations = relations(configs, ({ many }) => ({
-  members: many(configMembers),
-  agents: many(configAgents),
+export const chatsRelations = relations(chats, ({ many }) => ({
+  members: many(chatMembers),
+  agents: many(chatAgents),
 }));
 
-export const configMembers = pgTable(
+export const chatMembers = pgTable(
   "chat_members",
   {
-    groupId: text("config_id")
+    configId: text("config_id")
       .notNull()
-      .references(() => configs.id),
+      .references(() => chats.id),
     userId: text("user_id")
       .notNull()
       .references(() => users.id),
@@ -124,15 +125,15 @@ export const configMembers = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.groupId, table.userId] }),
+    pk: primaryKey({ columns: [table.configId, table.userId] }),
     userIdIdx: index("chat_members_user_id_idx").on(table.userId),
   })
 );
 
-export const configMembersRelations = relations(configMembers, ({ one }) => ({
-  config: one(configs, {
-    fields: [configMembers.groupId],
-    references: [configs.id],
+export const chatMembersRelations = relations(chatMembers, ({ one }) => ({
+  config: one(chats, {
+    fields: [chatMembers.configId],
+    references: [chats.id],
   }),
 }));
 
@@ -148,7 +149,7 @@ export const agents = pgTable(
     modelId: text("model_id"),
     name: text("name").notNull(),
     description: text("description"),
-    config: jsonb("config").notNull(), // { system_prompt, model, tools... }
+    config: jsonb("config").$type<AgentConfigJson>().notNull(),
     visibility: text("visibility").notNull(), // 'public', 'private'
     createdBy: text("created_by").references(() => users.id),
     parentAgentId: text("parent_agent_id"),
@@ -161,12 +162,12 @@ export const agents = pgTable(
   })
 );
 
-export const configAgents = pgTable(
+export const chatAgents = pgTable(
   "chat_agents",
   {
-    groupId: text("config_id")
+    configId: text("config_id")
       .notNull()
-      .references(() => configs.id),
+      .references(() => chats.id),
     agentId: text("agent_id")
       .notNull()
       .references(() => agents.id),
@@ -174,17 +175,17 @@ export const configAgents = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.groupId, table.agentId] }),
+    pk: primaryKey({ columns: [table.configId, table.agentId] }),
   })
 );
 
-export const configAgentsRelations = relations(configAgents, ({ one }) => ({
-  config: one(configs, {
-    fields: [configAgents.groupId],
-    references: [configs.id],
+export const chatAgentsRelations = relations(chatAgents, ({ one }) => ({
+  config: one(chats, {
+    fields: [chatAgents.configId],
+    references: [chats.id],
   }),
   agent: one(agents, {
-    fields: [configAgents.agentId],
+    fields: [chatAgents.agentId],
     references: [agents.id],
   }),
 }));
@@ -202,8 +203,7 @@ export const mcpServers = pgTable(
     url: text("url").notNull(),
     token: text("token").notNull(),
     secretRef: text("secret_ref"),
-    // Canonical MCP runtime config for this workspace record.
-    config: jsonb("config").notNull(),
+    config: jsonb("config").$type<Record<string, unknown>>().notNull(),
     status: text("status").notNull().default("pending"), // 'pending' | 'valid' | 'error'
     errorMessage: text("error_message"),
     lastValidatedAt: timestamp("last_validated_at", { withTimezone: true }),
@@ -230,10 +230,10 @@ export const mcpServersRelations = relations(mcpServers, ({ one }) => ({
 
 // --- Runtime Routing ---
 
-export const configRuntime = pgTable("chat_runtime", {
-  groupId: text("config_id")
+export const chatRuntime = pgTable("chat_runtime", {
+  configId: text("config_id")
     .primaryKey()
-    .references(() => configs.id),
+    .references(() => chats.id),
   groupControllerId: text("group_controller_id").notNull(), // Durable Object ID string
   status: text("status").notNull(), // 'active', 'idle'
   lastActiveAt: timestamp("last_active_at", { withTimezone: true }),
@@ -247,9 +247,9 @@ export const agentRuntimes = pgTable(
   "agent_runtimes",
   {
     id: text("id").primaryKey(),
-    groupId: text("config_id")
+    configId: text("config_id")
       .notNull()
-      .references(() => configs.id),
+      .references(() => chats.id),
     agentId: text("agent_id")
       .notNull()
       .references(() => agents.id),
@@ -259,16 +259,16 @@ export const agentRuntimes = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
   },
   (table) => ({
-    groupIdIdx: index("agent_runtimes_group_id_idx").on(table.groupId),
+    groupIdIdx: index("agent_runtimes_group_id_idx").on(table.configId),
   })
 );
 
-export const configAgentRuntimes = pgTable(
+export const chatAgentRuntimes = pgTable(
   "chat_agent_runtimes",
   {
-    groupId: text("config_id")
+    configId: text("config_id")
       .notNull()
-      .references(() => configs.id),
+      .references(() => chats.id),
     agentId: text("agent_id")
       .notNull()
       .references(() => agents.id),
@@ -279,42 +279,42 @@ export const configAgentRuntimes = pgTable(
   },
   (table) => ({
     pk: primaryKey({
-      columns: [table.groupId, table.agentId, table.runtimeId],
+      columns: [table.configId, table.agentId, table.runtimeId],
     }),
   })
 );
 
 // --- Lifecycle & Archive ---
 
-export const configArchives = pgTable(
+export const chatArchives = pgTable(
   "chat_archives",
   {
     id: text("id").primaryKey(),
-    groupId: text("config_id")
+    configId: text("config_id")
       .notNull()
-      .references(() => configs.id),
+      .references(() => chats.id),
     snapshotId: text("snapshot_id").notNull(),
     r2Path: text("r2_path").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
   },
   (table) => ({
-    groupIdIdx: index("chat_archives_group_id_idx").on(table.groupId),
+    groupIdIdx: index("chat_archives_group_id_idx").on(table.configId),
   })
 );
 
-export const configSnapshots = pgTable(
+export const chatSnapshots = pgTable(
   "chat_snapshots",
   {
     id: text("id").primaryKey(),
-    groupId: text("config_id")
+    configId: text("config_id")
       .notNull()
-      .references(() => configs.id),
+      .references(() => chats.id),
     r2Path: text("r2_path").notNull(),
     sizeBytes: integer("size_bytes"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
   },
   (table) => ({
-    groupIdIdx: index("chat_snapshots_group_id_idx").on(table.groupId),
+    groupIdIdx: index("chat_snapshots_group_id_idx").on(table.configId),
   })
 );
 
@@ -357,8 +357,7 @@ export const modelCatalog = pgTable(
       .references(() => secrets.id),
     gatewayAccountId: text("gateway_account_id").notNull(),
     gatewayId: text("gateway_id").notNull(),
-    // Canonical model runtime config for this workspace record.
-    config: jsonb("config").notNull(),
+    config: jsonb("config").$type<Record<string, unknown>>().notNull(),
     createdBy: text("created_by").references(() => users.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
@@ -412,7 +411,7 @@ export const subscriptions = pgTable("subscriptions", {
 
 export const systemConfigs = pgTable("system_configs", {
   key: text("key").primaryKey(),
-  value: jsonb("value").notNull(),
+  value: jsonb("value").$type<unknown>().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
 });
 
@@ -427,7 +426,7 @@ export const auditLog = pgTable(
     action: text("action").notNull(),
     targetType: text("target_type"),
     targetId: text("target_id"),
-    metadata: jsonb("metadata"),
+    metadata: jsonb("metadata").$type<Record<string, unknown> | null>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
   },
   (table) => ({

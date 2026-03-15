@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../client";
-import { modelCatalog } from "../schema/schema";
+import { modelCatalog } from "../schema";
 
 export async function getModel(params: {
   orgId: string;

@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../client";
 import { decryptSecretValue } from "../crypto/secrets";
-import { secrets } from "../schema/schema";
+import { secrets } from "../schema";
 
 export async function getSecretValue(params: {
   encryptionKey?: string;
@@ -11,11 +11,11 @@ export async function getSecretValue(params: {
   const db = getDb();
   const record = await db.query.secrets.findFirst({
     where: and(
-      eq(secrets.secretId, params.secretId),
+      eq(secrets.id, params.secretId),
       eq(secrets.orgId, params.orgId)
     ),
     columns: {
-      secretId: true,
+      id: true,
       orgId: true,
       ciphertext: true,
       version: true,
@@ -27,7 +27,7 @@ export async function getSecretValue(params: {
   }
 
   return {
-    secretId: record.secretId,
+    secretId: record.id,
     orgId: record.orgId,
     value: decryptSecretValue(record.ciphertext, params.encryptionKey),
     version: record.version,

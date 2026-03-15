@@ -14,7 +14,7 @@ export type AgentRunRequest = {
 };
 
 function structuredError(code: string, message: string) {
-  return { ok: false, error: { code, message } };
+  return { code, message };
 }
 
 async function authorizeRequest(
@@ -58,7 +58,7 @@ async function executeAndStreamAgent(
 
     for await (const event of streamAgent(record, env, input, {
       onToolError: (toolId, error) => {
-        send("event", { eventType: "tool_error", tool: toolId, error });
+        send("tool_error", { tool_call_id: toolId, error });
       },
     })) {
       switch (event.type) {
@@ -71,18 +71,16 @@ async function executeAndStreamAgent(
           break;
 
         case "tool_call":
-          send("event", {
-            eventType: "tool_call",
-            tool: event.tool_call_id,
+          send("tool_call", {
+            tool_call_id: event.tool_call_id,
             name: event.name,
             args: event.args,
           });
           break;
 
         case "tool_result":
-          send("event", {
-            eventType: "tool_result",
-            tool: event.tool_call_id,
+          send("tool_result", {
+            tool_call_id: event.tool_call_id,
             name: event.name,
             result: event.result,
           });
@@ -102,11 +100,9 @@ async function executeAndStreamAgent(
         case "final":
           send("status", { status: "completed" });
           send("final", {
-            ok: true,
             agent_id: record.agentId,
             config_id: configId,
             runtime_id: body.runtime_id,
-            role: "assistant",
             text: event.text,
             finish_reason: event.finish_reason,
             usage: event.usage,
@@ -117,11 +113,8 @@ async function executeAndStreamAgent(
     }
   } catch (error) {
     send("error", {
-      ok: false,
-      error: {
-        code: "agent_error",
-        message: error instanceof Error ? error.message : "agent error",
-      },
+      code: "agent_error",
+      message: error instanceof Error ? error.message : "agent error",
     });
   }
 }
@@ -146,7 +139,7 @@ async function executeAgentCoarse(
 
     for await (const event of streamAgent(record, env, input, {
       onToolError: (toolId, error) => {
-        send("event", { eventType: "tool_error", tool: toolId, error });
+        send("tool_error", { tool_call_id: toolId, error });
       },
     })) {
       switch (event.type) {
@@ -155,18 +148,16 @@ async function executeAgentCoarse(
           break;
 
         case "tool_call":
-          send("event", {
-            eventType: "tool_call",
-            tool: event.tool_call_id,
+          send("tool_call", {
+            tool_call_id: event.tool_call_id,
             name: event.name,
             args: event.args,
           });
           break;
 
         case "tool_result":
-          send("event", {
-            eventType: "tool_result",
-            tool: event.tool_call_id,
+          send("tool_result", {
+            tool_call_id: event.tool_call_id,
             name: event.name,
             result: event.result,
           });
@@ -186,11 +177,9 @@ async function executeAgentCoarse(
         case "final":
           send("status", { status: "completed" });
           send("final", {
-            ok: true,
             agent_id: record.agentId,
             config_id: configId,
             runtime_id: body.runtime_id,
-            role: "assistant",
             text: event.text,
             finish_reason: event.finish_reason,
             usage: event.usage,
@@ -201,11 +190,8 @@ async function executeAgentCoarse(
     }
   } catch (error) {
     send("error", {
-      ok: false,
-      error: {
-        code: "agent_error",
-        message: error instanceof Error ? error.message : "agent error",
-      },
+      code: "agent_error",
+      message: error instanceof Error ? error.message : "agent error",
     });
   }
 }

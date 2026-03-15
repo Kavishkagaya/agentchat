@@ -246,14 +246,14 @@ export class MemoryController extends DurableObject<Env> {
           try {
             initDb(this.env.DATABASE_URL);
             const db = getDb();
-            const results = await db
-              .select()
-              .from(schema.configs)
-              .where(eq(schema.configs.id, body.config_id))
-              .limit(1);
-            const groupRecord = results[0];
+      const rows = await db
+        .select()
+        .from(schema.chats)
+        .where(eq(schema.chats.id, body.config_id))
+        .limit(1);
+            const groupRecord = rows[0];
             if (groupRecord) {
-              config = groupRecord.config;
+              config = groupRecord.config as Record<string, unknown> | undefined;
               org_id = groupRecord.orgId;
               // For now, let's assume the config has a 'topology' field or similar
               // If not, we'll need to decide how to map groups to types.

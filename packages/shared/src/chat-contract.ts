@@ -137,6 +137,91 @@ export interface ChatArchiveSnapshotResponse {
 
 export type MessageOrigin = "user" | "agent";
 
+// ── Agent config JSON shape (stored in agents.config jsonb) ──────
+
+export type AgentToolRef = {
+  id: string;
+  name?: string;
+  description?: string;
+  parameters?: Record<string, unknown>;
+  config?: Record<string, unknown>;
+};
+
+export type AgentConfigJson = {
+  agent_id?: string;
+  provider?: string;
+  model?: string;
+  system_prompt?: string;
+  tools?: AgentToolRef[];
+  temperature?: number;
+  max_tokens?: number;
+  top_p?: number;
+  presence_penalty?: number;
+  frequency_penalty?: number;
+  stop?: string[];
+  seed?: number;
+  [key: string]: unknown;
+};
+
+// ── Agent SSE event types (agents service → memory-controller) ──
+
+export type AgentSseStatus = "thinking" | "running" | "completed";
+
+export type AgentUsage = {
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+};
+
+export type AgentSseEvent =
+  | { type: "status"; status: AgentSseStatus }
+  | { type: "text_delta"; text: string }
+  | { type: "reasoning"; text: string }
+  | { type: "tool_call"; tool_call_id: string; name: string; args: unknown }
+  | { type: "tool_result"; tool_call_id: string; name: string; result: unknown }
+  | { type: "tool_error"; tool_call_id: string; error: string }
+  | { type: "step_finish"; finish_reason: string; usage: AgentUsage | null }
+  | { type: "error"; code: string; message: string }
+  | { type: "final"; agent_id: string; config_id: string | null; runtime_id?: string; text: string; finish_reason: string; usage: AgentUsage | null; agent_nickname: string };
+
+// ── Server → Client WebSocket events ────────────────────────
+
+export type ChatWsEvent =
+  | { type: "ready" }
+  | { type: "user_message_stored"; message_id: string; sender_id?: string; sender_name?: string; text: string }
+  | { type: "agent_start"; agent_id: string; agent_nickname: string; message_id: string }
+  | { type: "text_delta"; agent_id: string; message_id: string; text: string }
+  | { type: "reasoning"; agent_id: string; message_id: string; text: string }
+  | { type: "tool_call"; agent_id: string; message_id: string; tool_call_id: string; name: string; args: unknown }
+  | { type: "tool_result"; agent_id: string; message_id: string; tool_call_id: string; name: string; result: unknown }
+  | { type: "agent_status"; agent_id: string; message_id: string; status: AgentSseStatus }
+  | { type: "agent_message"; message_id: string; agent_id: string; agent_nickname: string; text: string }
+  | { type: "agent_error"; agent_id: string; message_id: string; code: string; message: string }
+  | { type: "routing_warning"; message_id: string; unknown_mentions: string[]; source: string; origin: string }
+  | { type: "done" }
+  | { type: "error"; code: string; message: string };
+
+// ── Chat history response ───────────────────────────────────
+
+export type ChatHistoryMessage = {
+  message_id: string;
+  role: "user" | "assistant";
+  text: string;
+  sender_id?: string | null;
+  sender_name?: string | null;
+  agent_id?: string | null;
+  agent_nickname?: string | null;
+  tokens?: number;
+  created_at: string;
+};
+
+export type ChatHistoryResponse = {
+  messages: ChatHistoryMessage[];
+  next_cursor?: string;
+  has_more: boolean;
+  type: "chat";
+};
+
 export type MessageRoutingInput = {
   text: string;
   explicitAgentIds?: string[];
