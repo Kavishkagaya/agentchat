@@ -273,6 +273,7 @@ export function buildAgentChatContext(params: {
   identityLines.push(`- Refer to yourself naturally as "I" — never write @${params.agentNickname} or tag yourself.`);
   identityLines.push(`- Never say "As an AI", "As a language model", or "As an assistant".`);
   identityLines.push(`- Do not echo or repeat name tags like [${params.agentNickname}] from message history.`);
+  identityLines.push(`- Always format your responses in Markdown.`);
 
   const teamLines: string[] = [];
   const others = params.agentSetups.filter(
@@ -285,19 +286,22 @@ export function buildAgentChatContext(params: {
       teamLines.push(`- ${setup.nickname}: ${setup.responsibility}`);
     }
     teamLines.push("");
-    teamLines.push("@mention rules (CRITICAL — using @ TRIGGERS that agent to run, so misuse causes unwanted invocations):");
-    teamLines.push("- ONLY use @name when you intentionally want to hand off or delegate work to that agent.");
-    teamLines.push("- When just referring to or talking about a team member, use their name WITHOUT @ prefix.");
+    teamLines.push("Collaboration:");
+    teamLines.push("- You are a team. Actively @mention teammates when the task needs their expertise.");
+    teamLines.push("- If a request falls outside your responsibility or would benefit from another agent's skills, hand off with @name.");
+    teamLines.push("- Do not try to do everything yourself — leverage your team.");
+    teamLines.push("");
+    teamLines.push("@mention rules (using @ TRIGGERS that agent to run):");
+    teamLines.push("- Use @name to hand off, delegate, or ask a teammate to act.");
+    teamLines.push("- Do NOT use @ when merely referring to a teammate in conversation — just use their name.");
     teamLines.push(`- NEVER @mention yourself (@${params.agentNickname}).`);
-    teamLines.push("- Use plain text only — no JSON, structured formats, or special syntax.");
 
     const otherNames = others.map((s) => s.nickname);
     const exampleOther = otherNames[0];
     teamLines.push("");
     teamLines.push("Examples:");
-    teamLines.push(`  WRONG: "I discussed this with @${exampleOther} earlier" (this will trigger ${exampleOther} to respond)`);
-    teamLines.push(`  RIGHT: "I discussed this with ${exampleOther} earlier"`);
-    teamLines.push(`  RIGHT: "@${exampleOther} can you review this?" (intentional hand-off)`);
+    teamLines.push(`  Referring: "I agree with ${exampleOther}'s point" (no trigger)`);
+    teamLines.push(`  Delegating: "@${exampleOther} can you handle the implementation?" (triggers ${exampleOther})`);
     teamLines.push("");
     teamLines.push("Keep responses concise, actionable, and role-aligned.");
   }

@@ -31,7 +31,7 @@ export function ChatClient({ chatId }: { chatId: string }) {
   const [clearOpen, setClearOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  const { messages, isThinking, isConnected, sendMessage } =
+  const { messages, isThinking, isConnected, sendMessage, connectionStatus } =
     useChatSocket(chatId);
 
   const chatQuery = api.chats.get.useQuery({ chatId });
@@ -110,6 +110,26 @@ export function ChatClient({ chatId }: { chatId: string }) {
             </Button>
           </div>
         </CardHeader>
+        {connectionStatus !== "connected" && (
+          <div
+            className={`px-4 py-2 text-sm flex items-center gap-2 border-b
+            ${
+              connectionStatus === "disconnected"
+                ? "bg-destructive/10 text-destructive"
+                : "bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400"
+            }`}
+          >
+            {(connectionStatus === "reconnecting" ||
+              connectionStatus === "connecting") && (
+              <span className="inline-block h-3 w-3 rounded-full border-2 border-current border-t-transparent animate-spin" />
+            )}
+            {connectionStatus === "disconnected"
+              ? "Connection lost. Reload to try again."
+              : connectionStatus === "reconnecting"
+                ? "Connection lost · Reconnecting..."
+                : "Connecting..."}
+          </div>
+        )}
         <ChatMessages messages={messages} isThinking={isThinking} />
         <CardContent className="p-4 border-t flex gap-2">
           <Input

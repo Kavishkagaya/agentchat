@@ -22,14 +22,22 @@ function mapHistoryMessage(m: ChatHistoryMessage): ChatMessage {
   };
 }
 
+type ConnectionStatus = "connecting" | "connected" | "disconnected" | "reconnecting";
+
+const MAX_RECONNECT_ATTEMPTS = 8;
+const BASE_RECONNECT_DELAY_MS = 1500;
+
 export function useChatSocket(chatId: string) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isThinking, setIsThinking] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connecting");
 
   const socketRef = useRef<WebSocket | null>(null);
   const connectingRef = useRef(false);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectAttemptsRef = useRef(0);
 
   const getTokenMutation = api.chats.getToken.useMutation();
   const { data: historyData } = api.chats.getHistory.useQuery({ chatId });
@@ -53,6 +61,10 @@ export function useChatSocket(chatId: string) {
     let cancelled = false;
 
     const connect = async () => {
+      setConnectionStatus(
+        reconnectAttemptsRef.current === 0 ? "connecting" : "reconnecting",
+      );
+
       try {
         const { routing_token } = await getTokenMutation.mutateAsync({
           chatId,
@@ -83,10 +95,41 @@ export function useChatSocket(chatId: string) {
 
         socket.onclose = () => {
           setIsConnected(false);
-          console.log("WS closed");
+          if (cancelled) return; // intentional cleanup, don't retry
+
+          const attempt = reconnectAttemptsRef.current;
+          if (attempt < MAX_RECONNECT_ATTEMPTS) {
+            reconnectAttemptsRef.current += 1;
+            const delay = Math.min(
+              BASE_RECONNECT_DELAY_MS * (2 ** attempt),
+              30_000,
+            );
+            setConnectionStatus("reconnecting");
+            reconnectTimerRef.current = setTimeout(() => {
+              if (!cancelled) connect();
+            }, delay);
+          } else {
+            setConnectionStatus("disconnected");
+          }
         };
       } catch (err) {
         console.error("Failed to connect WS:", err);
+        if (!cancelled) {
+          const attempt = reconnectAttemptsRef.current;
+          if (attempt < MAX_RECONNECT_ATTEMPTS) {
+            reconnectAttemptsRef.current += 1;
+            const delay = Math.min(
+              BASE_RECONNECT_DELAY_MS * (2 ** attempt),
+              30_000,
+            );
+            setConnectionStatus("reconnecting");
+            reconnectTimerRef.current = setTimeout(() => {
+              if (!cancelled) connect();
+            }, delay);
+          } else {
+            setConnectionStatus("disconnected");
+          }
+        }
       }
     };
 
@@ -99,6 +142,8 @@ export function useChatSocket(chatId: string) {
         case "ready":
           setIsInitializing(false);
           setIsConnected(true);
+          setConnectionStatus("connected");
+          reconnectAttemptsRef.current = 0; // reset on successful connect
           break;
 
         case "user_message_stored":
@@ -188,6 +233,7 @@ export function useChatSocket(chatId: string) {
     return () => {
       cancelled = true;
       connectingRef.current = false;
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
       socketRef.current?.close();
       socketRef.current = null;
     };
@@ -199,5 +245,12 @@ export function useChatSocket(chatId: string) {
     );
   }, []);
 
-  return { messages, isThinking, isConnected, isInitializing, sendMessage };
+  return {
+    messages,
+    isThinking,
+    isConnected,
+    isInitializing,
+    sendMessage,
+    connectionStatus,
+  };
 }
