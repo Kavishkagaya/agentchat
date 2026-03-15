@@ -1,4 +1,4 @@
-import { pgTable, index, foreignKey, text, jsonb, timestamp, boolean, integer, uniqueIndex, primaryKey } from "drizzle-orm/pg-core"
+import { pgTable, index, foreignKey, text, jsonb, timestamp, boolean, uniqueIndex, integer, primaryKey } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 
 
@@ -76,38 +76,6 @@ export const agentRuntimes = pgTable("agent_runtimes", {
 		}),
 ]);
 
-export const groupRuntime = pgTable("group_runtime", {
-	configId: text("config_id").primaryKey().notNull(),
-	groupControllerId: text("group_controller_id").notNull(),
-	status: text().notNull(),
-	lastActiveAt: timestamp("last_active_at", { withTimezone: true, mode: 'string' }),
-	idleAt: timestamp("idle_at", { withTimezone: true, mode: 'string' }),
-	region: text(),
-	publicKey: text("public_key"),
-	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).notNull(),
-}, (table) => [
-	foreignKey({
-			columns: [table.configId],
-			foreignColumns: [configs.id],
-			name: "group_runtime_config_id_configs_id_fk"
-		}),
-]);
-
-export const groupSnapshots = pgTable("group_snapshots", {
-	id: text().primaryKey().notNull(),
-	configId: text("config_id").notNull(),
-	r2Path: text("r2_path").notNull(),
-	sizeBytes: integer("size_bytes"),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
-}, (table) => [
-	index("group_snapshots_group_id_idx").using("btree", table.configId.asc().nullsLast().op("text_ops")),
-	foreignKey({
-			columns: [table.configId],
-			foreignColumns: [configs.id],
-			name: "group_snapshots_config_id_configs_id_fk"
-		}),
-]);
-
 export const orgMembers = pgTable("org_members", {
 	orgId: text("org_id").notNull(),
 	userId: text("user_id").notNull(),
@@ -133,19 +101,18 @@ export const orgMembers = pgTable("org_members", {
 		}),
 ]);
 
-export const groupTasks = pgTable("group_tasks", {
+export const chatArchives = pgTable("chat_archives", {
 	id: text().primaryKey().notNull(),
 	configId: text("config_id").notNull(),
-	taskType: text("task_type").notNull(),
-	status: text().notNull(),
+	snapshotId: text("snapshot_id").notNull(),
+	r2Path: text("r2_path").notNull(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
-	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).notNull(),
 }, (table) => [
-	index("group_tasks_group_id_idx").using("btree", table.configId.asc().nullsLast().op("text_ops")),
+	index("chat_archives_group_id_idx").using("btree", table.configId.asc().nullsLast().op("text_ops")),
 	foreignKey({
 			columns: [table.configId],
 			foreignColumns: [configs.id],
-			name: "group_tasks_config_id_configs_id_fk"
+			name: "chat_archives_config_id_configs_id_fk"
 		}),
 ]);
 
@@ -158,21 +125,6 @@ export const orgLimits = pgTable("org_limits", {
 			columns: [table.orgId],
 			foreignColumns: [orgs.id],
 			name: "org_limits_org_id_orgs_id_fk"
-		}),
-]);
-
-export const groupArchives = pgTable("group_archives", {
-	id: text().primaryKey().notNull(),
-	configId: text("config_id").notNull(),
-	snapshotId: text("snapshot_id").notNull(),
-	r2Path: text("r2_path").notNull(),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
-}, (table) => [
-	index("group_archives_group_id_idx").using("btree", table.configId.asc().nullsLast().op("text_ops")),
-	foreignKey({
-			columns: [table.configId],
-			foreignColumns: [configs.id],
-			name: "group_archives_config_id_configs_id_fk"
 		}),
 ]);
 
@@ -190,6 +142,23 @@ export const orgUsage = pgTable("org_usage", {
 		}),
 ]);
 
+export const chatRuntime = pgTable("chat_runtime", {
+	configId: text("config_id").primaryKey().notNull(),
+	groupControllerId: text("group_controller_id").notNull(),
+	status: text().notNull(),
+	lastActiveAt: timestamp("last_active_at", { withTimezone: true, mode: 'string' }),
+	idleAt: timestamp("idle_at", { withTimezone: true, mode: 'string' }),
+	region: text(),
+	publicKey: text("public_key"),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).notNull(),
+}, (table) => [
+	foreignKey({
+			columns: [table.configId],
+			foreignColumns: [configs.id],
+			name: "chat_runtime_config_id_configs_id_fk"
+		}),
+]);
+
 export const configs = pgTable("configs", {
 	id: text().primaryKey().notNull(),
 	orgId: text("org_id").notNull(),
@@ -204,7 +173,7 @@ export const configs = pgTable("configs", {
 	archivedAt: timestamp("archived_at", { withTimezone: true, mode: 'string' }),
 	config: jsonb().notNull(),
 }, (table) => [
-	index("groups_org_id_idx").using("btree", table.orgId.asc().nullsLast().op("text_ops")),
+	index("configs_org_id_idx").using("btree", table.orgId.asc().nullsLast().op("text_ops")),
 	foreignKey({
 			columns: [table.orgId],
 			foreignColumns: [orgs.id],
@@ -214,6 +183,21 @@ export const configs = pgTable("configs", {
 			columns: [table.createdBy],
 			foreignColumns: [users.id],
 			name: "configs_created_by_users_id_fk"
+		}),
+]);
+
+export const chatSnapshots = pgTable("chat_snapshots", {
+	id: text().primaryKey().notNull(),
+	configId: text("config_id").notNull(),
+	r2Path: text("r2_path").notNull(),
+	sizeBytes: integer("size_bytes"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
+}, (table) => [
+	index("chat_snapshots_group_id_idx").using("btree", table.configId.asc().nullsLast().op("text_ops")),
+	foreignKey({
+			columns: [table.configId],
+			foreignColumns: [configs.id],
+			name: "chat_snapshots_config_id_configs_id_fk"
 		}),
 ]);
 
@@ -354,100 +338,76 @@ export const modelCatalog = pgTable("model_catalog", {
 		}),
 ]);
 
-export const groupAgents = pgTable("group_agents", {
-	configId: text("config_id").notNull(),
-	agentId: text("agent_id").notNull(),
-	addedBy: text("added_by"),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
-}, (table) => [
-	foreignKey({
-			columns: [table.agentId],
-			foreignColumns: [agents.id],
-			name: "group_agents_agent_id_agents_id_fk"
-		}),
-	foreignKey({
-			columns: [table.addedBy],
-			foreignColumns: [users.id],
-			name: "group_agents_added_by_users_id_fk"
-		}),
-	foreignKey({
-			columns: [table.configId],
-			foreignColumns: [configs.id],
-			name: "group_agents_config_id_configs_id_fk"
-		}),
-	primaryKey({ columns: [table.configId, table.agentId], name: "group_agents_config_id_agent_id_pk"}),
-]);
-
-export const groupSecrets = pgTable("group_secrets", {
-	configId: text("config_id").notNull(),
-	secretId: text("secret_id").notNull(),
-	grantedBy: text("granted_by"),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
-}, (table) => [
-	foreignKey({
-			columns: [table.grantedBy],
-			foreignColumns: [users.id],
-			name: "group_secrets_granted_by_users_id_fk"
-		}),
-	foreignKey({
-			columns: [table.secretId],
-			foreignColumns: [secrets.secretId],
-			name: "group_secrets_secret_id_secrets_secret_id_fk"
-		}),
-	foreignKey({
-			columns: [table.configId],
-			foreignColumns: [configs.id],
-			name: "group_secrets_config_id_configs_id_fk"
-		}),
-	primaryKey({ columns: [table.configId, table.secretId], name: "group_secrets_config_id_secret_id_pk"}),
-]);
-
-export const groupAgentRuntimes = pgTable("group_agent_runtimes", {
+export const chatAgentRuntimes = pgTable("chat_agent_runtimes", {
 	configId: text("config_id").notNull(),
 	agentId: text("agent_id").notNull(),
 	runtimeId: text("runtime_id").notNull(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
 }, (table) => [
 	foreignKey({
+			columns: [table.configId],
+			foreignColumns: [configs.id],
+			name: "chat_agent_runtimes_config_id_configs_id_fk"
+		}),
+	foreignKey({
 			columns: [table.agentId],
 			foreignColumns: [agents.id],
-			name: "group_agent_runtimes_agent_id_agents_id_fk"
+			name: "chat_agent_runtimes_agent_id_agents_id_fk"
 		}),
 	foreignKey({
 			columns: [table.runtimeId],
 			foreignColumns: [agentRuntimes.id],
-			name: "group_agent_runtimes_runtime_id_agent_runtimes_id_fk"
+			name: "chat_agent_runtimes_runtime_id_agent_runtimes_id_fk"
 		}),
+	primaryKey({ columns: [table.configId, table.agentId, table.runtimeId], name: "chat_agent_runtimes_config_id_agent_id_runtime_id_pk"}),
+]);
+
+export const chatAgents = pgTable("chat_agents", {
+	configId: text("config_id").notNull(),
+	agentId: text("agent_id").notNull(),
+	addedBy: text("added_by"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
+}, (table) => [
 	foreignKey({
 			columns: [table.configId],
 			foreignColumns: [configs.id],
-			name: "group_agent_runtimes_config_id_configs_id_fk"
+			name: "chat_agents_config_id_configs_id_fk"
 		}),
-	primaryKey({ columns: [table.configId, table.agentId, table.runtimeId], name: "group_agent_runtimes_config_id_agent_id_runtime_id_pk"}),
+	foreignKey({
+			columns: [table.agentId],
+			foreignColumns: [agents.id],
+			name: "chat_agents_agent_id_agents_id_fk"
+		}),
+	foreignKey({
+			columns: [table.addedBy],
+			foreignColumns: [users.id],
+			name: "chat_agents_added_by_users_id_fk"
+		}),
+	primaryKey({ columns: [table.configId, table.agentId], name: "chat_agents_config_id_agent_id_pk"}),
 ]);
 
-export const groupMembers = pgTable("group_members", {
+export const chatMembers = pgTable("chat_members", {
 	configId: text("config_id").notNull(),
 	userId: text("user_id").notNull(),
 	role: text().notNull(),
 	addedBy: text("added_by"),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull(),
 }, (table) => [
-	index("group_members_user_id_idx").using("btree", table.userId.asc().nullsLast().op("text_ops")),
+	index("chat_members_user_id_idx").using("btree", table.userId.asc().nullsLast().op("text_ops")),
+	foreignKey({
+			columns: [table.configId],
+			foreignColumns: [configs.id],
+			name: "chat_members_config_id_configs_id_fk"
+		}),
 	foreignKey({
 			columns: [table.userId],
 			foreignColumns: [users.id],
-			name: "group_members_user_id_users_id_fk"
+			name: "chat_members_user_id_users_id_fk"
 		}),
 	foreignKey({
 			columns: [table.addedBy],
 			foreignColumns: [users.id],
-			name: "group_members_added_by_users_id_fk"
+			name: "chat_members_added_by_users_id_fk"
 		}),
-	foreignKey({
-			columns: [table.configId],
-			foreignColumns: [configs.id],
-			name: "group_members_config_id_configs_id_fk"
-		}),
-	primaryKey({ columns: [table.configId, table.userId], name: "group_members_config_id_user_id_pk"}),
+	primaryKey({ columns: [table.configId, table.userId], name: "chat_members_config_id_user_id_pk"}),
 ]);

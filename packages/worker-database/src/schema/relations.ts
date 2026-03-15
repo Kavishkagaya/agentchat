@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm/relations";
-import { orgs, auditLog, users, agents, agentRuntimes, configs, groupRuntime, groupSnapshots, orgMembers, groupTasks, orgLimits, groupArchives, orgUsage, secrets, subscriptions, mcpServers, modelCatalog, groupAgents, groupSecrets, groupAgentRuntimes, groupMembers } from "./schema";
+import { orgs, auditLog, users, agents, agentRuntimes, configs, orgMembers, chatArchives, orgLimits, orgUsage, chatRuntime, chatSnapshots, secrets, subscriptions, mcpServers, modelCatalog, chatAgentRuntimes, chatAgents, chatMembers } from "./schema";
 
 export const auditLogRelations = relations(auditLog, ({one}) => ({
 	org: one(orgs, {
@@ -33,13 +33,12 @@ export const usersRelations = relations(users, ({many}) => ({
 	secrets: many(secrets),
 	mcpServers: many(mcpServers),
 	modelCatalogs: many(modelCatalog),
-	groupAgents: many(groupAgents),
-	groupSecrets: many(groupSecrets),
-	groupMembers_userId: many(groupMembers, {
-		relationName: "groupMembers_userId_users_id"
+	chatAgents: many(chatAgents),
+	chatMembers_userId: many(chatMembers, {
+		relationName: "chatMembers_userId_users_id"
 	}),
-	groupMembers_addedBy: many(groupMembers, {
-		relationName: "groupMembers_addedBy_users_id"
+	chatMembers_addedBy: many(chatMembers, {
+		relationName: "chatMembers_addedBy_users_id"
 	}),
 }));
 
@@ -53,8 +52,8 @@ export const agentsRelations = relations(agents, ({one, many}) => ({
 		references: [users.id]
 	}),
 	agentRuntimes: many(agentRuntimes),
-	groupAgents: many(groupAgents),
-	groupAgentRuntimes: many(groupAgentRuntimes),
+	chatAgentRuntimes: many(chatAgentRuntimes),
+	chatAgents: many(chatAgents),
 }));
 
 export const agentRuntimesRelations = relations(agentRuntimes, ({one, many}) => ({
@@ -66,15 +65,13 @@ export const agentRuntimesRelations = relations(agentRuntimes, ({one, many}) => 
 		fields: [agentRuntimes.configId],
 		references: [configs.id]
 	}),
-	groupAgentRuntimes: many(groupAgentRuntimes),
+	chatAgentRuntimes: many(chatAgentRuntimes),
 }));
 
 export const configsRelations = relations(configs, ({one, many}) => ({
 	agentRuntimes: many(agentRuntimes),
-	groupRuntimes: many(groupRuntime),
-	groupSnapshots: many(groupSnapshots),
-	groupTasks: many(groupTasks),
-	groupArchives: many(groupArchives),
+	chatArchives: many(chatArchives),
+	chatRuntimes: many(chatRuntime),
 	org: one(orgs, {
 		fields: [configs.orgId],
 		references: [orgs.id]
@@ -83,24 +80,10 @@ export const configsRelations = relations(configs, ({one, many}) => ({
 		fields: [configs.createdBy],
 		references: [users.id]
 	}),
-	groupAgents: many(groupAgents),
-	groupSecrets: many(groupSecrets),
-	groupAgentRuntimes: many(groupAgentRuntimes),
-	groupMembers: many(groupMembers),
-}));
-
-export const groupRuntimeRelations = relations(groupRuntime, ({one}) => ({
-	config: one(configs, {
-		fields: [groupRuntime.configId],
-		references: [configs.id]
-	}),
-}));
-
-export const groupSnapshotsRelations = relations(groupSnapshots, ({one}) => ({
-	config: one(configs, {
-		fields: [groupSnapshots.configId],
-		references: [configs.id]
-	}),
+	chatSnapshots: many(chatSnapshots),
+	chatAgentRuntimes: many(chatAgentRuntimes),
+	chatAgents: many(chatAgents),
+	chatMembers: many(chatMembers),
 }));
 
 export const orgMembersRelations = relations(orgMembers, ({one}) => ({
@@ -114,9 +97,9 @@ export const orgMembersRelations = relations(orgMembers, ({one}) => ({
 	}),
 }));
 
-export const groupTasksRelations = relations(groupTasks, ({one}) => ({
+export const chatArchivesRelations = relations(chatArchives, ({one}) => ({
 	config: one(configs, {
-		fields: [groupTasks.configId],
+		fields: [chatArchives.configId],
 		references: [configs.id]
 	}),
 }));
@@ -128,17 +111,24 @@ export const orgLimitsRelations = relations(orgLimits, ({one}) => ({
 	}),
 }));
 
-export const groupArchivesRelations = relations(groupArchives, ({one}) => ({
-	config: one(configs, {
-		fields: [groupArchives.configId],
-		references: [configs.id]
-	}),
-}));
-
 export const orgUsageRelations = relations(orgUsage, ({one}) => ({
 	org: one(orgs, {
 		fields: [orgUsage.orgId],
 		references: [orgs.id]
+	}),
+}));
+
+export const chatRuntimeRelations = relations(chatRuntime, ({one}) => ({
+	config: one(configs, {
+		fields: [chatRuntime.configId],
+		references: [configs.id]
+	}),
+}));
+
+export const chatSnapshotsRelations = relations(chatSnapshots, ({one}) => ({
+	config: one(configs, {
+		fields: [chatSnapshots.configId],
+		references: [configs.id]
 	}),
 }));
 
@@ -152,7 +142,6 @@ export const secretsRelations = relations(secrets, ({one, many}) => ({
 		references: [users.id]
 	}),
 	modelCatalogs: many(modelCatalog),
-	groupSecrets: many(groupSecrets),
 }));
 
 export const subscriptionsRelations = relations(subscriptions, ({one}) => ({
@@ -188,64 +177,49 @@ export const modelCatalogRelations = relations(modelCatalog, ({one}) => ({
 	}),
 }));
 
-export const groupAgentsRelations = relations(groupAgents, ({one}) => ({
-	agent: one(agents, {
-		fields: [groupAgents.agentId],
-		references: [agents.id]
-	}),
-	user: one(users, {
-		fields: [groupAgents.addedBy],
-		references: [users.id]
-	}),
+export const chatAgentRuntimesRelations = relations(chatAgentRuntimes, ({one}) => ({
 	config: one(configs, {
-		fields: [groupAgents.configId],
+		fields: [chatAgentRuntimes.configId],
 		references: [configs.id]
 	}),
-}));
-
-export const groupSecretsRelations = relations(groupSecrets, ({one}) => ({
-	user: one(users, {
-		fields: [groupSecrets.grantedBy],
-		references: [users.id]
-	}),
-	secret: one(secrets, {
-		fields: [groupSecrets.secretId],
-		references: [secrets.secretId]
-	}),
-	config: one(configs, {
-		fields: [groupSecrets.configId],
-		references: [configs.id]
-	}),
-}));
-
-export const groupAgentRuntimesRelations = relations(groupAgentRuntimes, ({one}) => ({
 	agent: one(agents, {
-		fields: [groupAgentRuntimes.agentId],
+		fields: [chatAgentRuntimes.agentId],
 		references: [agents.id]
 	}),
 	agentRuntime: one(agentRuntimes, {
-		fields: [groupAgentRuntimes.runtimeId],
+		fields: [chatAgentRuntimes.runtimeId],
 		references: [agentRuntimes.id]
-	}),
-	config: one(configs, {
-		fields: [groupAgentRuntimes.configId],
-		references: [configs.id]
 	}),
 }));
 
-export const groupMembersRelations = relations(groupMembers, ({one}) => ({
+export const chatAgentsRelations = relations(chatAgents, ({one}) => ({
+	config: one(configs, {
+		fields: [chatAgents.configId],
+		references: [configs.id]
+	}),
+	agent: one(agents, {
+		fields: [chatAgents.agentId],
+		references: [agents.id]
+	}),
+	user: one(users, {
+		fields: [chatAgents.addedBy],
+		references: [users.id]
+	}),
+}));
+
+export const chatMembersRelations = relations(chatMembers, ({one}) => ({
+	config: one(configs, {
+		fields: [chatMembers.configId],
+		references: [configs.id]
+	}),
 	user_userId: one(users, {
-		fields: [groupMembers.userId],
+		fields: [chatMembers.userId],
 		references: [users.id],
-		relationName: "groupMembers_userId_users_id"
+		relationName: "chatMembers_userId_users_id"
 	}),
 	user_addedBy: one(users, {
-		fields: [groupMembers.addedBy],
+		fields: [chatMembers.addedBy],
 		references: [users.id],
-		relationName: "groupMembers_addedBy_users_id"
-	}),
-	config: one(configs, {
-		fields: [groupMembers.configId],
-		references: [configs.id]
+		relationName: "chatMembers_addedBy_users_id"
 	}),
 }));

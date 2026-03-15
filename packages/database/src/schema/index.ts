@@ -101,7 +101,7 @@ export const configs = pgTable(
     archivedAt: timestamp("archived_at", { withTimezone: true }),
   },
   (table) => ({
-    orgIdIdx: index("groups_org_id_idx").on(table.orgId),
+    orgIdIdx: index("configs_org_id_idx").on(table.orgId),
   })
 );
 
@@ -111,7 +111,7 @@ export const configsRelations = relations(configs, ({ many }) => ({
 }));
 
 export const configMembers = pgTable(
-  "group_members",
+  "chat_members",
   {
     groupId: text("config_id")
       .notNull()
@@ -125,7 +125,7 @@ export const configMembers = pgTable(
   },
   (table) => ({
     pk: primaryKey({ columns: [table.groupId, table.userId] }),
-    userIdIdx: index("group_members_user_id_idx").on(table.userId),
+    userIdIdx: index("chat_members_user_id_idx").on(table.userId),
   })
 );
 
@@ -162,7 +162,7 @@ export const agents = pgTable(
 );
 
 export const configAgents = pgTable(
-  "group_agents",
+  "chat_agents",
   {
     groupId: text("config_id")
       .notNull()
@@ -230,7 +230,7 @@ export const mcpServersRelations = relations(mcpServers, ({ one }) => ({
 
 // --- Runtime Routing ---
 
-export const configRuntime = pgTable("group_runtime", {
+export const configRuntime = pgTable("chat_runtime", {
   groupId: text("config_id")
     .primaryKey()
     .references(() => configs.id),
@@ -264,7 +264,7 @@ export const agentRuntimes = pgTable(
 );
 
 export const configAgentRuntimes = pgTable(
-  "group_agent_runtimes",
+  "chat_agent_runtimes",
   {
     groupId: text("config_id")
       .notNull()
@@ -287,7 +287,7 @@ export const configAgentRuntimes = pgTable(
 // --- Lifecycle & Archive ---
 
 export const configArchives = pgTable(
-  "group_archives",
+  "chat_archives",
   {
     id: text("id").primaryKey(),
     groupId: text("config_id")
@@ -298,12 +298,12 @@ export const configArchives = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
   },
   (table) => ({
-    groupIdIdx: index("group_archives_group_id_idx").on(table.groupId),
+    groupIdIdx: index("chat_archives_group_id_idx").on(table.groupId),
   })
 );
 
 export const configSnapshots = pgTable(
-  "group_snapshots",
+  "chat_snapshots",
   {
     id: text("id").primaryKey(),
     groupId: text("config_id")
@@ -314,24 +314,7 @@ export const configSnapshots = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
   },
   (table) => ({
-    groupIdIdx: index("group_snapshots_group_id_idx").on(table.groupId),
-  })
-);
-
-export const configTasks = pgTable(
-  "group_tasks",
-  {
-    id: text("id").primaryKey(),
-    groupId: text("config_id")
-      .notNull()
-      .references(() => configs.id),
-    taskType: text("task_type").notNull(),
-    status: text("status").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
-  },
-  (table) => ({
-    groupIdIdx: index("group_tasks_group_id_idx").on(table.groupId),
+    groupIdIdx: index("chat_snapshots_group_id_idx").on(table.groupId),
   })
 );
 
@@ -385,23 +368,6 @@ export const modelCatalog = pgTable(
     modelTypeIdx: index("model_catalog_model_type_idx").on(
       table.modelType
     ),
-  })
-);
-
-export const configSecrets = pgTable(
-  "group_secrets",
-  {
-    groupId: text("config_id")
-      .notNull()
-      .references(() => configs.id),
-    secretId: text("secret_id")
-      .notNull()
-      .references(() => secrets.id),
-    grantedBy: text("granted_by").references(() => users.id),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
-  },
-  (table) => ({
-    pk: primaryKey({ columns: [table.groupId, table.secretId] }),
   })
 );
 

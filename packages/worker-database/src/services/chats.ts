@@ -2,21 +2,17 @@ import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { getDb } from "../client";
 import {
   agentRuntimes,
+  chatAgentRuntimes,
+  chatArchives,
+  chatRuntime,
+  chatSnapshots,
   configs,
-  groupAgentRuntimes,
-  groupAgents,
-  groupArchives,
-  groupMembers,
-  groupRuntime,
-  groupSecrets,
-  groupSnapshots,
-  groupTasks,
 } from "../schema/schema";
 
 export async function getChatRuntime(chatId: string) {
   const db = getDb();
-  return await db.query.groupRuntime.findFirst({
-    where: eq(groupRuntime.configId, chatId),
+  return await db.query.chatRuntime.findFirst({
+    where: eq(chatRuntime.configId, chatId),
   });
 }
 
@@ -31,7 +27,7 @@ export async function initializeChatRuntime(
 
   if (existing) {
     await db
-      .update(groupRuntime)
+      .update(chatRuntime)
       .set({
         groupControllerId: controllerId,
         status: "active",
@@ -39,9 +35,9 @@ export async function initializeChatRuntime(
         lastActiveAt: now,
         updatedAt: now,
       })
-      .where(eq(groupRuntime.configId, chatId));
+      .where(eq(chatRuntime.configId, chatId));
   } else {
-    await db.insert(groupRuntime).values({
+    await db.insert(chatRuntime).values({
       configId: chatId,
       groupControllerId: controllerId,
       status: "active",
@@ -73,14 +69,14 @@ export async function updateChatRuntimeStatus(chatId: string, status: string) {
     .where(eq(configs.id, chatId));
 
   await db
-    .update(groupRuntime)
+    .update(chatRuntime)
     .set({
       status,
       updatedAt: now,
       ...(status === "active" ? { lastActiveAt: now } : {}),
       ...(status === "idle" ? { idleAt: now } : {}),
     })
-    .where(eq(groupRuntime.configId, chatId));
+    .where(eq(chatRuntime.configId, chatId));
 }
 
 export async function countOrgActiveChats(orgId: string, excludeChatId?: string) {
@@ -116,13 +112,13 @@ export async function touchChatActivity(chatId: string, at = new Date()) {
     .where(eq(configs.id, chatId));
 
   await db
-    .update(groupRuntime)
+    .update(chatRuntime)
     .set({
       status: "active",
       lastActiveAt: iso,
       updatedAt: iso,
     })
-    .where(eq(groupRuntime.configId, chatId));
+    .where(eq(chatRuntime.configId, chatId));
 }
 
 export async function markChatArchived(chatId: string, at = new Date()) {
@@ -138,12 +134,12 @@ export async function markChatArchived(chatId: string, at = new Date()) {
     .where(eq(configs.id, chatId));
 
   await db
-    .update(groupRuntime)
+    .update(chatRuntime)
     .set({
       status: "archived",
       updatedAt: iso,
     })
-    .where(eq(groupRuntime.configId, chatId));
+    .where(eq(chatRuntime.configId, chatId));
 }
 
 export async function recordChatArchive(params: {
@@ -157,7 +153,7 @@ export async function recordChatArchive(params: {
   const snapshotId = `snapshot_${crypto.randomUUID()}`;
   const archiveId = `archive_${crypto.randomUUID()}`;
 
-  await db.insert(groupSnapshots).values({
+  await db.insert(chatSnapshots).values({
     id: snapshotId,
     configId: params.chatId,
     r2Path: params.r2Path,
@@ -165,7 +161,7 @@ export async function recordChatArchive(params: {
     createdAt: now,
   });
 
-  await db.insert(groupArchives).values({
+  await db.insert(chatArchives).values({
     id: archiveId,
     configId: params.chatId,
     snapshotId,
@@ -181,15 +177,11 @@ export async function deleteChatRuntime(chatId: string) {
 
   // Delete runtime data only (config is owned by main DB)
   await db.transaction(async (tx) => {
-    await tx.delete(groupAgentRuntimes).where(eq(groupAgentRuntimes.configId, chatId));
-    await tx.delete(groupAgents).where(eq(groupAgents.configId, chatId));
-    await tx.delete(groupMembers).where(eq(groupMembers.configId, chatId));
-    await tx.delete(groupSecrets).where(eq(groupSecrets.configId, chatId));
-    await tx.delete(groupArchives).where(eq(groupArchives.configId, chatId));
-    await tx.delete(groupSnapshots).where(eq(groupSnapshots.configId, chatId));
-    await tx.delete(groupTasks).where(eq(groupTasks.configId, chatId));
+    await tx.delete(chatAgentRuntimes).where(eq(chatAgentRuntimes.configId, chatId));
+    await tx.delete(chatArchives).where(eq(chatArchives.configId, chatId));
+    await tx.delete(chatSnapshots).where(eq(chatSnapshots.configId, chatId));
     await tx.delete(agentRuntimes).where(eq(agentRuntimes.configId, chatId));
-    await tx.delete(groupRuntime).where(eq(groupRuntime.configId, chatId));
+    await tx.delete(chatRuntime).where(eq(chatRuntime.configId, chatId));
   });
 
   return { deleted: true };
