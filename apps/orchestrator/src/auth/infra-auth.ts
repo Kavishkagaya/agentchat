@@ -1,6 +1,6 @@
 import { type AppInfraTokenPayload, verifyAppInfraToken } from "@axon/shared";
-import { getBearerToken } from "../http/request";
 import type { Env } from "../env";
+import { getBearerToken } from "../http/request";
 
 export async function requireAppSignature(
   request: Request,

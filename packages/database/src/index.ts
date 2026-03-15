@@ -1,4 +1,4 @@
-export { initDb, getDb } from "./client";
+export { getDb, initDb } from "./client";
 // eslint-disable-next-line import/no-namespace
 export * as schema from "./schema";
 export * from "./services/agents";

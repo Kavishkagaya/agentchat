@@ -1,8 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-
 import { useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
 
 import { api } from "@/app/trpc/client";
 import { Button } from "@/components/ui/button";
@@ -51,7 +50,7 @@ export default function AgentCreatePage() {
 
   const selectedModel = useMemo(
     () => modelsQuery.data?.find((model: any) => model.id === form.modelId),
-    [modelsQuery.data, form.modelId]
+    [modelsQuery.data, form.modelId],
   );
 
   const handleCreate = async () => {
@@ -185,7 +184,7 @@ export default function AgentCreatePage() {
                   <Button
                     onClick={() =>
                       setSelectedServers((prev) =>
-                        prev.filter((s) => s.id !== server.id)
+                        prev.filter((s) => s.id !== server.id),
                       )
                     }
                     size="sm"
@@ -206,7 +205,10 @@ export default function AgentCreatePage() {
       </section>
 
       <div className="flex gap-3">
-        <Button variant="outline" onClick={() => router.push("/dashboard/agents")}>
+        <Button
+          variant="outline"
+          onClick={() => router.push("/dashboard/agents")}
+        >
           Cancel
         </Button>
         <Button onClick={handleCreate}>Create agent</Button>
@@ -226,7 +228,7 @@ export default function AgentCreatePage() {
             ) : (
               mcpQuery.data?.map((server: any) => {
                 const isAlreadyAdded = selectedServers.some(
-                  (s) => s.id === server.id
+                  (s) => s.id === server.id,
                 );
                 return (
                   <button
@@ -265,7 +267,10 @@ export default function AgentCreatePage() {
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => router.push("/dashboard/mcps")}>
+            <Button
+              variant="outline"
+              onClick={() => router.push("/dashboard/mcps")}
+            >
               Add new MCP
             </Button>
             <Button onClick={() => setMcpDialogOpen(false)}>Done</Button>
@@ -273,7 +278,10 @@ export default function AgentCreatePage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={publishPrompt !== null} onOpenChange={() => setPublishPrompt(null)}>
+      <Dialog
+        open={publishPrompt !== null}
+        onOpenChange={() => setPublishPrompt(null)}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Publish agent?</DialogTitle>
@@ -282,7 +290,10 @@ export default function AgentCreatePage() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => router.push("/dashboard/agents")}>
+            <Button
+              variant="outline"
+              onClick={() => router.push("/dashboard/agents")}
+            >
               Not now
             </Button>
             <Button onClick={handlePublish}>Publish</Button>

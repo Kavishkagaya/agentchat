@@ -69,8 +69,8 @@ export async function updateMcpServerStatus(params: {
     .where(
       and(
         eq(mcpServers.id, params.serverId),
-        eq(mcpServers.orgId, params.orgId)
-      )
+        eq(mcpServers.orgId, params.orgId),
+      ),
     );
 
   return { updatedAt: now };
@@ -104,8 +104,8 @@ export async function updateMcpServer(params: UpdateMcpServerParams) {
     .where(
       and(
         eq(mcpServers.id, params.serverId),
-        eq(mcpServers.orgId, params.orgId)
-      )
+        eq(mcpServers.orgId, params.orgId),
+      ),
     );
 
   return { updatedAt: now };
@@ -127,7 +127,7 @@ export async function getMcpServer(params: {
   return await db.query.mcpServers.findFirst({
     where: and(
       eq(mcpServers.id, params.serverId),
-      eq(mcpServers.orgId, params.orgId)
+      eq(mcpServers.orgId, params.orgId),
     ),
   });
 }
@@ -142,8 +142,8 @@ export async function deleteMcpServer(params: {
     .where(
       and(
         eq(mcpServers.id, params.serverId),
-        eq(mcpServers.orgId, params.orgId)
-      )
+        eq(mcpServers.orgId, params.orgId),
+      ),
     );
 
   return { ok: true };

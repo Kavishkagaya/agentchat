@@ -1,19 +1,22 @@
 import {
-  buildAgentChatContext,
-  chatMessageRequestSchema,
-  createAgentAccessToken,
   type AgentChatContext,
   type AgentUsage,
+  buildAgentChatContext,
   type ChatRoutingConfig,
   type ChatWsEvent,
+  chatMessageRequestSchema,
+  createAgentAccessToken,
   type MessageOrigin,
 } from "@axon/shared";
 import { ContextManager } from "../context-manager";
-import { getTriggerDepthLimit, resolveChatTargets } from "./decision-maker";
 import type { Env } from "../index";
+import { getTriggerDepthLimit, resolveChatTargets } from "./decision-maker";
 
 export class ChatHandler {
-  constructor(private ctx: DurableObjectState, private env: Env) {}
+  constructor(
+    private ctx: DurableObjectState,
+    private env: Env,
+  ) {}
 
   async ensureSchema() {
     const sql = this.ctx.storage.sql;
@@ -34,7 +37,11 @@ export class ChatHandler {
     `);
 
     // Migration: add agent_nickname column for existing tables
-    try { sql.exec("ALTER TABLE messages ADD COLUMN agent_nickname TEXT"); } catch { /* column already exists */ }
+    try {
+      sql.exec("ALTER TABLE messages ADD COLUMN agent_nickname TEXT");
+    } catch {
+      /* column already exists */
+    }
 
     sql.exec(`
       CREATE TABLE IF NOT EXISTS context_messages (
@@ -81,7 +88,7 @@ export class ChatHandler {
       params.senderId ?? null,
       params.senderName ?? null,
       tokens,
-      createdAt
+      createdAt,
     );
 
     // Context messages include attribution so the LLM knows who said what
@@ -107,7 +114,7 @@ export class ChatHandler {
       messageId,
       eventType,
       JSON.stringify(data),
-      new Date().toISOString()
+      new Date().toISOString(),
     );
   }
 
@@ -119,8 +126,8 @@ export class ChatHandler {
       this.ctx.storage.sql.exec(
         "SELECT message_id, role, text, agent_id, agent_nickname, sender_id, sender_name, tokens, created_at FROM messages WHERE created_at < ?1 ORDER BY created_at DESC LIMIT ?2",
         cursor,
-        limit
-      )
+        limit,
+      ),
     ) as Array<{
       message_id: string;
       role: string;
@@ -134,7 +141,8 @@ export class ChatHandler {
     }>;
 
     const has_more = rows.length === limit;
-    const next_cursor = rows.length > 0 ? rows[rows.length - 1].created_at : null;
+    const next_cursor =
+      rows.length > 0 ? rows[rows.length - 1].created_at : null;
 
     return {
       messages: rows.reverse(),
@@ -147,13 +155,15 @@ export class ChatHandler {
     return Array.from(
       this.ctx.storage.sql.exec(
         "SELECT event_type, data, created_at FROM message_events WHERE message_id = ?1 ORDER BY id ASC",
-        messageId
-      )
+        messageId,
+      ),
     ) as Array<{ event_type: string; data: string; created_at: string }>;
   }
 
   // SSE line parser — shared by both methods
-  private async *consumeSSE(response: Response): AsyncGenerator<{ event: string; data: unknown }> {
+  private async *consumeSSE(
+    response: Response,
+  ): AsyncGenerator<{ event: string; data: unknown }> {
     const reader = response.body!.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
@@ -191,7 +201,7 @@ export class ChatHandler {
     context: Array<{ role: string; content: string }>,
     configId: string,
     orgId: string,
-    chatContext?: AgentChatContext
+    chatContext?: AgentChatContext,
   ) {
     let token = "";
     try {
@@ -204,7 +214,9 @@ export class ChatHandler {
       console.warn("Token creation failed:", e);
     }
 
-    const headers: Record<string, string> = { "content-type": "application/json" };
+    const headers: Record<string, string> = {
+      "content-type": "application/json",
+    };
     if (token) headers.authorization = `Bearer ${token}`;
 
     return {
@@ -226,12 +238,19 @@ export class ChatHandler {
     context: Array<{ role: string; content: string }>,
     configId: string,
     orgId: string,
-    chatContext?: AgentChatContext
+    chatContext?: AgentChatContext,
   ): AsyncGenerator<{ event: string; data: unknown }> {
     const baseUrl = this.env.AGENTS_BASE_URL;
     if (!baseUrl) return;
 
-    const opts = await this.buildAgentFetchOptions(agentId, prompt, context, configId, orgId, chatContext);
+    const opts = await this.buildAgentFetchOptions(
+      agentId,
+      prompt,
+      context,
+      configId,
+      orgId,
+      chatContext,
+    );
 
     const res = await fetch(`${baseUrl.replace(/\/$/, "")}/agents/run`, {
       method: "POST",
@@ -253,12 +272,19 @@ export class ChatHandler {
     context: Array<{ role: string; content: string }>,
     configId: string,
     orgId: string,
-    chatContext?: AgentChatContext
+    chatContext?: AgentChatContext,
   ): AsyncGenerator<{ event: string; data: unknown }> {
     const baseUrl = this.env.AGENTS_BASE_URL;
     if (!baseUrl) return;
 
-    const opts = await this.buildAgentFetchOptions(agentId, prompt, context, configId, orgId, chatContext);
+    const opts = await this.buildAgentFetchOptions(
+      agentId,
+      prompt,
+      context,
+      configId,
+      orgId,
+      chatContext,
+    );
 
     const res = await fetch(`${baseUrl.replace(/\/$/, "")}/agents/run-stream`, {
       method: "POST",
@@ -273,17 +299,28 @@ export class ChatHandler {
     yield* this.consumeSSE(res);
   }
 
-  private resolveAgentNickname(agentId: string, config: ChatRoutingConfig | undefined): string {
-    return config?.agent_setups?.find((s) => s.agentId === agentId)?.nickname ?? agentId;
+  private resolveAgentNickname(
+    agentId: string,
+    config: ChatRoutingConfig | undefined,
+  ): string {
+    return (
+      config?.agent_setups?.find((s) => s.agentId === agentId)?.nickname ??
+      agentId
+    );
   }
 
   /**
    * Parse an SSE { event, data } pair into a typed AgentSseEvent.
    * Returns undefined for unrecognised event names.
    */
-  private static parseSseEvent(event: string, data: unknown): import("@axon/shared").AgentSseEvent | undefined {
+  private static parseSseEvent(
+    event: string,
+    data: unknown,
+  ): import("@axon/shared").AgentSseEvent | undefined {
     // The SSE event name maps 1:1 to AgentSseEvent.type — attach it and return.
-    const obj = (typeof data === "object" && data !== null ? data : {}) as Record<string, unknown>;
+    const obj = (
+      typeof data === "object" && data !== null ? data : {}
+    ) as Record<string, unknown>;
     return { type: event, ...obj } as import("@axon/shared").AgentSseEvent;
   }
 
@@ -294,7 +331,7 @@ export class ChatHandler {
       broadcast: boolean;
       streamDeltas: boolean;
       config?: ChatRoutingConfig;
-    }
+    },
   ): Promise<{
     text: string;
     agent_nickname: string;
@@ -303,7 +340,11 @@ export class ChatHandler {
     message_id: string;
   } | null> {
     const agentMsgId = `msg_${crypto.randomUUID()}`;
-    let finalResult: { text: string; agent_nickname: string; usage: AgentUsage | null } | null = null;
+    let finalResult: {
+      text: string;
+      agent_nickname: string;
+      usage: AgentUsage | null;
+    } | null = null;
     const knownNickname = this.resolveAgentNickname(agentId, options.config);
 
     // Broadcast that this agent started (so UI can show typing indicator)
@@ -455,7 +496,12 @@ export class ChatHandler {
       });
     }
 
-    return { ...finalResult, text: cleanText, agent_id: agentId, message_id: agentMsgId };
+    return {
+      ...finalResult,
+      text: cleanText,
+      agent_id: agentId,
+      message_id: agentMsgId,
+    };
   }
 
   private emitRoutingWarnings(params: {
@@ -538,7 +584,10 @@ export class ChatHandler {
       const current = queue.shift();
       if (!current) break;
 
-      const agentNickname = this.resolveAgentNickname(current.agentId, initialDecision.config);
+      const agentNickname = this.resolveAgentNickname(
+        current.agentId,
+        initialDecision.config,
+      );
       const chatContext = buildAgentChatContext({
         agentNickname,
         agentSetups: initialDecision.config.agent_setups ?? [],
@@ -553,7 +602,7 @@ export class ChatHandler {
             context,
             params.configId,
             params.orgId,
-            chatContext
+            chatContext,
           )
         : this.invokeAgentCoarse(
             current.agentId,
@@ -561,14 +610,18 @@ export class ChatHandler {
             context,
             params.configId,
             params.orgId,
-            chatContext
+            chatContext,
           );
 
-      const result = await this.processAgentEvents(current.agentId, eventStream, {
-        broadcast: true,
-        streamDeltas: params.streamDeltas,
-        config: initialDecision.config,
-      });
+      const result = await this.processAgentEvents(
+        current.agentId,
+        eventStream,
+        {
+          broadcast: true,
+          streamDeltas: params.streamDeltas,
+          config: initialDecision.config,
+        },
+      );
 
       // Agent finished — remove from running set so it can be re-triggered later
       runningAgents.delete(current.agentId);
@@ -620,14 +673,25 @@ export class ChatHandler {
     return { agentMessages };
   }
 
-  public async handleWebSocketMessage(ws: WebSocket, rawMessage: string | ArrayBuffer): Promise<void> {
+  public async handleWebSocketMessage(
+    ws: WebSocket,
+    rawMessage: string | ArrayBuffer,
+  ): Promise<void> {
     let parsed: unknown;
     try {
       parsed = JSON.parse(
-        typeof rawMessage === "string" ? rawMessage : new TextDecoder().decode(rawMessage)
+        typeof rawMessage === "string"
+          ? rawMessage
+          : new TextDecoder().decode(rawMessage),
       );
     } catch {
-      ws.send(JSON.stringify({ type: "error", code: "parse_error", message: "invalid JSON" }));
+      ws.send(
+        JSON.stringify({
+          type: "error",
+          code: "parse_error",
+          message: "invalid JSON",
+        }),
+      );
       return;
     }
 
@@ -638,15 +702,18 @@ export class ChatHandler {
           type: "error",
           code: "invalid_message",
           message: parsedMessage.error.issues[0]?.message ?? "invalid payload",
-        })
+        }),
       );
       return;
     }
     const msg = parsedMessage.data;
 
     const configId = (await this.ctx.storage.get("config_id")) as string;
-    const orgId = ((await this.ctx.storage.get("org_id")) as string) ?? "dev_org";
-    const config = (await this.ctx.storage.get("config")) as Record<string, unknown> | undefined;
+    const orgId =
+      ((await this.ctx.storage.get("org_id")) as string) ?? "dev_org";
+    const config = (await this.ctx.storage.get("config")) as
+      | Record<string, unknown>
+      | undefined;
 
     const messageId = msg.message_id ?? `msg_${crypto.randomUUID()}`;
     this.insertMessage({
@@ -680,7 +747,7 @@ export class ChatHandler {
 
     ContextManager.maybeCompact(
       this.ctx.storage.sql,
-      config?.compaction_threshold as number | undefined
+      config?.compaction_threshold as number | undefined,
     );
   }
 
@@ -694,7 +761,6 @@ export class ChatHandler {
       }
     }
   }
-
 
   public clearHistory() {
     const sql = this.ctx.storage.sql;
@@ -710,7 +776,10 @@ export class ChatHandler {
         headers: { "content-type": "application/json" },
       });
 
-    if (request.method === "GET" && (route === "/messages" || route === "/history")) {
+    if (
+      request.method === "GET" &&
+      (route === "/messages" || route === "/history")
+    ) {
       const url = new URL(request.url);
       const cursor = url.searchParams.get("cursor") ?? undefined;
       const limit = url.searchParams.get("limit")
@@ -719,7 +788,10 @@ export class ChatHandler {
       return json({ ...this.listMessages({ cursor, limit }), type: "chat" });
     }
 
-    if (request.method === "GET" && route.match(/^\/messages\/[^/]+\/events$/)) {
+    if (
+      request.method === "GET" &&
+      route.match(/^\/messages\/[^/]+\/events$/)
+    ) {
       const messageId = route.split("/")[2];
       return json({ events: this.getMessageEvents(messageId) });
     }
@@ -743,14 +815,18 @@ export class ChatHandler {
             ok: false,
             error: parsedBody.error.issues[0]?.message ?? "invalid payload",
           },
-          400
+          400,
         );
       }
       const body = parsedBody.data;
 
       const configId = (await this.ctx.storage.get("config_id")) as string;
-      const orgId = ((await this.ctx.storage.get("org_id")) as string) ?? "dev_org";
-      const config = (await this.ctx.storage.get("config")) as Record<string, unknown>;
+      const orgId =
+        ((await this.ctx.storage.get("org_id")) as string) ?? "dev_org";
+      const config = (await this.ctx.storage.get("config")) as Record<
+        string,
+        unknown
+      >;
 
       const messageId = body.message_id ?? `msg_${crypto.randomUUID()}`;
       const senderName: string | undefined = body.sender_name;
@@ -788,7 +864,7 @@ export class ChatHandler {
 
       ContextManager.maybeCompact(
         this.ctx.storage.sql,
-        config?.compaction_threshold as number | undefined
+        config?.compaction_threshold as number | undefined,
       );
 
       return json({

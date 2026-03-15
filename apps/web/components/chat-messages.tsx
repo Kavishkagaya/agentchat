@@ -24,7 +24,7 @@ const MessageItem = memo(({ msg }: { msg: ChatMessage }) => {
           isAssistant ? "bg-muted" : "bg-primary text-primary-foreground"
         }`}
       >
-        <div className="text-xs font-bold mb-1">
+        <div className="text-xs font-bold mb-1 font-mono">
           {isAssistant
             ? (msg.agent_nickname ?? "Assistant")
             : (msg.sender_name ?? "You")}

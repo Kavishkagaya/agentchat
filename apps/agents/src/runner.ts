@@ -23,13 +23,13 @@ export type ToolEventCallbacks = {
 export async function buildAgentRunner(
   record: AgentConfigRecord,
   env: Env,
-  callbacks?: ToolEventCallbacks
+  callbacks?: ToolEventCallbacks,
 ) {
   const config = normalizeAgentConfig(record.agentId, record.config);
   const { modelEnv, modelType, modelId } = await resolveModelEnv(
     env,
     record.orgId,
-    record.modelId
+    record.modelId,
   );
 
   if (modelType) {
@@ -42,7 +42,7 @@ export async function buildAgentRunner(
   const { toolRefs, mcpTools } = await resolveTooling(
     env,
     record.orgId,
-    record.config
+    record.config,
   );
   config.tools = toolRefs;
 
@@ -68,7 +68,7 @@ export async function runAgent(
   record: AgentConfigRecord,
   env: Env,
   input: AgentRunInput,
-  callbacks?: ToolEventCallbacks
+  callbacks?: ToolEventCallbacks,
 ): Promise<RunResult> {
   const runner = await buildAgentRunner(record, env, callbacks);
   const result = await runner.run(input);
@@ -79,7 +79,7 @@ export async function* streamAgent(
   record: AgentConfigRecord,
   env: Env,
   input: AgentRunInput,
-  callbacks?: ToolEventCallbacks
+  callbacks?: ToolEventCallbacks,
 ): AsyncGenerator<AgentStreamEvent> {
   const runner = await buildAgentRunner(record, env, callbacks);
   yield* runner.runStream(input);

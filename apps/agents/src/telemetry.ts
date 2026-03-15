@@ -1,4 +1,10 @@
-type CacheKind = "agent" | "provider" | "secret" | "mcp_server" | "mcp_tools" | "model";
+type CacheKind =
+  | "agent"
+  | "provider"
+  | "secret"
+  | "mcp_server"
+  | "mcp_tools"
+  | "model";
 
 const cacheHits: Record<CacheKind, number> = {
   agent: 0,
@@ -32,7 +38,7 @@ export function recordCacheMetric(kind: CacheKind, hit: boolean) {
 export function recordResolutionMetric(
   name: string,
   durationMs: number,
-  success: boolean
+  success: boolean,
 ) {
   const key = `${name}:${success ? "ok" : "error"}`;
   const existing = resolutionTimings[key] ?? [];
@@ -58,7 +64,7 @@ export function snapshotMetrics() {
             values.reduce((sum, value) => sum + value, 0) /
             Math.max(1, values.length),
         },
-      ])
+      ]),
     ),
     tool_errors: { ...toolErrors },
   };

@@ -286,7 +286,7 @@ export function McpDialog({
       onOpenChange(false);
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to save MCP server"
+        error instanceof Error ? error.message : "Failed to save MCP server",
       );
     }
   };

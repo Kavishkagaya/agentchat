@@ -68,10 +68,7 @@ export async function updateChatRuntimeStatus(chatId: string, status: string) {
     chatUpdate.archivedAt = now;
   }
 
-  await db
-    .update(chats)
-    .set(chatUpdate)
-    .where(eq(chats.id, chatId));
+  await db.update(chats).set(chatUpdate).where(eq(chats.id, chatId));
 
   await db
     .update(chatRuntime)
@@ -84,7 +81,10 @@ export async function updateChatRuntimeStatus(chatId: string, status: string) {
     .where(eq(chatRuntime.configId, chatId));
 }
 
-export async function countOrgActiveChats(orgId: string, excludeChatId?: string) {
+export async function countOrgActiveChats(
+  orgId: string,
+  excludeChatId?: string,
+) {
   const db = getDb();
   const activePredicate = and(
     eq(chats.orgId, orgId),
@@ -180,7 +180,9 @@ export async function deleteChatRuntime(chatId: string) {
 
   // Delete runtime data only (chat is owned by main DB)
   // neon-http driver does not support transactions — delete sequentially in FK order
-  await db.delete(chatAgentRuntimes).where(eq(chatAgentRuntimes.configId, chatId));
+  await db
+    .delete(chatAgentRuntimes)
+    .where(eq(chatAgentRuntimes.configId, chatId));
   await db.delete(chatArchives).where(eq(chatArchives.configId, chatId));
   await db.delete(chatSnapshots).where(eq(chatSnapshots.configId, chatId));
   await db.delete(agentRuntimes).where(eq(agentRuntimes.configId, chatId));

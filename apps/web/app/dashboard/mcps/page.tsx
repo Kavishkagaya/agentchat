@@ -74,7 +74,9 @@ export default function McpsPage() {
             toast.success("MCP server deleted successfully");
           } catch (error) {
             toast.error(
-              error instanceof Error ? error.message : "Failed to delete MCP server"
+              error instanceof Error
+                ? error.message
+                : "Failed to delete MCP server",
             );
           }
         },
@@ -123,14 +125,18 @@ export default function McpsPage() {
             <Card key={server.id}>
               <CardHeader className="space-y-2">
                 <div className="flex items-start justify-between gap-2">
-                  <CardTitle className="text-lg">{server.name}</CardTitle>
+                  <CardTitle className="text-lg font-mono">
+                    {server.name}
+                  </CardTitle>
                   <span
-                    className={`rounded-full px-2 py-1 font-medium text-xs ${getStatusClassName(server.status)}`}
+                    className={`rounded-full px-2 py-1 font-medium text-xs font-mono ${getStatusClassName(server.status)}`}
                   >
                     {server.status}
                   </span>
                 </div>
-                <CardDescription>{server.url}</CardDescription>
+                <CardDescription className="font-mono">
+                  {server.url}
+                </CardDescription>
                 {server.errorMessage && (
                   <p className="font-medium text-destructive text-xs">
                     {server.errorMessage}

@@ -180,23 +180,80 @@ export type AgentSseEvent =
   | { type: "tool_error"; tool_call_id: string; error: string }
   | { type: "step_finish"; finish_reason: string; usage: AgentUsage | null }
   | { type: "error"; code: string; message: string }
-  | { type: "final"; agent_id: string; config_id: string | null; runtime_id?: string; text: string; finish_reason: string; usage: AgentUsage | null; agent_nickname: string };
+  | {
+      type: "final";
+      agent_id: string;
+      config_id: string | null;
+      runtime_id?: string;
+      text: string;
+      finish_reason: string;
+      usage: AgentUsage | null;
+      agent_nickname: string;
+    };
 
 // ── Server → Client WebSocket events ────────────────────────
 
 export type ChatWsEvent =
   | { type: "initializing" }
   | { type: "ready" }
-  | { type: "user_message_stored"; message_id: string; sender_id?: string; sender_name?: string; text: string }
-  | { type: "agent_start"; agent_id: string; agent_nickname: string; message_id: string }
+  | {
+      type: "user_message_stored";
+      message_id: string;
+      sender_id?: string;
+      sender_name?: string;
+      text: string;
+    }
+  | {
+      type: "agent_start";
+      agent_id: string;
+      agent_nickname: string;
+      message_id: string;
+    }
   | { type: "text_delta"; agent_id: string; message_id: string; text: string }
   | { type: "reasoning"; agent_id: string; message_id: string; text: string }
-  | { type: "tool_call"; agent_id: string; message_id: string; tool_call_id: string; name: string; args: unknown }
-  | { type: "tool_result"; agent_id: string; message_id: string; tool_call_id: string; name: string; result: unknown }
-  | { type: "agent_status"; agent_id: string; message_id: string; status: AgentSseStatus }
-  | { type: "agent_message"; message_id: string; agent_id: string; agent_nickname: string; text: string }
-  | { type: "agent_error"; agent_id: string; message_id: string; code: string; message: string }
-  | { type: "routing_warning"; message_id: string; unknown_mentions: string[]; source: string; origin: string }
+  | {
+      type: "tool_call";
+      agent_id: string;
+      message_id: string;
+      tool_call_id: string;
+      name: string;
+      args: unknown;
+    }
+  | {
+      type: "tool_result";
+      agent_id: string;
+      message_id: string;
+      tool_call_id: string;
+      name: string;
+      result: unknown;
+    }
+  | {
+      type: "agent_status";
+      agent_id: string;
+      message_id: string;
+      status: AgentSseStatus;
+    }
+  | {
+      type: "agent_message";
+      message_id: string;
+      agent_id: string;
+      agent_nickname: string;
+      text: string;
+    }
+  | {
+      type: "agent_error";
+      agent_id: string;
+      message_id: string;
+      code: string;
+      message: string;
+    }
+  | {
+      type: "routing_warning";
+      message_id: string;
+      unknown_mentions: string[];
+      source: string;
+      origin: string;
+    }
   | { type: "history_cleared" }
   | { type: "done" }
   | { type: "error"; code: string; message: string };
@@ -240,7 +297,9 @@ export function normalizeNickname(nickname: string): string {
   return nickname.trim().toLowerCase();
 }
 
-export function buildMentionMap(agentSetup: ChatAgentSetup[]): Record<string, string> {
+export function buildMentionMap(
+  agentSetup: ChatAgentSetup[],
+): Record<string, string> {
   const mentionMap: Record<string, string> = {};
   for (const setup of agentSetup) {
     mentionMap[normalizeNickname(setup.nickname)] = setup.agentId;
@@ -269,10 +328,18 @@ export function buildAgentChatContext(params: {
   }
   identityLines.push("");
   identityLines.push("Identity rules:");
-  identityLines.push(`- You ARE ${params.agentNickname}. Fully embody this identity throughout the conversation.`);
-  identityLines.push(`- Refer to yourself naturally as "I" — never write @${params.agentNickname} or tag yourself.`);
-  identityLines.push(`- Never say "As an AI", "As a language model", or "As an assistant".`);
-  identityLines.push(`- Do not echo or repeat name tags like [${params.agentNickname}] from message history.`);
+  identityLines.push(
+    `- You ARE ${params.agentNickname}. Fully embody this identity throughout the conversation.`,
+  );
+  identityLines.push(
+    `- Refer to yourself naturally as "I" — never write @${params.agentNickname} or tag yourself.`,
+  );
+  identityLines.push(
+    `- Never say "As an AI", "As a language model", or "As an assistant".`,
+  );
+  identityLines.push(
+    `- Do not echo or repeat name tags like [${params.agentNickname}] from message history.`,
+  );
   identityLines.push(`- Always format your responses in Markdown.`);
 
   const teamLines: string[] = [];
@@ -287,21 +354,35 @@ export function buildAgentChatContext(params: {
     }
     teamLines.push("");
     teamLines.push("Collaboration:");
-    teamLines.push("- You are a team. Actively @mention teammates when the task needs their expertise.");
-    teamLines.push("- If a request falls outside your responsibility or would benefit from another agent's skills, hand off with @name.");
-    teamLines.push("- Do not try to do everything yourself — leverage your team.");
+    teamLines.push(
+      "- You are a team. Actively @mention teammates when the task needs their expertise.",
+    );
+    teamLines.push(
+      "- If a request falls outside your responsibility or would benefit from another agent's skills, hand off with @name.",
+    );
+    teamLines.push(
+      "- Do not try to do everything yourself — leverage your team.",
+    );
     teamLines.push("");
     teamLines.push("@mention rules (using @ TRIGGERS that agent to run):");
-    teamLines.push("- Use @name to hand off, delegate, or ask a teammate to act.");
-    teamLines.push("- Do NOT use @ when merely referring to a teammate in conversation — just use their name.");
+    teamLines.push(
+      "- Use @name to hand off, delegate, or ask a teammate to act.",
+    );
+    teamLines.push(
+      "- Do NOT use @ when merely referring to a teammate in conversation — just use their name.",
+    );
     teamLines.push(`- NEVER @mention yourself (@${params.agentNickname}).`);
 
     const otherNames = others.map((s) => s.nickname);
     const exampleOther = otherNames[0];
     teamLines.push("");
     teamLines.push("Examples:");
-    teamLines.push(`  Referring: "I agree with ${exampleOther}'s point" (no trigger)`);
-    teamLines.push(`  Delegating: "@${exampleOther} can you handle the implementation?" (triggers ${exampleOther})`);
+    teamLines.push(
+      `  Referring: "I agree with ${exampleOther}'s point" (no trigger)`,
+    );
+    teamLines.push(
+      `  Delegating: "@${exampleOther} can you handle the implementation?" (triggers ${exampleOther})`,
+    );
     teamLines.push("");
     teamLines.push("Keep responses concise, actionable, and role-aligned.");
   }
@@ -323,7 +404,9 @@ function extractMentions(text: string): string[] {
   return Array.from(mentions);
 }
 
-export function resolveMessageTargets(input: MessageRoutingInput): MessageRoutingDecision {
+export function resolveMessageTargets(
+  input: MessageRoutingInput,
+): MessageRoutingDecision {
   const explicitAgentIds = Array.isArray(input.explicitAgentIds)
     ? Array.from(new Set(input.explicitAgentIds.filter(Boolean)))
     : [];
@@ -373,7 +456,11 @@ export function resolveMessageTargets(input: MessageRoutingInput): MessageRoutin
     };
   }
 
-  if (input.origin !== "agent" && input.config.auto === true && input.config.default_agent) {
+  if (
+    input.origin !== "agent" &&
+    input.config.auto === true &&
+    input.config.default_agent
+  ) {
     return {
       targetAgentIds: [input.config.default_agent],
       source: "default",
@@ -391,13 +478,15 @@ export function resolveMessageTargets(input: MessageRoutingInput): MessageRoutin
 }
 
 export function normalizeChatRoutingConfig(
-  rawConfig: Record<string, unknown> | null | undefined
+  rawConfig: Record<string, unknown> | null | undefined,
 ): ChatRoutingConfig {
   const draft: Record<string, unknown> = {
     ...(rawConfig ?? {}),
   };
 
-  const rawAgentSetups = Array.isArray(draft.agent_setups) ? draft.agent_setups : [];
+  const rawAgentSetups = Array.isArray(draft.agent_setups)
+    ? draft.agent_setups
+    : [];
   if (rawAgentSetups.length > 0) {
     draft.agent_setups = rawAgentSetups;
   } else {
@@ -405,7 +494,9 @@ export function normalizeChatRoutingConfig(
   }
 
   const rawMentionMap =
-    draft.mention_map && typeof draft.mention_map === "object" && !Array.isArray(draft.mention_map)
+    draft.mention_map &&
+    typeof draft.mention_map === "object" &&
+    !Array.isArray(draft.mention_map)
       ? (draft.mention_map as Record<string, unknown>)
       : {};
   const normalizedMentionMap: Record<string, string> = {};
@@ -438,7 +529,9 @@ export function normalizeChatRoutingConfig(
     history_mode: "internal",
     auto: false,
     default_agent:
-      typeof rawConfig?.default_agent === "string" ? rawConfig.default_agent : undefined,
+      typeof rawConfig?.default_agent === "string"
+        ? rawConfig.default_agent
+        : undefined,
     mention_map: normalizedMentionMap,
     agent_setups: [],
   });

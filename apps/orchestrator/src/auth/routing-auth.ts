@@ -7,8 +7,7 @@ export async function requireRoutingToken(
   configId: string,
 ): Promise<RoutingTokenPayload> {
   const token =
-    url.searchParams.get("token") ??
-    request.headers.get("x-routing-token");
+    url.searchParams.get("token") ?? request.headers.get("x-routing-token");
   if (!token) {
     throw new Error("missing routing token");
   }

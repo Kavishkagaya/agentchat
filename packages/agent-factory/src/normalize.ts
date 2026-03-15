@@ -2,7 +2,7 @@ import type { AgentConfig } from "./types";
 
 export function normalizeAgentConfig(
   agentId: string,
-  raw: Record<string, unknown>
+  raw: Record<string, unknown>,
 ): AgentConfig {
   const systemPrompt =
     (raw.systemPrompt as string | undefined) ??

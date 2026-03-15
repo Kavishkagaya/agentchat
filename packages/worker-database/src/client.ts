@@ -14,7 +14,9 @@ export function initDb(connectionString: string) {
 
 export function getDb() {
   if (!db) {
-    throw new Error("Database not initialized. Call initDb(connectionString) first.");
+    throw new Error(
+      "Database not initialized. Call initDb(connectionString) first.",
+    );
   }
   return db;
 }

@@ -31,7 +31,7 @@ export const users = pgTable(
   (table) => ({
     clerkIdIdx: uniqueIndex("users_clerk_id_idx").on(table.clerkId),
     emailIdx: uniqueIndex("users_email_idx").on(table.email),
-  })
+  }),
 );
 
 // --- Organizations ---
@@ -48,7 +48,7 @@ export const orgs = pgTable(
   },
   (table) => ({
     clerkIdIdx: uniqueIndex("orgs_clerk_id_idx").on(table.clerkId),
-  })
+  }),
 );
 
 export const orgMembers = pgTable(
@@ -69,14 +69,14 @@ export const orgMembers = pgTable(
   (table) => ({
     orgUserUnique: uniqueIndex("org_members_org_user_idx").on(
       table.orgId,
-      table.userId
+      table.userId,
     ),
     userIdIdx: index("org_members_user_id_idx").on(table.userId),
     clerkOrgIdIdx: index("org_members_clerk_org_id_idx").on(table.clerkOrgId),
     clerkUserIdIdx: index("org_members_clerk_user_id_idx").on(
-      table.clerkUserId
+      table.clerkUserId,
     ),
-  })
+  }),
 );
 
 // --- Configs (Memory/Execution Contexts) ---
@@ -94,7 +94,9 @@ export const chats = pgTable(
     // Canonical workspace/group config payload (history mode, archive policy, agent policy, runtime flags).
     config: jsonb("config").$type<ChatRoutingConfig>().notNull(),
     // Legacy projection kept for compatibility while group config converges on `config`.
-    agentPolicy: jsonb("agent_policy").$type<Record<string, unknown>>().notNull(),
+    agentPolicy: jsonb("agent_policy")
+      .$type<Record<string, unknown>>()
+      .notNull(),
     createdBy: text("created_by").references(() => users.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
@@ -103,7 +105,7 @@ export const chats = pgTable(
   },
   (table) => ({
     orgIdIdx: index("chats_org_id_idx").on(table.orgId),
-  })
+  }),
 );
 
 export const chatsRelations = relations(chats, ({ many }) => ({
@@ -127,7 +129,7 @@ export const chatMembers = pgTable(
   (table) => ({
     pk: primaryKey({ columns: [table.configId, table.userId] }),
     userIdIdx: index("chat_members_user_id_idx").on(table.userId),
-  })
+  }),
 );
 
 export const chatMembersRelations = relations(chatMembers, ({ one }) => ({
@@ -159,7 +161,7 @@ export const agents = pgTable(
   },
   (table) => ({
     orgIdIdx: index("agents_org_id_idx").on(table.orgId),
-  })
+  }),
 );
 
 export const chatAgents = pgTable(
@@ -176,7 +178,7 @@ export const chatAgents = pgTable(
   },
   (table) => ({
     pk: primaryKey({ columns: [table.configId, table.agentId] }),
-  })
+  }),
 );
 
 export const chatAgentsRelations = relations(chatAgents, ({ one }) => ({
@@ -214,7 +216,7 @@ export const mcpServers = pgTable(
   (table) => ({
     orgIdIdx: index("mcp_servers_org_id_idx").on(table.orgId),
     statusIdx: index("mcp_servers_status_idx").on(table.status),
-  })
+  }),
 );
 
 export const mcpServersRelations = relations(mcpServers, ({ one }) => ({
@@ -260,7 +262,7 @@ export const agentRuntimes = pgTable(
   },
   (table) => ({
     groupIdIdx: index("agent_runtimes_group_id_idx").on(table.configId),
-  })
+  }),
 );
 
 export const chatAgentRuntimes = pgTable(
@@ -281,7 +283,7 @@ export const chatAgentRuntimes = pgTable(
     pk: primaryKey({
       columns: [table.configId, table.agentId, table.runtimeId],
     }),
-  })
+  }),
 );
 
 // --- Lifecycle & Archive ---
@@ -299,7 +301,7 @@ export const chatArchives = pgTable(
   },
   (table) => ({
     groupIdIdx: index("chat_archives_group_id_idx").on(table.configId),
-  })
+  }),
 );
 
 export const chatSnapshots = pgTable(
@@ -315,7 +317,7 @@ export const chatSnapshots = pgTable(
   },
   (table) => ({
     groupIdIdx: index("chat_snapshots_group_id_idx").on(table.configId),
-  })
+  }),
 );
 
 // --- Secrets ---
@@ -338,7 +340,7 @@ export const secrets = pgTable(
   (table) => ({
     orgIdIdx: index("secrets_org_id_idx").on(table.orgId),
     orgIdIdIdx: index("secrets_org_id_id_idx").on(table.orgId, table.id),
-  })
+  }),
 );
 
 export const modelCatalog = pgTable(
@@ -364,10 +366,8 @@ export const modelCatalog = pgTable(
   },
   (table) => ({
     orgIdIdx: index("model_catalog_org_id_idx").on(table.orgId),
-    modelTypeIdx: index("model_catalog_model_type_idx").on(
-      table.modelType
-    ),
-  })
+    modelTypeIdx: index("model_catalog_model_type_idx").on(table.modelType),
+  }),
 );
 
 // --- Billing ---
@@ -384,7 +384,7 @@ export const orgUsage = pgTable(
   },
   (table) => ({
     orgIdIdx: index("org_usage_org_id_idx").on(table.orgId),
-  })
+  }),
 );
 
 export const orgLimits = pgTable("org_limits", {
@@ -432,5 +432,5 @@ export const auditLog = pgTable(
   (table) => ({
     orgIdIdx: index("audit_log_org_id_idx").on(table.orgId),
     actorUserIdIdx: index("audit_log_actor_user_id_idx").on(table.actorUserId),
-  })
+  }),
 );

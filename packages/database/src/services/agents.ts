@@ -74,7 +74,7 @@ export async function getAgents(orgId: string) {
         ...agent,
         model: model ?? null,
       };
-    })
+    }),
   );
 
   return agentsWithModels;

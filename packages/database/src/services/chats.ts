@@ -316,14 +316,10 @@ export async function updateChat(params: UpdateChatParams) {
     await tx
       .update(chats)
       .set(updates)
-      .where(
-        and(eq(chats.id, params.chatId), eq(chats.orgId, params.orgId)),
-      );
+      .where(and(eq(chats.id, params.chatId), eq(chats.orgId, params.orgId)));
 
     if (params.agentIds !== undefined) {
-      await tx
-        .delete(chatAgents)
-        .where(eq(chatAgents.configId, params.chatId));
+      await tx.delete(chatAgents).where(eq(chatAgents.configId, params.chatId));
 
       if (params.agentIds.length > 0) {
         await tx.insert(chatAgents).values(

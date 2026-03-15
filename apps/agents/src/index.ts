@@ -58,7 +58,10 @@ export default {
       return handleAgentRunDev(request, env);
     }
 
-    if (request.method === "POST" && url.pathname === "/agents/run-dev-stream") {
+    if (
+      request.method === "POST" &&
+      url.pathname === "/agents/run-dev-stream"
+    ) {
       return handleAgentRunDevStream(request, env);
     }
 

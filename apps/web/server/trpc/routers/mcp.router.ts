@@ -21,8 +21,14 @@ const mcpAddInput = z.object({
 
 async function fetchMcpTools(
   url: string,
-  token?: string | null
-): Promise<Array<{ name: string; description?: string | null; inputSchema?: Record<string, unknown> | null }>> {
+  token?: string | null,
+): Promise<
+  Array<{
+    name: string;
+    description?: string | null;
+    inputSchema?: Record<string, unknown> | null;
+  }>
+> {
   const client = new Client({
     name: "AgentChat",
     version: "1.0.0",
@@ -38,7 +44,7 @@ async function fetchMcpTools(
             } as HeadersInit,
           },
         }
-      : undefined
+      : undefined,
   );
 
   try {
@@ -197,7 +203,7 @@ export const mcpRouter = createTRPCRouter({
       z.object({
         url: z.string().url(),
         secretId: z.string().uuid().nullable().optional(),
-      })
+      }),
     )
     .mutation(async ({ ctx, input }) => {
       let token: string | undefined;
@@ -241,7 +247,7 @@ export const mcpRouter = createTRPCRouter({
         name: z.string().min(1),
         url: z.string().url(),
         secretId: z.string().uuid().nullable().optional(),
-      })
+      }),
     )
     .mutation(async ({ ctx, input }) => {
       const existing = await getMcpServer({

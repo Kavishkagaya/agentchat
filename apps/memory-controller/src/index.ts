@@ -85,9 +85,11 @@ function pathSuffix(pathname: string): string {
 import { DurableObject } from "cloudflare:workers";
 
 export class MemoryController extends DurableObject<Env> {
-  private async initFromDb(
-    configId: string,
-  ): Promise<{ config: Record<string, unknown>; type: "chat" | "workflow"; org_id?: string } | null> {
+  private async initFromDb(configId: string): Promise<{
+    config: Record<string, unknown>;
+    type: "chat" | "workflow";
+    org_id?: string;
+  } | null> {
     if (!this.env.DATABASE_URL) return null;
 
     try {
@@ -375,7 +377,8 @@ export class MemoryController extends DurableObject<Env> {
             }
             await this.ctx.storage.put("config_id", configId);
             await this.ctx.storage.put("type", dbInit.type);
-            if (dbInit.org_id) await this.ctx.storage.put("org_id", dbInit.org_id);
+            if (dbInit.org_id)
+              await this.ctx.storage.put("org_id", dbInit.org_id);
             if (config) await this.ctx.storage.put("config", config);
 
             if (dbInit.type === "chat") {

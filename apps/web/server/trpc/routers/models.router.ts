@@ -76,7 +76,7 @@ export const modelsRouter = createTRPCRouter({
       z.object({
         name: z.string().min(1),
         config: modelConfigSchema,
-      })
+      }),
     )
     .mutation(async ({ ctx, input }) => {
       if (!(ctx.auth.orgId && ctx.auth.userId)) {
@@ -136,7 +136,7 @@ export const modelsRouter = createTRPCRouter({
         id: z.string().min(1),
         name: z.string().min(1).optional(),
         config: modelConfigSchema.partial().optional(),
-      })
+      }),
     )
     .mutation(async ({ ctx, input }) => {
       if (!(ctx.auth.orgId && ctx.auth.userId)) {

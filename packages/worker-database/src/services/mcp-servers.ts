@@ -10,7 +10,7 @@ export async function getMcpServer(params: {
   return await db.query.mcpServers.findFirst({
     where: and(
       eq(mcpServers.id, params.serverId),
-      eq(mcpServers.orgId, params.orgId)
+      eq(mcpServers.orgId, params.orgId),
     ),
   });
 }

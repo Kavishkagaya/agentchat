@@ -42,7 +42,9 @@ function resolveMessages(input: AgentRunInput) {
     if (lastMsg.role === "assistant" || lastMsg.role === "system") {
       messages.push({
         role: "user" as const,
-        content: [{ type: "text" as const, text: "Please review and respond." }],
+        content: [
+          { type: "text" as const, text: "Please review and respond." },
+        ],
       });
     }
   }
@@ -127,7 +129,10 @@ export function createAgentRunner(params: {
   return {
     async run(input: AgentRunInput): Promise<AgentRunResult> {
       const messages = resolveMessages(input);
-      const systemPrompt = buildSystemPrompt(params.config.system_prompt, input.chat_context);
+      const systemPrompt = buildSystemPrompt(
+        params.config.system_prompt,
+        input.chat_context,
+      );
 
       const agent = new ToolLoopAgent({
         model,
@@ -140,7 +145,10 @@ export function createAgentRunner(params: {
 
     async *runStream(input: AgentRunInput): AsyncGenerator<AgentStreamEvent> {
       const messages = resolveMessages(input);
-      const systemPrompt = buildSystemPrompt(params.config.system_prompt, input.chat_context);
+      const systemPrompt = buildSystemPrompt(
+        params.config.system_prompt,
+        input.chat_context,
+      );
 
       const result = streamText({
         model,

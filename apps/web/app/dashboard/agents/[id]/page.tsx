@@ -1,9 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import { Trash2 } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
 import { api } from "@/app/trpc/client";
 import { Button } from "@/components/ui/button";
 import {
@@ -69,7 +68,7 @@ export default function AgentEditPage() {
       if (config?.mcpServers && Array.isArray(config.mcpServers)) {
         const mcpIds = config.mcpServers;
         const servers = mcpQuery.data?.filter((mcp: any) =>
-          mcpIds.includes(mcp.id)
+          mcpIds.includes(mcp.id),
         ) as McpServer[];
         if (servers) {
           setSelectedServers(servers);
@@ -81,7 +80,7 @@ export default function AgentEditPage() {
 
   const selectedModel = useMemo(
     () => modelsQuery.data?.find((model: any) => model.id === form.modelId),
-    [modelsQuery.data, form.modelId]
+    [modelsQuery.data, form.modelId],
   );
 
   const handleUpdate = async () => {
@@ -185,7 +184,7 @@ export default function AgentEditPage() {
               >
                 <option value="">Select a model</option>
                 {modelsQuery.data?.map((model: any) => (
-                  <option key={model.id} value={model.id}>
+                  <option key={model.id} value={model.id} className="font-mono">
                     {model.name} ({model.kind}/{model.modelId})
                   </option>
                 ))}
@@ -200,6 +199,7 @@ export default function AgentEditPage() {
               <Label htmlFor="agent-model-id">Model ID</Label>
               <Input
                 id="agent-model-id"
+                className="font-mono"
                 value={selectedModel?.modelId ?? ""}
                 disabled
               />
@@ -227,13 +227,15 @@ export default function AgentEditPage() {
               <Card key={server.id}>
                 <CardHeader className="flex flex-row items-start justify-between space-y-0">
                   <div>
-                    <CardTitle>{server.name}</CardTitle>
-                    <CardDescription>{server.url}</CardDescription>
+                    <CardTitle className="font-mono">{server.name}</CardTitle>
+                    <CardDescription className="font-mono">
+                      {server.url}
+                    </CardDescription>
                   </div>
                   <Button
                     onClick={() =>
                       setSelectedServers((prev) =>
-                        prev.filter((s) => s.id !== server.id)
+                        prev.filter((s) => s.id !== server.id),
                       )
                     }
                     size="sm"
@@ -254,7 +256,10 @@ export default function AgentEditPage() {
       </section>
 
       <div className="flex gap-3">
-        <Button variant="outline" onClick={() => router.push("/dashboard/agents")}>
+        <Button
+          variant="outline"
+          onClick={() => router.push("/dashboard/agents")}
+        >
           Cancel
         </Button>
         <Button onClick={handleUpdate}>Update agent</Button>
@@ -262,7 +267,8 @@ export default function AgentEditPage() {
         <div className="flex items-center gap-2">
           {(agentQuery.data.chatCount ?? 0) > 0 && (
             <p className="text-xs text-muted-foreground">
-              Used in {agentQuery.data.chatCount} chat{agentQuery.data.chatCount === 1 ? "" : "s"}
+              Used in {agentQuery.data.chatCount} chat
+              {agentQuery.data.chatCount === 1 ? "" : "s"}
             </p>
           )}
           <Button
@@ -290,7 +296,7 @@ export default function AgentEditPage() {
             ) : (
               mcpQuery.data?.map((server: any) => {
                 const isAlreadyAdded = selectedServers.some(
-                  (s) => s.id === server.id
+                  (s) => s.id === server.id,
                 );
                 return (
                   <button
@@ -329,7 +335,10 @@ export default function AgentEditPage() {
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => router.push("/dashboard/mcps")}>
+            <Button
+              variant="outline"
+              onClick={() => router.push("/dashboard/mcps")}
+            >
               Add new MCP
             </Button>
             <Button onClick={() => setMcpDialogOpen(false)}>Done</Button>

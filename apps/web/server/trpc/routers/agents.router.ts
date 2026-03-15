@@ -14,18 +14,20 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { createTRPCRouter, orgProcedure } from "../trpc";
 
-const agentConfigSchema = z.object({
-  systemPrompt: z.string().min(1),
-  model: z.string().min(1).optional(),
-  mcpServers: z.array(z.string()).optional(),
-  temperature: z.number().optional(),
-  maxTokens: z.number().optional(),
-  topP: z.number().optional(),
-  presencePenalty: z.number().optional(),
-  frequencyPenalty: z.number().optional(),
-  stop: z.array(z.string()).optional(),
-  seed: z.number().int().optional(),
-}).strict();
+const agentConfigSchema = z
+  .object({
+    systemPrompt: z.string().min(1),
+    model: z.string().min(1).optional(),
+    mcpServers: z.array(z.string()).optional(),
+    temperature: z.number().optional(),
+    maxTokens: z.number().optional(),
+    topP: z.number().optional(),
+    presencePenalty: z.number().optional(),
+    frequencyPenalty: z.number().optional(),
+    stop: z.array(z.string()).optional(),
+    seed: z.number().int().optional(),
+  })
+  .strict();
 
 export const agentsRouter = createTRPCRouter({
   list: orgProcedure.query(async ({ ctx }) => {
@@ -59,7 +61,7 @@ export const agentsRouter = createTRPCRouter({
         description: z.string().optional(),
         modelId: z.string().min(1),
         config: agentConfigSchema,
-      })
+      }),
     )
     .mutation(async ({ ctx, input }) => {
       const model = await getModel({
@@ -67,7 +69,10 @@ export const agentsRouter = createTRPCRouter({
         id: input.modelId,
       });
       if (!model) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Model not found" });
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Model not found",
+        });
       }
       if (input.config.model && input.config.model !== model.modelId) {
         throw new TRPCError({
@@ -99,7 +104,7 @@ export const agentsRouter = createTRPCRouter({
         description: z.string().optional(),
         modelId: z.string().min(1).optional(),
         config: agentConfigSchema.optional(),
-      })
+      }),
     )
     .mutation(async ({ ctx, input }) => {
       if (input.modelId) {
@@ -154,12 +159,18 @@ export const agentsRouter = createTRPCRouter({
           orgId: ctx.auth.orgId,
         });
         if (!deleted) {
-          throw new TRPCError({ code: "NOT_FOUND", message: "Agent not found" });
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Agent not found",
+          });
         }
         return { success: true };
       } catch (error) {
         if (error instanceof TRPCError) throw error;
-        if (error instanceof Error && error.message.includes("assigned to chats")) {
+        if (
+          error instanceof Error &&
+          error.message.includes("assigned to chats")
+        ) {
           throw new TRPCError({
             code: "PRECONDITION_FAILED",
             message: error.message,

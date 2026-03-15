@@ -67,7 +67,7 @@ export async function getSecretMetadata(params: {
   return await db.query.secrets.findFirst({
     where: and(
       eq(secrets.id, params.secretId),
-      eq(secrets.orgId, params.orgId)
+      eq(secrets.orgId, params.orgId),
     ),
     columns: {
       id: true,
@@ -90,7 +90,7 @@ export async function getSecretValue(params: {
   const record = await db.query.secrets.findFirst({
     where: and(
       eq(secrets.id, params.secretId),
-      eq(secrets.orgId, params.orgId)
+      eq(secrets.orgId, params.orgId),
     ),
     columns: {
       id: true,
@@ -118,7 +118,7 @@ export async function updateSecret(params: UpdateSecretParams) {
   const existing = await db.query.secrets.findFirst({
     where: and(
       eq(secrets.id, params.secretId),
-      eq(secrets.orgId, params.orgId)
+      eq(secrets.orgId, params.orgId),
     ),
   });
 
@@ -133,7 +133,10 @@ export async function updateSecret(params: UpdateSecretParams) {
   }
 
   if (params.value != null) {
-    nextValues.ciphertext = encryptSecretValue(params.value, params.encryptionKey);
+    nextValues.ciphertext = encryptSecretValue(
+      params.value,
+      params.encryptionKey,
+    );
     nextValues.rotatedAt = now;
     nextValues.version = (existing.version ?? 0) + 1;
   }
@@ -146,7 +149,7 @@ export async function updateSecret(params: UpdateSecretParams) {
     .update(secrets)
     .set(nextValues)
     .where(
-      and(eq(secrets.id, params.secretId), eq(secrets.orgId, params.orgId))
+      and(eq(secrets.id, params.secretId), eq(secrets.orgId, params.orgId)),
     );
 
   return {
@@ -163,6 +166,6 @@ export async function deleteSecret(params: {
   await db
     .delete(secrets)
     .where(
-      and(eq(secrets.id, params.secretId), eq(secrets.orgId, params.orgId))
+      and(eq(secrets.id, params.secretId), eq(secrets.orgId, params.orgId)),
     );
 }

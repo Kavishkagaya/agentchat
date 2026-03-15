@@ -97,12 +97,8 @@
           "tableFrom": "audit_log",
           "tableTo": "orgs",
           "schemaTo": "public",
-          "columnsFrom": [
-            "org_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["org_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -111,12 +107,8 @@
           "tableFrom": "audit_log",
           "tableTo": "users",
           "schemaTo": "public",
-          "columnsFrom": [
-            "actor_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["actor_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -229,12 +221,8 @@
           "tableFrom": "agents",
           "tableTo": "orgs",
           "schemaTo": "public",
-          "columnsFrom": [
-            "org_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["org_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -243,12 +231,8 @@
           "tableFrom": "agents",
           "tableTo": "users",
           "schemaTo": "public",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -330,12 +314,8 @@
           "tableFrom": "agent_runtimes",
           "tableTo": "groups",
           "schemaTo": "public",
-          "columnsFrom": [
-            "group_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["group_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -344,12 +324,8 @@
           "tableFrom": "agent_runtimes",
           "tableTo": "agents",
           "schemaTo": "public",
-          "columnsFrom": [
-            "agent_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["agent_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -420,12 +396,8 @@
           "tableFrom": "group_runtime",
           "tableTo": "groups",
           "schemaTo": "public",
-          "columnsFrom": [
-            "group_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["group_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -538,12 +510,8 @@
           "tableFrom": "groups",
           "tableTo": "orgs",
           "schemaTo": "public",
-          "columnsFrom": [
-            "org_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["org_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -552,12 +520,8 @@
           "tableFrom": "groups",
           "tableTo": "users",
           "schemaTo": "public",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -627,12 +591,8 @@
           "tableFrom": "group_snapshots",
           "tableTo": "groups",
           "schemaTo": "public",
-          "columnsFrom": [
-            "group_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["group_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -769,12 +729,8 @@
           "tableFrom": "org_members",
           "tableTo": "orgs",
           "schemaTo": "public",
-          "columnsFrom": [
-            "org_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["org_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -783,12 +739,8 @@
           "tableFrom": "org_members",
           "tableTo": "users",
           "schemaTo": "public",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -864,12 +816,8 @@
           "tableFrom": "group_tasks",
           "tableTo": "groups",
           "schemaTo": "public",
-          "columnsFrom": [
-            "group_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["group_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -910,12 +858,8 @@
           "tableFrom": "org_limits",
           "tableTo": "orgs",
           "schemaTo": "public",
-          "columnsFrom": [
-            "org_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["org_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -985,12 +929,8 @@
           "tableFrom": "group_archives",
           "tableTo": "groups",
           "schemaTo": "public",
-          "columnsFrom": [
-            "group_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["group_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1054,12 +994,8 @@
           "tableFrom": "org_usage",
           "tableTo": "orgs",
           "schemaTo": "public",
-          "columnsFrom": [
-            "org_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["org_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1177,12 +1113,8 @@
           "tableFrom": "secrets",
           "tableTo": "orgs",
           "schemaTo": "public",
-          "columnsFrom": [
-            "org_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["org_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1191,12 +1123,8 @@
           "tableFrom": "secrets",
           "tableTo": "users",
           "schemaTo": "public",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1327,12 +1255,8 @@
           "tableFrom": "subscriptions",
           "tableTo": "orgs",
           "schemaTo": "public",
-          "columnsFrom": [
-            "org_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["org_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1574,12 +1498,8 @@
           "tableFrom": "mcp_servers",
           "tableTo": "orgs",
           "schemaTo": "public",
-          "columnsFrom": [
-            "org_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["org_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1588,12 +1508,8 @@
           "tableFrom": "mcp_servers",
           "tableTo": "users",
           "schemaTo": "public",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1758,12 +1674,8 @@
           "tableFrom": "model_catalog",
           "tableTo": "orgs",
           "schemaTo": "public",
-          "columnsFrom": [
-            "org_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["org_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1772,12 +1684,8 @@
           "tableFrom": "model_catalog",
           "tableTo": "secrets",
           "schemaTo": "public",
-          "columnsFrom": [
-            "secret_ref"
-          ],
-          "columnsTo": [
-            "secret_id"
-          ],
+          "columnsFrom": ["secret_ref"],
+          "columnsTo": ["secret_id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1786,12 +1694,8 @@
           "tableFrom": "model_catalog",
           "tableTo": "users",
           "schemaTo": "public",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1838,12 +1742,8 @@
           "tableFrom": "group_agents",
           "tableTo": "groups",
           "schemaTo": "public",
-          "columnsFrom": [
-            "group_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["group_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1852,12 +1752,8 @@
           "tableFrom": "group_agents",
           "tableTo": "agents",
           "schemaTo": "public",
-          "columnsFrom": [
-            "agent_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["agent_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1866,12 +1762,8 @@
           "tableFrom": "group_agents",
           "tableTo": "users",
           "schemaTo": "public",
-          "columnsFrom": [
-            "added_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["added_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1879,10 +1771,7 @@
       "compositePrimaryKeys": {
         "group_agents_group_id_agent_id_pk": {
           "name": "group_agents_group_id_agent_id_pk",
-          "columns": [
-            "group_id",
-            "agent_id"
-          ]
+          "columns": ["group_id", "agent_id"]
         }
       },
       "uniqueConstraints": {},
@@ -1926,12 +1815,8 @@
           "tableFrom": "group_secrets",
           "tableTo": "groups",
           "schemaTo": "public",
-          "columnsFrom": [
-            "group_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["group_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1940,12 +1825,8 @@
           "tableFrom": "group_secrets",
           "tableTo": "users",
           "schemaTo": "public",
-          "columnsFrom": [
-            "granted_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["granted_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1954,12 +1835,8 @@
           "tableFrom": "group_secrets",
           "tableTo": "secrets",
           "schemaTo": "public",
-          "columnsFrom": [
-            "secret_id"
-          ],
-          "columnsTo": [
-            "secret_id"
-          ],
+          "columnsFrom": ["secret_id"],
+          "columnsTo": ["secret_id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1967,10 +1844,7 @@
       "compositePrimaryKeys": {
         "group_secrets_group_id_secret_id_pk": {
           "name": "group_secrets_group_id_secret_id_pk",
-          "columns": [
-            "group_id",
-            "secret_id"
-          ]
+          "columns": ["group_id", "secret_id"]
         }
       },
       "uniqueConstraints": {},
@@ -2014,12 +1888,8 @@
           "tableFrom": "group_agent_runtimes",
           "tableTo": "groups",
           "schemaTo": "public",
-          "columnsFrom": [
-            "group_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["group_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2028,12 +1898,8 @@
           "tableFrom": "group_agent_runtimes",
           "tableTo": "agents",
           "schemaTo": "public",
-          "columnsFrom": [
-            "agent_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["agent_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2042,12 +1908,8 @@
           "tableFrom": "group_agent_runtimes",
           "tableTo": "agent_runtimes",
           "schemaTo": "public",
-          "columnsFrom": [
-            "runtime_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["runtime_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -2055,11 +1917,7 @@
       "compositePrimaryKeys": {
         "group_agent_runtimes_group_id_agent_id_runtime_id_pk": {
           "name": "group_agent_runtimes_group_id_agent_id_runtime_id_pk",
-          "columns": [
-            "group_id",
-            "agent_id",
-            "runtime_id"
-          ]
+          "columns": ["group_id", "agent_id", "runtime_id"]
         }
       },
       "uniqueConstraints": {},
@@ -2126,12 +1984,8 @@
           "tableFrom": "group_members",
           "tableTo": "groups",
           "schemaTo": "public",
-          "columnsFrom": [
-            "group_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["group_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2140,12 +1994,8 @@
           "tableFrom": "group_members",
           "tableTo": "users",
           "schemaTo": "public",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2154,12 +2004,8 @@
           "tableFrom": "group_members",
           "tableTo": "users",
           "schemaTo": "public",
-          "columnsFrom": [
-            "added_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["added_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -2167,10 +2013,7 @@
       "compositePrimaryKeys": {
         "group_members_group_id_user_id_pk": {
           "name": "group_members_group_id_user_id_pk",
-          "columns": [
-            "group_id",
-            "user_id"
-          ]
+          "columns": ["group_id", "user_id"]
         }
       },
       "uniqueConstraints": {},

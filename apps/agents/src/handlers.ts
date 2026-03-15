@@ -22,7 +22,7 @@ async function authorizeRequest(
   request: Request,
   env: Env,
   requestedConfigId?: string,
-  requestedAgentId?: string
+  requestedAgentId?: string,
 ) {
   const header = request.headers.get("authorization");
   if (!header) {
@@ -44,7 +44,7 @@ async function executeAndStreamAgent(
   agentId: string | undefined,
   body: AgentRunRequest,
   configId: string | null,
-  send: ReturnType<typeof createEventStream>["send"]
+  send: ReturnType<typeof createEventStream>["send"],
 ): Promise<void> {
   send("status", { status: "thinking" });
 
@@ -126,7 +126,7 @@ async function executeAgentCoarse(
   agentId: string | undefined,
   body: AgentRunRequest,
   configId: string | null,
-  send: ReturnType<typeof createEventStream>["send"]
+  send: ReturnType<typeof createEventStream>["send"],
 ): Promise<void> {
   send("status", { status: "thinking" });
 
@@ -201,7 +201,10 @@ async function executeAgentCoarse(
 
 // Handlers
 
-export async function handleAgentRun(request: Request, env: Env): Promise<Response> {
+export async function handleAgentRun(
+  request: Request,
+  env: Env,
+): Promise<Response> {
   const { stream, send, close } = createEventStream();
 
   const response = new Response(stream, {
@@ -225,9 +228,20 @@ export async function handleAgentRun(request: Request, env: Env): Promise<Respon
 
       let authPayload: Awaited<ReturnType<typeof authorizeRequest>>;
       try {
-        authPayload = await authorizeRequest(request, env, body.config_id, body.agent_id);
+        authPayload = await authorizeRequest(
+          request,
+          env,
+          body.config_id,
+          body.agent_id,
+        );
       } catch (error) {
-        send("error", structuredError("unauthorized", error instanceof Error ? error.message : "authorization failed"));
+        send(
+          "error",
+          structuredError(
+            "unauthorized",
+            error instanceof Error ? error.message : "authorization failed",
+          ),
+        );
         return;
       }
 
@@ -241,7 +255,10 @@ export async function handleAgentRun(request: Request, env: Env): Promise<Respon
   return response;
 }
 
-export async function handleAgentRunStream(request: Request, env: Env): Promise<Response> {
+export async function handleAgentRunStream(
+  request: Request,
+  env: Env,
+): Promise<Response> {
   const { stream, send, close } = createEventStream();
 
   const response = new Response(stream, {
@@ -265,14 +282,31 @@ export async function handleAgentRunStream(request: Request, env: Env): Promise<
 
       let authPayload: Awaited<ReturnType<typeof authorizeRequest>>;
       try {
-        authPayload = await authorizeRequest(request, env, body.config_id, body.agent_id);
+        authPayload = await authorizeRequest(
+          request,
+          env,
+          body.config_id,
+          body.agent_id,
+        );
       } catch (error) {
-        send("error", structuredError("unauthorized", error instanceof Error ? error.message : "authorization failed"));
+        send(
+          "error",
+          structuredError(
+            "unauthorized",
+            error instanceof Error ? error.message : "authorization failed",
+          ),
+        );
         return;
       }
 
       const agentId = body.agent_id ?? authPayload.agent_id;
-      await executeAndStreamAgent(env, agentId, body, authPayload.config_id, send);
+      await executeAndStreamAgent(
+        env,
+        agentId,
+        body,
+        authPayload.config_id,
+        send,
+      );
     } finally {
       await close();
     }
@@ -281,11 +315,17 @@ export async function handleAgentRunStream(request: Request, env: Env): Promise<
   return response;
 }
 
-export async function handleAgentRunDev(request: Request, env: Env): Promise<Response> {
+export async function handleAgentRunDev(
+  request: Request,
+  env: Env,
+): Promise<Response> {
   if (env.ENVIRONMENT === "production") {
     return Response.json(
-      structuredError("forbidden", "dev endpoint is not available in production"),
-      { status: 403 }
+      structuredError(
+        "forbidden",
+        "dev endpoint is not available in production",
+      ),
+      { status: 403 },
     );
   }
 
@@ -312,7 +352,10 @@ export async function handleAgentRunDev(request: Request, env: Env): Promise<Res
 
       const agentId = body.agent_id;
       if (!agentId) {
-        send("error", structuredError("missing_agent_id", "agent_id is required"));
+        send(
+          "error",
+          structuredError("missing_agent_id", "agent_id is required"),
+        );
         return;
       }
 
@@ -325,11 +368,17 @@ export async function handleAgentRunDev(request: Request, env: Env): Promise<Res
   return response;
 }
 
-export async function handleAgentRunDevStream(request: Request, env: Env): Promise<Response> {
+export async function handleAgentRunDevStream(
+  request: Request,
+  env: Env,
+): Promise<Response> {
   if (env.ENVIRONMENT === "production") {
     return Response.json(
-      structuredError("forbidden", "dev endpoint is not available in production"),
-      { status: 403 }
+      structuredError(
+        "forbidden",
+        "dev endpoint is not available in production",
+      ),
+      { status: 403 },
     );
   }
 
@@ -356,7 +405,10 @@ export async function handleAgentRunDevStream(request: Request, env: Env): Promi
 
       const agentId = body.agent_id;
       if (!agentId) {
-        send("error", structuredError("missing_agent_id", "agent_id is required"));
+        send(
+          "error",
+          structuredError("missing_agent_id", "agent_id is required"),
+        );
         return;
       }
 

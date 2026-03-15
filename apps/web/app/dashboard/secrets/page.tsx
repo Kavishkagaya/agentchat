@@ -60,7 +60,7 @@ function formatDate(value: string | Date | null | undefined) {
 }
 
 function groupSecretsByNamespace(
-  secrets: SecretRow[]
+  secrets: SecretRow[],
 ): [string, SecretRow[]][] {
   const grouped = secrets.reduce(
     (acc, secret) => {
@@ -70,7 +70,7 @@ function groupSecretsByNamespace(
       acc[secret.namespace].push(secret);
       return acc;
     },
-    {} as Record<string, SecretRow[]>
+    {} as Record<string, SecretRow[]>,
   );
   return Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b));
 }
@@ -95,17 +95,19 @@ function SecretRow({
       setRevealedValue(result.value ?? null);
     } catch (error) {
       setRevealError(
-        error instanceof Error ? error.message : "Failed to reveal secret"
+        error instanceof Error ? error.message : "Failed to reveal secret",
       );
     }
   };
 
   return (
     <TableRow>
-      <TableCell className="font-medium">
+      <TableCell className="font-medium font-mono">
         <div>
           <div>{secret.name}</div>
-          <div className="text-muted-foreground text-xs">v{secret.version}</div>
+          <div className="text-muted-foreground text-xs font-mono">
+            v{secret.version}
+          </div>
         </div>
       </TableCell>
       <TableCell className="text-sm">{formatDate(secret.createdAt)}</TableCell>
@@ -161,7 +163,7 @@ export default function SecretsPage() {
   const [editingSecret, setEditingSecret] = useState<SecretRow | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [expandedNamespaces, setExpandedNamespaces] = useState<Set<string>>(
-    new Set()
+    new Set(),
   );
   const initialized = useRef(false);
 
@@ -320,7 +322,7 @@ export default function SecretsPage() {
                     ) : (
                       <ChevronRight className="h-4 w-4" />
                     )}
-                    <span className="font-medium">{namespace}</span>
+                    <span className="font-medium font-mono">{namespace}</span>
                     <span className="text-muted-foreground text-xs">
                       ({secrets.length})
                     </span>
@@ -349,7 +351,7 @@ export default function SecretsPage() {
                     </Table>
                   )}
                 </div>
-              )
+              ),
             )
           ) : (
             <div className="rounded-lg border py-12 text-center text-muted-foreground">

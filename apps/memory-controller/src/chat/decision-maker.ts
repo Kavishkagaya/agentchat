@@ -1,9 +1,9 @@
 import {
-  normalizeChatRoutingConfig,
-  resolveMessageTargets,
   type ChatRoutingConfig,
   type MessageOrigin,
   type MessageRoutingDecision,
+  normalizeChatRoutingConfig,
+  resolveMessageTargets,
 } from "@axon/shared";
 
 export type ChatRoutingContext = {
@@ -21,7 +21,9 @@ export function getTriggerDepthLimit(config: ChatRoutingConfig): number {
   return Math.max(1, config.trigger_depth_limit ?? 2);
 }
 
-export function resolveChatTargets(input: ChatRoutingContext): ChatRoutingResult {
+export function resolveChatTargets(
+  input: ChatRoutingContext,
+): ChatRoutingResult {
   const config = normalizeChatRoutingConfig(input.config);
 
   return {

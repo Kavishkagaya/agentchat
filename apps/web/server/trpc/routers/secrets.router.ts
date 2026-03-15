@@ -25,7 +25,7 @@ export const secretsRouter = createTRPCRouter({
         name: z.string().min(1),
         namespace: z.string().min(1),
         value: z.string().min(1),
-      })
+      }),
     )
     .mutation(async ({ ctx, input }) => {
       if (!(ctx.auth.orgId && ctx.auth.userId)) {
@@ -57,7 +57,7 @@ export const secretsRouter = createTRPCRouter({
         secretId: z.string().min(1),
         name: z.string().min(1).optional(),
         value: z.string().min(1).optional(),
-      })
+      }),
     )
     .mutation(async ({ ctx, input }) => {
       if (!(ctx.auth.orgId && ctx.auth.userId)) {

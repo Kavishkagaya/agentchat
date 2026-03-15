@@ -73,19 +73,27 @@ export async function POST(req: NextRequest) {
         headers: { "Content-Type": "application/json" },
       });
     } catch (processingErr) {
-      console.error(`[Webhook] Error processing ${evt.type} event:`, processingErr);
+      console.error(
+        `[Webhook] Error processing ${evt.type} event:`,
+        processingErr,
+      );
       const errorMessage =
-        processingErr instanceof Error ? processingErr.message : "Unknown error";
+        processingErr instanceof Error
+          ? processingErr.message
+          : "Unknown error";
       return new Response(
-        JSON.stringify({ error: "Event processing failed", details: errorMessage }),
-        { status: 500, headers: { "Content-Type": "application/json" } }
+        JSON.stringify({
+          error: "Event processing failed",
+          details: errorMessage,
+        }),
+        { status: 500, headers: { "Content-Type": "application/json" } },
       );
     }
   } catch (err) {
     console.error("[Webhook] Error verifying webhook:", err);
     return new Response(
       JSON.stringify({ error: "Webhook verification failed" }),
-      { status: 400, headers: { "Content-Type": "application/json" } }
+      { status: 400, headers: { "Content-Type": "application/json" } },
     );
   }
 }
@@ -197,7 +205,7 @@ async function handleOrgDeleted(evt: OrganizationWebhookEvent): Promise<void> {
 // Organization membership event handlers
 
 async function handleOrgMembershipCreated(
-  evt: OrganizationMembershipWebhookEvent
+  evt: OrganizationMembershipWebhookEvent,
 ): Promise<void> {
   if (evt.type !== "organizationMembership.created") {
     return;
@@ -213,12 +221,12 @@ async function handleOrgMembershipCreated(
 
   await syncOrgMember(organization.id, public_user_data.user_id, role);
   console.log(
-    `[Webhook] Created organization membership: org=${organization.id}, user=${public_user_data.user_id}, role=${role}`
+    `[Webhook] Created organization membership: org=${organization.id}, user=${public_user_data.user_id}, role=${role}`,
   );
 }
 
 async function handleOrgMembershipUpdated(
-  evt: OrganizationMembershipWebhookEvent
+  evt: OrganizationMembershipWebhookEvent,
 ): Promise<void> {
   if (evt.type !== "organizationMembership.updated") {
     return;
@@ -234,12 +242,12 @@ async function handleOrgMembershipUpdated(
 
   await syncOrgMember(organization.id, public_user_data.user_id, role);
   console.log(
-    `[Webhook] Updated organization membership: org=${organization.id}, user=${public_user_data.user_id}, role=${role}`
+    `[Webhook] Updated organization membership: org=${organization.id}, user=${public_user_data.user_id}, role=${role}`,
   );
 }
 
 async function handleOrgMembershipDeleted(
-  evt: OrganizationMembershipWebhookEvent
+  evt: OrganizationMembershipWebhookEvent,
 ): Promise<void> {
   if (evt.type !== "organizationMembership.deleted") {
     return;
@@ -249,7 +257,7 @@ async function handleOrgMembershipDeleted(
 
   await deleteOrgMember(organization.id, public_user_data.user_id);
   console.log(
-    `[Webhook] Deleted organization membership: org=${organization.id}, user=${public_user_data.user_id}`
+    `[Webhook] Deleted organization membership: org=${organization.id}, user=${public_user_data.user_id}`,
   );
 }
 

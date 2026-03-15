@@ -1,6 +1,6 @@
 export { createAgentRunner } from "./factory";
-export { normalizeAgentConfig } from "./normalize";
 export { ModelRegistry } from "./models/registry";
+export { normalizeAgentConfig } from "./normalize";
 export { createDefaultTools } from "./tools/defaults";
 export { DefaultToolRegistry } from "./tools/registry";
 export type {

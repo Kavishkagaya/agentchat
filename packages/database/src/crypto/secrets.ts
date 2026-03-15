@@ -30,7 +30,10 @@ function loadKey(explicitKey?: string): Buffer {
   return parseKey(raw);
 }
 
-export function encryptSecretValue(value: string, encryptionKey?: string): string {
+export function encryptSecretValue(
+  value: string,
+  encryptionKey?: string,
+): string {
   const key = loadKey(encryptionKey);
   const iv = randomBytes(IV_LENGTH);
   const cipher = createCipheriv("aes-256-gcm", key, iv);
@@ -43,7 +46,10 @@ export function encryptSecretValue(value: string, encryptionKey?: string): strin
   return `${VERSION_PREFIX}${payload}`;
 }
 
-export function decryptSecretValue(ciphertext: string, encryptionKey?: string): string {
+export function decryptSecretValue(
+  ciphertext: string,
+  encryptionKey?: string,
+): string {
   if (!ciphertext.startsWith(VERSION_PREFIX)) {
     throw new Error("Unsupported secret ciphertext format");
   }
@@ -51,7 +57,7 @@ export function decryptSecretValue(ciphertext: string, encryptionKey?: string): 
   const key = loadKey(encryptionKey);
   const payload = Buffer.from(
     ciphertext.slice(VERSION_PREFIX.length),
-    "base64"
+    "base64",
   );
   const iv = payload.subarray(0, IV_LENGTH);
   const tag = payload.subarray(IV_LENGTH, IV_LENGTH + TAG_LENGTH);

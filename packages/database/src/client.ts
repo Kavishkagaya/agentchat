@@ -1,17 +1,22 @@
 // Conditionally import dotenv for non-worker environments
-if (typeof (globalThis as any).process !== 'undefined' && (globalThis as any).process.env && !(globalThis as any).process.env.WORKER) {
+if (
+  typeof (globalThis as any).process !== "undefined" &&
+  (globalThis as any).process.env &&
+  !(globalThis as any).process.env.WORKER
+) {
   // Use a self-executing async function or similar to avoid top-level await issues in CJS
   (async () => {
     try {
       // Hide from static analysis to prevent bundling issues in workers
       const mod = "dotenv/config";
-      // @ts-ignore
+      // @ts-expect-error
       await import(mod);
     } catch (e) {
       // Ignore error if dotenv is not available
     }
   })();
 }
+
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 // eslint-disable-next-line import/no-namespace
@@ -39,7 +44,7 @@ export function getDb() {
 
     if (!db) {
       throw new Error(
-        "Database not initialized. Call initDb(connectionString) first or set DATABASE_URL env var."
+        "Database not initialized. Call initDb(connectionString) first or set DATABASE_URL env var.",
       );
     }
   }

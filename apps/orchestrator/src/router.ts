@@ -34,7 +34,10 @@ function handleError(
   fallbackCode: string,
 ): Response {
   if (error instanceof ServiceError) {
-    console.error(`[${route}] ServiceError ${error.status} ${error.code}:`, error.message);
+    console.error(
+      `[${route}] ServiceError ${error.status} ${error.code}:`,
+      error.message,
+    );
     return errorResponse(error.status, error.code, error.message);
   }
   const msg = errorMessage(error);
@@ -116,7 +119,12 @@ export async function handleRequest(
       });
       return json({ ok: true, ...result });
     } catch (error) {
-      return handleError(error, "POST /infra/routing-token", 400, "invalid_request");
+      return handleError(
+        error,
+        "POST /infra/routing-token",
+        400,
+        "invalid_request",
+      );
     }
   }
 
@@ -134,7 +142,12 @@ export async function handleRequest(
       const result = await archiveChat(env, configId);
       return json({ ok: true, ...result });
     } catch (error) {
-      return handleError(error, `POST /infra/chats/${configId}/archive`, 500, "archive_failed");
+      return handleError(
+        error,
+        `POST /infra/chats/${configId}/archive`,
+        500,
+        "archive_failed",
+      );
     }
   }
 
@@ -153,7 +166,12 @@ export async function handleRequest(
       await destroyChat(env, configId);
       return json({ ok: true });
     } catch (error) {
-      return handleError(error, `DELETE /infra/chats/${configId}`, 500, "delete_failed");
+      return handleError(
+        error,
+        `DELETE /infra/chats/${configId}`,
+        500,
+        "delete_failed",
+      );
     }
   }
 
@@ -169,7 +187,12 @@ export async function handleRequest(
       });
       return json({ ok: true, ...result });
     } catch (error) {
-      return handleError(error, "POST /infra/chats/cleanup", 400, "cleanup_failed");
+      return handleError(
+        error,
+        "POST /infra/chats/cleanup",
+        400,
+        "cleanup_failed",
+      );
     }
   }
 
@@ -186,7 +209,12 @@ export async function handleRequest(
       await clearChatHistory(env, configId);
       return json({ ok: true });
     } catch (error) {
-      return handleError(error, `DELETE /infra/chats/${configId}/history`, 500, "clear_history_failed");
+      return handleError(
+        error,
+        `DELETE /infra/chats/${configId}/history`,
+        500,
+        "clear_history_failed",
+      );
     }
   }
 
@@ -202,7 +230,12 @@ export async function handleRequest(
       await requireAppSignature(request, env, url.pathname);
       return getHistory(env, configId, url.search);
     } catch (error) {
-      return handleError(error, `GET /infra/chats/${configId}/history`, 401, "unauthorized");
+      return handleError(
+        error,
+        `GET /infra/chats/${configId}/history`,
+        401,
+        "unauthorized",
+      );
     }
   }
 
@@ -223,7 +256,12 @@ export async function handleRequest(
       const result = await syncChatConfig(env, configId, body.config);
       return json(result);
     } catch (error) {
-      return handleError(error, `POST /infra/chats/${configId}/sync-config`, 500, "config_sync_failed");
+      return handleError(
+        error,
+        `POST /infra/chats/${configId}/sync-config`,
+        500,
+        "config_sync_failed",
+      );
     }
   }
 

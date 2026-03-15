@@ -7,7 +7,7 @@ export type CacheRecord<T> = {
 
 export async function readVersionedCache<T>(
   env: Env,
-  baseKey: string
+  baseKey: string,
 ): Promise<CacheRecord<T> | undefined> {
   if (!env.AGENTS_KV) {
     return undefined;
@@ -33,7 +33,7 @@ export async function writeVersionedCache<T>(
   baseKey: string,
   version: string,
   value: T,
-  ttlSeconds: number
+  ttlSeconds: number,
 ): Promise<void> {
   if (!env.AGENTS_KV) {
     return;

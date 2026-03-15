@@ -1,6 +1,6 @@
 "use client";
 
-import { Edit2, Trash2 } from "lucide-react";
+import { Database, Edit2, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { api } from "@/app/trpc/client";
 import { Button } from "@/components/ui/button";
@@ -95,17 +95,14 @@ export default function ModelsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [form, setForm] = useState<ModelForm>({ ...EMPTY_FORM });
-  const [editingModel, setEditingModel] = useState<ModelRow | null>(
-    null
-  );
+  const [editingModel, setEditingModel] = useState<ModelRow | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
   const catalog =
-    (catalogQuery.data as { models: CatalogModel[] } | undefined)
-      ?.models ?? [];
+    (catalogQuery.data as { models: CatalogModel[] } | undefined)?.models ?? [];
   const selectedModel = useMemo(
     () => catalog.find((p) => p.kind === form.providerKind),
-    [catalog, form.providerKind]
+    [catalog, form.providerKind],
   );
 
   const resetForm = () => {
@@ -130,7 +127,7 @@ export default function ModelsPage() {
       resetForm();
     } catch (error) {
       setFormError(
-        error instanceof Error ? error.message : "Failed to create model"
+        error instanceof Error ? error.message : "Failed to create model",
       );
     }
   };
@@ -157,7 +154,7 @@ export default function ModelsPage() {
       resetForm();
     } catch (error) {
       setFormError(
-        error instanceof Error ? error.message : "Failed to update model"
+        error instanceof Error ? error.message : "Failed to update model",
       );
     }
   };
@@ -195,12 +192,12 @@ export default function ModelsPage() {
   const modelModels = selectedModel?.models ?? [];
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="space-y-8">
+      <div className="flex flex-wrap items-center justify-between">
         <div>
-          <h1 className="font-bold text-3xl tracking-tight">Models</h1>
-          <p className="text-muted-foreground">
-            Manage AI model configurations for your organization.
+          <h1 className="font-bold text-3xl">Models</h1>
+          <p className="text-muted-foreground mt-1">
+            Manage AI model configurations and API credentials.
           </p>
         </div>
         <Button
@@ -209,7 +206,7 @@ export default function ModelsPage() {
             setCreateOpen(true);
           }}
         >
-          Add Model
+          + Add Model
         </Button>
       </div>
 
@@ -217,7 +214,7 @@ export default function ModelsPage() {
         <div className="overflow-x-auto rounded-lg border">
           <Table>
             <TableHeader>
-              <TableRow>
+              <TableRow className="hover:bg-transparent">
                 <TableHead>Name</TableHead>
                 <TableHead>Provider</TableHead>
                 <TableHead>Model</TableHead>
@@ -227,21 +224,24 @@ export default function ModelsPage() {
             </TableHeader>
             <TableBody>
               {Array.from({ length: 3 }, (_, i) => (
-                <TableRow key={`skeleton-${i}`}>
+                <TableRow
+                  key={`skeleton-${i}`}
+                  className="hover:bg-transparent"
+                >
                   <TableCell>
-                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-4 w-32 bg-muted/30" />
                   </TableCell>
                   <TableCell>
-                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-4 w-24 bg-muted/30" />
                   </TableCell>
                   <TableCell>
-                    <Skeleton className="h-4 w-40" />
+                    <Skeleton className="h-4 w-40 bg-muted/30" />
                   </TableCell>
                   <TableCell>
-                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-4 w-32 bg-muted/30" />
                   </TableCell>
                   <TableCell>
-                    <Skeleton className="h-4 w-20" />
+                    <Skeleton className="h-6 w-16 bg-muted/30" />
                   </TableCell>
                 </TableRow>
               ))}
@@ -252,12 +252,12 @@ export default function ModelsPage() {
         <div className="overflow-x-auto rounded-lg border">
           <Table>
             <TableHeader>
-              <TableRow>
+              <TableRow className="hover:bg-transparent">
                 <TableHead>Name</TableHead>
                 <TableHead>Provider</TableHead>
                 <TableHead>Model</TableHead>
                 <TableHead>API Key</TableHead>
-                <TableHead>Actions</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -265,30 +265,36 @@ export default function ModelsPage() {
                 const kind = model.kind;
                 const modelLabel = getModelLabel(kind, catalog);
                 return (
-                  <TableRow key={model.id}>
-                    <TableCell className="font-medium">
+                  <TableRow key={model.id} className="group">
+                    <TableCell className="font-medium group-hover:text-primary transition-colors font-mono">
                       {model.name}
                     </TableCell>
-                    <TableCell className="text-sm">{modelLabel}</TableCell>
                     <TableCell className="text-sm">
+                      <div className="inline-flex items-center rounded-full border bg-secondary px-2.5 py-1 text-xs font-medium font-mono">
+                        {modelLabel}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-sm font-mono text-muted-foreground">
                       {model.modelId}
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm">
-                      {model.secretRef ? "•••••" : "—"}
+                      {model.secretRef ? "••••••••" : "—"}
                     </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
                         <Button
                           onClick={() => openEdit(model)}
-                          size="sm"
+                          size="icon"
                           variant="ghost"
+                          className="h-8 w-8"
                         >
                           <Edit2 className="h-4 w-4" />
                         </Button>
                         <Button
                           onClick={() => handleDelete(model.id)}
-                          size="sm"
+                          size="icon"
                           variant="ghost"
+                          className="h-8 w-8"
                         >
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
@@ -300,8 +306,15 @@ export default function ModelsPage() {
             </TableBody>
           </Table>
           {modelsQuery.data?.length === 0 && (
-            <div className="py-12 text-center text-muted-foreground">
-              No models yet.
+            <div className="py-16 text-center border-t flex flex-col items-center">
+              <div className="rounded-full bg-secondary p-4 mb-4">
+                <Database className="h-6 w-6 text-primary" />
+              </div>
+              <p className="text-sm font-semibold">No models configured</p>
+              <p className="text-xs text-muted-foreground mt-1 max-w-sm">
+                Connect an AI provider like OpenAI or Anthropic to start
+                building.
+              </p>
             </div>
           )}
         </div>
@@ -354,7 +367,7 @@ export default function ModelsPage() {
                 <div className="grid gap-2">
                   <Label htmlFor="custom-slug">Custom Provider Slug</Label>
                   <Input
-                    className="text-sm"
+                    className="text-sm font-mono"
                     id="custom-slug"
                     onChange={(event) =>
                       setForm({ ...form, customSlug: event.target.value })
@@ -369,7 +382,7 @@ export default function ModelsPage() {
                 <div className="grid gap-2">
                   <Label htmlFor="custom-base-url">Base URL (Optional)</Label>
                   <Input
-                    className="text-sm"
+                    className="text-sm font-mono"
                     id="custom-base-url"
                     onChange={(event) =>
                       setForm({ ...form, customBaseUrl: event.target.value })
@@ -389,6 +402,7 @@ export default function ModelsPage() {
               <div className="grid gap-2">
                 <Label htmlFor="custom-model">Model Name</Label>
                 <Input
+                  className="font-mono"
                   id="custom-model"
                   onChange={(event) =>
                     setForm({ ...form, modelId: event.target.value })
@@ -503,7 +517,7 @@ export default function ModelsPage() {
                 <div className="grid gap-2">
                   <Label htmlFor="custom-slug-edit">Custom Provider Slug</Label>
                   <Input
-                    className="text-sm"
+                    className="text-sm font-mono"
                     id="custom-slug-edit"
                     onChange={(event) =>
                       setForm({ ...form, customSlug: event.target.value })
@@ -517,7 +531,7 @@ export default function ModelsPage() {
                     Base URL (Optional)
                   </Label>
                   <Input
-                    className="text-sm"
+                    className="text-sm font-mono"
                     id="custom-base-url-edit"
                     onChange={(event) =>
                       setForm({ ...form, customBaseUrl: event.target.value })
@@ -537,6 +551,7 @@ export default function ModelsPage() {
               <div className="grid gap-2">
                 <Label htmlFor="custom-model-edit">Model Name</Label>
                 <Input
+                  className="font-mono"
                   id="custom-model-edit"
                   onChange={(event) =>
                     setForm({ ...form, modelId: event.target.value })

@@ -37,7 +37,7 @@ const MAX_RESPONSE_CHARS = 20_000;
 const DEFAULT_TIMEOUT_MS = 10_000;
 
 function normalizeHttpConfig(
-  raw: Record<string, unknown> | undefined
+  raw: Record<string, unknown> | undefined,
 ): HttpToolConfig {
   if (!raw) {
     return {};
@@ -46,7 +46,7 @@ function normalizeHttpConfig(
     base_url: typeof raw.base_url === "string" ? raw.base_url : undefined,
     allowed_methods: Array.isArray(raw.allowed_methods)
       ? raw.allowed_methods.filter(
-          (value): value is string => typeof value === "string"
+          (value): value is string => typeof value === "string",
         )
       : undefined,
     default_method:
@@ -82,14 +82,14 @@ function isMutatingMethod(method: string) {
 
 function mergeRecord(
   base: Record<string, string> | undefined,
-  overrides: Record<string, string> | undefined
+  overrides: Record<string, string> | undefined,
 ) {
   return { ...(base ?? {}), ...(overrides ?? {}) };
 }
 
 async function executeHttpTool(
   rawArgs: unknown,
-  context: ToolExecutionContext
+  context: ToolExecutionContext,
 ) {
   const args = httpArgsSchema.parse(rawArgs);
   const config = normalizeHttpConfig(context.tool.config);
@@ -122,7 +122,7 @@ async function executeHttpTool(
 
   const method = toUpperMethod(args.method ?? config.default_method ?? "GET");
   const allowedMethods = (config.allowed_methods ?? ["GET", "HEAD"]).map(
-    toUpperMethod
+    toUpperMethod,
   );
   if (!allowedMethods.includes(method)) {
     return {
@@ -145,7 +145,7 @@ async function executeHttpTool(
 
   const query = mergeRecord(
     config.default_query as Record<string, string> | undefined,
-    args.query as Record<string, string> | undefined
+    args.query as Record<string, string> | undefined,
   );
   for (const [key, value] of Object.entries(query)) {
     url.searchParams.set(key, value);
@@ -153,7 +153,7 @@ async function executeHttpTool(
 
   const headers = mergeRecord(
     config.default_headers as Record<string, string> | undefined,
-    args.headers as Record<string, string> | undefined
+    args.headers as Record<string, string> | undefined,
   );
 
   let body: BodyInit | undefined;

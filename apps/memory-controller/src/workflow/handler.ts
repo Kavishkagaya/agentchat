@@ -13,7 +13,7 @@ export class WorkflowHandler {
       {
         status: 501,
         headers: { "content-type": "application/json" },
-      }
+      },
     );
   }
 }

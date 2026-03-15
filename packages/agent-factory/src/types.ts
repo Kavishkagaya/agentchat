@@ -37,7 +37,9 @@ export type AgentRunInput = {
 
 import type { ToolLoopAgent } from "ai";
 
-export type AgentRunResult = Awaited<ReturnType<InstanceType<typeof ToolLoopAgent>["generate"]>>;
+export type AgentRunResult = Awaited<
+  ReturnType<InstanceType<typeof ToolLoopAgent>["generate"]>
+>;
 
 export type ModelEnv = Record<string, string | undefined>;
 

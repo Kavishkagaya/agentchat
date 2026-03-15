@@ -12,7 +12,7 @@ export async function getSecretValue(params: {
   const record = await db.query.secrets.findFirst({
     where: and(
       eq(secrets.id, params.secretId),
-      eq(secrets.orgId, params.orgId)
+      eq(secrets.orgId, params.orgId),
     ),
     columns: {
       id: true,

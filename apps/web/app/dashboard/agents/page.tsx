@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { Edit, PlusCircle } from "lucide-react";
+import { Bot, Edit, PlusCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { api } from "@/app/trpc/client";
 import { Button } from "@/components/ui/button";
 import {
@@ -49,11 +49,11 @@ export default function AgentsPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between">
         <div>
-          <h1 className="font-bold text-3xl tracking-tight">Agents</h1>
-          <p className="text-muted-foreground">
-            Manage your org agents and add public agents.
+          <h1 className="font-bold text-3xl">Agents</h1>
+          <p className="text-muted-foreground mt-1">
+            Build and manage your AI agents.
           </p>
         </div>
         <Button onClick={() => setAddDialogOpen(true)}>
@@ -63,38 +63,47 @@ export default function AgentsPage() {
       </div>
 
       {agentsQuery.isLoading ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {new Array(3).fill(null).map((_, i) => (
-            <Skeleton className="h-[200px] w-full rounded-xl" key={`skeleton-${i}`} />
+            <Skeleton
+              className="h-56 w-full rounded-lg"
+              key={`skeleton-${i}`}
+            />
           ))}
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {(agentsQuery.data as AgentWithModel[] | undefined)?.map((agent) => (
             <Card
               key={agent.id}
-              className="flex flex-col cursor-pointer transition-colors hover:bg-muted"
+              className="flex flex-col cursor-pointer transition-all hover:shadow-lg group"
               onClick={() => router.push(`/dashboard/agents/${agent.id}`)}
             >
               <CardHeader className="pb-3">
-                <CardTitle className="line-clamp-1">{agent.name}</CardTitle>
+                <CardTitle className="line-clamp-1 group-hover:text-primary transition-colors font-mono">
+                  {agent.name}
+                </CardTitle>
                 <CardDescription className="line-clamp-2">
                   {agent.description || "No description"}
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex-1 space-y-2 pb-3">
                 {agent.model && (
-                  <div className="text-xs text-muted-foreground">
-                    <span className="font-medium">Model:</span>{" "}
-                    {agent.model.kind}/{agent.model.name}
+                  <div className="text-xs text-muted-foreground flex items-center gap-2">
+                    <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                    <span className="font-mono">
+                      Model: {agent.model.kind}/{agent.model.name}
+                    </span>
                   </div>
                 )}
-                <div className="text-xs text-muted-foreground">
-                  <span className="font-medium">Updated:</span>{" "}
-                  {new Date(agent.updatedAt).toLocaleDateString()}
+                <div className="text-xs text-muted-foreground flex items-center gap-2">
+                  <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
+                  <span>
+                    Updated: {new Date(agent.updatedAt).toLocaleDateString()}
+                  </span>
                 </div>
               </CardContent>
-              <div className="flex gap-2 border-t px-4 py-3">
+              <div className="flex gap-2 border-t px-6 py-3">
                 <Button
                   className="flex-1"
                   onClick={(e) => {
@@ -104,15 +113,30 @@ export default function AgentsPage() {
                   size="sm"
                   variant="outline"
                 >
-                  <Edit className="mr-1 h-3 w-3" />
-                  Edit
+                  <Edit className="mr-1.5 h-3.5 w-3.5" />
+                  Configure
                 </Button>
               </div>
             </Card>
           ))}
           {agentsQuery.data?.length === 0 && (
-            <div className="col-span-full rounded-xl border-2 border-dashed py-12 text-center text-muted-foreground">
-              No agents yet.
+            <div className="col-span-full rounded-lg border-2 border-dashed py-16 text-center">
+              <div className="flex flex-col items-center justify-center space-y-4">
+                <div className="rounded-full bg-secondary p-4">
+                  <Bot className="h-8 w-8 text-primary" />
+                </div>
+                <div className="space-y-1">
+                  <div className="text-base font-semibold">
+                    No agents deployed yet.
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Create your first agent to get started.
+                  </p>
+                </div>
+                <Button size="sm" onClick={() => setAddDialogOpen(true)}>
+                  Deploy First Agent
+                </Button>
+              </div>
             </div>
           )}
         </div>
@@ -129,12 +153,14 @@ export default function AgentsPage() {
 
           <div className="grid gap-4 md:grid-cols-2">
             {publicAgentsQuery.isLoading ? (
-              <Skeleton className="h-[140px] w-full rounded-xl" />
+              <Skeleton className="h-[140px] w-full rounded-lg" />
             ) : (
               publicAgentsQuery.data?.map((agent: any) => (
                 <Card key={agent.id}>
                   <CardHeader className="space-y-2">
-                    <CardTitle className="text-base">{agent.name}</CardTitle>
+                    <CardTitle className="text-base font-mono">
+                      {agent.name}
+                    </CardTitle>
                     <CardDescription>
                       {agent.description || "No description"}
                     </CardDescription>
@@ -150,7 +176,7 @@ export default function AgentsPage() {
               ))
             )}
             {publicAgentsQuery.data?.length === 0 && (
-              <div className="col-span-full rounded-xl border-2 border-dashed py-10 text-center text-muted-foreground">
+              <div className="col-span-full rounded-lg border-2 border-dashed py-10 text-center text-muted-foreground">
                 No public agents yet.
               </div>
             )}
@@ -160,7 +186,9 @@ export default function AgentsPage() {
             <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
               Close
             </Button>
-            <Button onClick={() => router.push("/dashboard/agents/new")}>Create</Button>
+            <Button onClick={() => router.push("/dashboard/agents/new")}>
+              Create
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

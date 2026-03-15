@@ -160,8 +160,8 @@ export function ChatClient({ chatId }: { chatId: string }) {
           <DialogHeader>
             <DialogTitle>Clear chat history</DialogTitle>
             <DialogDescription>
-              Are you sure you want to clear all message history for &quot;{chatTitle}&quot;? This
-              action cannot be undone.
+              Are you sure you want to clear all message history for &quot;
+              {chatTitle}&quot;? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -188,8 +188,8 @@ export function ChatClient({ chatId }: { chatId: string }) {
             <DialogTitle>Delete chat</DialogTitle>
             <DialogDescription>
               Are you sure you want to delete &quot;{chatTitle}&quot;? This
-              action cannot be undone and all message history will be permanently
-              removed.
+              action cannot be undone and all message history will be
+              permanently removed.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

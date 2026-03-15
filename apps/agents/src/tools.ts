@@ -43,7 +43,7 @@ async function invokeMcpTool(tool: ResolvedMcpTool, args: unknown) {
 
 function buildMcpToolImpl(
   tool: ResolvedMcpTool,
-  onToolError?: (toolId: string, error: string) => void
+  onToolError?: (toolId: string, error: string) => void,
 ): ToolImplementation {
   return {
     id: tool.id,

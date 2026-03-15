@@ -94,7 +94,7 @@ export async function syncOrg(clerkOrgId: string, name: string) {
 export async function syncOrgMember(
   clerkOrgId: string,
   clerkUserId: string,
-  role: string
+  role: string,
 ) {
   const db = getDb();
   const now = new Date();
@@ -110,7 +110,7 @@ export async function syncOrgMember(
 
   if (!user) {
     throw new Error(
-      `Could not sync membership: User(${clerkUserId}) not found`
+      `Could not sync membership: User(${clerkUserId}) not found`,
     );
   }
 
@@ -171,8 +171,8 @@ export async function deleteOrgMember(clerkOrgId: string, clerkUserId: string) {
     .where(
       and(
         eq(orgMembers.clerkOrgId, clerkOrgId),
-        eq(orgMembers.clerkUserId, clerkUserId)
-      )
+        eq(orgMembers.clerkUserId, clerkUserId),
+      ),
     );
 }
 
@@ -191,7 +191,7 @@ export async function verifyUserInGroup(userId: string, groupId: string) {
   const member = await db.query.chatMembers.findFirst({
     where: and(
       eq(chatMembers.configId, groupId),
-      eq(chatMembers.userId, userId)
+      eq(chatMembers.userId, userId),
     ),
   });
 
@@ -247,7 +247,7 @@ export async function isSuperAdmin(userId: string): Promise<boolean> {
 // Get me
 export async function getMe(
   userId: string,
-  orgId: string | null
+  orgId: string | null,
 ): Promise<AxonUser | null> {
   const db = getDb();
   const user = await db.query.users.findFirst({

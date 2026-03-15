@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import type { ChatAgentSetup } from "@axon/shared";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -55,9 +55,15 @@ type ChatFormDialogProps = {
 };
 
 function buildNicknameSeed(agentName: string, agentId: string): string {
-  const cleaned = agentName.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "_");
+  const cleaned = agentName
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "_");
   if (cleaned.length >= 2) return cleaned.slice(0, 24);
-  return `agent_${agentId.replace(/[^a-z0-9]/gi, "").slice(-6).toLowerCase()}`;
+  return `agent_${agentId
+    .replace(/[^a-z0-9]/gi, "")
+    .slice(-6)
+    .toLowerCase()}`;
 }
 
 type FormState = {
@@ -135,17 +141,16 @@ export function ChatFormDialog({
     form.title.trim().length > 0 &&
     selectedAgentSetup.length > 0 &&
     selectedAgentSetup.every(
-      (entry) => entry.nickname.length >= 2 && entry.responsibility.length >= 3
+      (entry) => entry.nickname.length >= 2 && entry.responsibility.length >= 3,
     );
 
   const toggleAgent = (agentId: string) => {
-    const agentName =
-      agents.find((a) => a.id === agentId)?.name ?? agentId;
+    const agentName = agents.find((a) => a.id === agentId)?.name ?? agentId;
     setForm((prev) => ({
       ...prev,
       agentSetup: prev.agentIds.includes(agentId)
         ? Object.fromEntries(
-            Object.entries(prev.agentSetup).filter(([key]) => key !== agentId)
+            Object.entries(prev.agentSetup).filter(([key]) => key !== agentId),
           )
         : {
             ...prev.agentSetup,
@@ -167,7 +172,7 @@ export function ChatFormDialog({
   const setAgentSetupField = (
     agentId: string,
     field: keyof AgentSetupDraft,
-    value: string
+    value: string,
   ) => {
     setForm((prev) => ({
       ...prev,
@@ -216,14 +221,20 @@ export function ChatFormDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="team" className="flex-1 overflow-hidden flex flex-col">
+        <Tabs
+          defaultValue="team"
+          className="flex-1 overflow-hidden flex flex-col"
+        >
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="team">Team</TabsTrigger>
             <TabsTrigger value="routing">Routing</TabsTrigger>
           </TabsList>
 
           {/* Tab 1: Team */}
-          <TabsContent value="team" className="flex-1 overflow-y-auto space-y-4 pr-1">
+          <TabsContent
+            value="team"
+            className="flex-1 overflow-y-auto space-y-4 pr-1"
+          >
             <div className="grid gap-2">
               <Label htmlFor="chat-title">Title</Label>
               <Input
@@ -239,9 +250,13 @@ export function ChatFormDialog({
             <div className="grid gap-2">
               <Label>Agents</Label>
               {agentsLoading ? (
-                <p className="text-sm text-muted-foreground">Loading agents...</p>
+                <p className="text-sm text-muted-foreground">
+                  Loading agents...
+                </p>
               ) : agents.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No agents available.</p>
+                <p className="text-sm text-muted-foreground">
+                  No agents available.
+                </p>
               ) : (
                 <div className="grid gap-2 max-h-36 overflow-y-auto">
                   {agents.map((agent) => (
@@ -269,20 +284,31 @@ export function ChatFormDialog({
                   const agentName =
                     agents.find((a) => a.id === agentId)?.name ?? agentId;
                   return (
-                    <div key={agentId} className="grid gap-2 rounded border p-2">
+                    <div
+                      key={agentId}
+                      className="grid gap-2 rounded border p-2"
+                    >
                       <div className="text-sm font-medium">{agentName}</div>
                       <Input
                         placeholder="Nickname (e.g. planner)"
                         value={form.agentSetup[agentId]?.nickname ?? ""}
                         onChange={(e) =>
-                          setAgentSetupField(agentId, "nickname", e.target.value)
+                          setAgentSetupField(
+                            agentId,
+                            "nickname",
+                            e.target.value,
+                          )
                         }
                       />
                       <Input
                         placeholder="Responsibility (e.g. planning and sequencing work)"
                         value={form.agentSetup[agentId]?.responsibility ?? ""}
                         onChange={(e) =>
-                          setAgentSetupField(agentId, "responsibility", e.target.value)
+                          setAgentSetupField(
+                            agentId,
+                            "responsibility",
+                            e.target.value,
+                          )
                         }
                       />
                     </div>
@@ -293,7 +319,10 @@ export function ChatFormDialog({
           </TabsContent>
 
           {/* Tab 2: Routing */}
-          <TabsContent value="routing" className="flex-1 overflow-y-auto space-y-4 pr-1">
+          <TabsContent
+            value="routing"
+            className="flex-1 overflow-y-auto space-y-4 pr-1"
+          >
             <div className="flex items-center justify-between rounded-md border p-3">
               <div>
                 <Label className="text-sm font-medium">Routing Mode</Label>
@@ -320,10 +349,13 @@ export function ChatFormDialog({
                 <div className="grid gap-2">
                   <Label htmlFor="default-agent">
                     Coordinator Agent{" "}
-                    <span className="text-muted-foreground font-normal">(optional)</span>
+                    <span className="text-muted-foreground font-normal">
+                      (optional)
+                    </span>
                   </Label>
                   <p className="text-xs text-muted-foreground">
-                    Fallback agent when no @mention is detected. Not required if agents mention each other.
+                    Fallback agent when no @mention is detected. Not required if
+                    agents mention each other.
                   </p>
                   <select
                     id="default-agent"
@@ -352,7 +384,8 @@ export function ChatFormDialog({
                 <div className="grid gap-2">
                   <Label htmlFor="trigger-depth">Trigger Depth Limit</Label>
                   <p className="text-xs text-muted-foreground">
-                    Max agent-to-agent trigger chain length before stopping. Higher values allow longer autonomous conversations.
+                    Max agent-to-agent trigger chain length before stopping.
+                    Higher values allow longer autonomous conversations.
                   </p>
                   <Input
                     id="trigger-depth"
@@ -365,7 +398,7 @@ export function ChatFormDialog({
                         ...prev,
                         triggerDepthLimit: Math.max(
                           1,
-                          Math.min(100, parseInt(e.target.value) || 1)
+                          Math.min(100, parseInt(e.target.value) || 1),
                         ),
                       }))
                     }
@@ -377,7 +410,8 @@ export function ChatFormDialog({
             <div className="grid gap-2">
               <Label htmlFor="history-mode">History Mode</Label>
               <p className="text-xs text-muted-foreground">
-                Internal stores message history. External is for integrations (e.g. Slack) where history lives elsewhere.
+                Internal stores message history. External is for integrations
+                (e.g. Slack) where history lives elsewhere.
               </p>
               <select
                 id="history-mode"
@@ -396,7 +430,9 @@ export function ChatFormDialog({
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="compaction-threshold">Context Limit (tokens)</Label>
+              <Label htmlFor="compaction-threshold">
+                Context Limit (tokens)
+              </Label>
               <p className="text-xs text-muted-foreground">
                 Token count before context compaction triggers.
               </p>
@@ -411,7 +447,7 @@ export function ChatFormDialog({
                     ...prev,
                     compactionThreshold: Math.max(
                       1000,
-                      Math.min(200000, parseInt(e.target.value) || 50000)
+                      Math.min(200000, parseInt(e.target.value) || 50000),
                     ),
                   }))
                 }
@@ -420,9 +456,7 @@ export function ChatFormDialog({
           </TabsContent>
         </Tabs>
 
-        {formError && (
-          <p className="text-sm text-destructive">{formError}</p>
-        )}
+        {formError && <p className="text-sm text-destructive">{formError}</p>}
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>

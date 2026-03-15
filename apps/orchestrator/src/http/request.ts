@@ -25,7 +25,9 @@ export function getBearerToken(request: Request): string {
   return token;
 }
 
-export function parseCleanupStatus(value: unknown): "active" | "archived" | "idle" {
+export function parseCleanupStatus(
+  value: unknown,
+): "active" | "archived" | "idle" {
   if (value === undefined) {
     return "idle";
   }

@@ -32,9 +32,11 @@ type ChatControllerClient = {
 async function requestChatController<T>(
   path: string,
   payload?: unknown,
-  method: "POST" | "GET" = "POST"
+  method: "POST" | "GET" = "POST",
 ): Promise<T> {
-  const baseUrl = (process.env.CHAT_CONTROLLER_URL || "http://localhost:8790").replace(/\/$/, "");
+  const baseUrl = (
+    process.env.CHAT_CONTROLLER_URL || "http://localhost:8790"
+  ).replace(/\/$/, "");
   const response = await fetch(`${baseUrl}${path}`, {
     method,
     headers: { "content-type": "application/json" },
@@ -54,7 +56,7 @@ export function getChatControllerClient(): ChatControllerClient {
     postMessage: (payload) =>
       requestChatController<PostMessageResponse>(
         `/chats/${payload.chat_id}/messages`,
-        payload
+        payload,
       ),
     listMessages: (chatId) =>
       requestChatController<{

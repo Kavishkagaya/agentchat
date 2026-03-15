@@ -70,15 +70,12 @@ export async function listModels(orgId: string) {
   });
 }
 
-export async function getModel(params: {
-  id: string;
-  orgId: string;
-}) {
+export async function getModel(params: { id: string; orgId: string }) {
   const db = getDb();
   return await db.query.modelCatalog.findFirst({
     where: and(
       eq(modelCatalog.orgId, params.orgId),
-      eq(modelCatalog.id, params.id)
+      eq(modelCatalog.id, params.id),
     ),
   });
 }
@@ -103,26 +100,17 @@ export async function updateModel(params: UpdateModelParams) {
       updatedAt: now,
     })
     .where(
-      and(
-        eq(modelCatalog.orgId, params.orgId),
-        eq(modelCatalog.id, params.id)
-      )
+      and(eq(modelCatalog.orgId, params.orgId), eq(modelCatalog.id, params.id)),
     );
 
   return { updatedAt: now };
 }
 
-export async function deleteModel(params: {
-  id: string;
-  orgId: string;
-}) {
+export async function deleteModel(params: { id: string; orgId: string }) {
   const db = getDb();
   await db
     .delete(modelCatalog)
     .where(
-      and(
-        eq(modelCatalog.orgId, params.orgId),
-        eq(modelCatalog.id, params.id)
-      )
+      and(eq(modelCatalog.orgId, params.orgId), eq(modelCatalog.id, params.id)),
     );
 }

@@ -158,7 +158,10 @@ export const chatsRouter = createTRPCRouter({
       if (configToPersist) {
         try {
           const orchestrator = getOrchestratorClient();
-          await orchestrator.syncConfig(input.chatId, configToPersist as Record<string, unknown>);
+          await orchestrator.syncConfig(
+            input.chatId,
+            configToPersist as Record<string, unknown>,
+          );
         } catch (err) {
           console.error("Failed to sync config to memory controller:", err);
           // Non-fatal: next /init or restart will pick up the DB config

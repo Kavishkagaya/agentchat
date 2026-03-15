@@ -12,7 +12,7 @@ export async function getSystemConfig(key: string): Promise<unknown | null> {
 
 export async function setSystemConfig(
   key: string,
-  value: unknown
+  value: unknown,
 ): Promise<void> {
   const db = getDb();
   const now = new Date();

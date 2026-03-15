@@ -13,7 +13,7 @@ import { getOrchestratorClient } from "../workers/orchestrator";
 
 export async function createContext(opts: { req: Request | NextRequest }) {
   const { userId: clerkUserId, orgId: clerkOrgId } = getAuth(
-    opts.req as NextRequest
+    opts.req as NextRequest,
   );
 
   // Resolve internal IDs if available

@@ -1,8 +1,8 @@
 "use client";
 
+import type { ChatHistoryMessage, ChatWsEvent } from "@axon/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/app/trpc/client";
-import type { ChatWsEvent, ChatHistoryMessage } from "@axon/shared";
 import type { ChatMessage } from "@/types/chat";
 
 function mapHistoryMessage(m: ChatHistoryMessage): ChatMessage {
@@ -22,7 +22,11 @@ function mapHistoryMessage(m: ChatHistoryMessage): ChatMessage {
   };
 }
 
-type ConnectionStatus = "connecting" | "connected" | "disconnected" | "reconnecting";
+type ConnectionStatus =
+  | "connecting"
+  | "connected"
+  | "disconnected"
+  | "reconnecting";
 
 const MAX_RECONNECT_ATTEMPTS = 8;
 const BASE_RECONNECT_DELAY_MS = 1500;
@@ -32,7 +36,8 @@ export function useChatSocket(chatId: string) {
   const [isThinking, setIsThinking] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connecting");
+  const [connectionStatus, setConnectionStatus] =
+    useState<ConnectionStatus>("connecting");
 
   const socketRef = useRef<WebSocket | null>(null);
   const connectingRef = useRef(false);
@@ -47,7 +52,9 @@ export function useChatSocket(chatId: string) {
     if (historyData?.messages) {
       setMessages((prev) =>
         prev.length === 0
-          ? (historyData.messages as ChatHistoryMessage[]).map(mapHistoryMessage)
+          ? (historyData.messages as ChatHistoryMessage[]).map(
+              mapHistoryMessage,
+            )
           : prev,
       );
     }
@@ -101,7 +108,7 @@ export function useChatSocket(chatId: string) {
           if (attempt < MAX_RECONNECT_ATTEMPTS) {
             reconnectAttemptsRef.current += 1;
             const delay = Math.min(
-              BASE_RECONNECT_DELAY_MS * (2 ** attempt),
+              BASE_RECONNECT_DELAY_MS * 2 ** attempt,
               30_000,
             );
             setConnectionStatus("reconnecting");
@@ -119,7 +126,7 @@ export function useChatSocket(chatId: string) {
           if (attempt < MAX_RECONNECT_ATTEMPTS) {
             reconnectAttemptsRef.current += 1;
             const delay = Math.min(
-              BASE_RECONNECT_DELAY_MS * (2 ** attempt),
+              BASE_RECONNECT_DELAY_MS * 2 ** attempt,
               30_000,
             );
             setConnectionStatus("reconnecting");
@@ -240,9 +247,7 @@ export function useChatSocket(chatId: string) {
   }, [chatId]);
 
   const sendMessage = useCallback((text: string) => {
-    socketRef.current?.send(
-      JSON.stringify({ type: "message", text }),
-    );
+    socketRef.current?.send(JSON.stringify({ type: "message", text }));
   }, []);
 
   return {
