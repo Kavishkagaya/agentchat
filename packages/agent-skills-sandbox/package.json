@@ -1,0 +1,22 @@
+{
+  "name": "@axon/agent-skills-sandbox",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@cloudflare/sandbox": "latest",
+    "@axon/agent-factory": "workspace:^",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@axon/typescript-config": "workspace:^",
+    "@cloudflare/workers-types": "^4.20260307.1",
+    "typescript": "5.6.3"
+  }
+}

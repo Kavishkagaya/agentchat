@@ -3,15 +3,18 @@ import {
   DefaultToolRegistry,
   type ToolImplementation,
 } from "@axon/agent-factory";
+import { createSandboxSkills } from "@axon/agent-skills-sandbox";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { z } from "zod";
+import type { Env } from "./env";
 import type { ResolvedMcpTool } from "./resolution";
 import { recordToolError } from "./telemetry";
 
 type ToolRegistryOptions = {
   mcpTools?: ResolvedMcpTool[];
   onToolError?: (toolId: string, error: string) => void;
+  env?: Env;
 };
 
 async function invokeMcpTool(tool: ResolvedMcpTool, args: unknown) {
@@ -71,11 +74,21 @@ function buildMcpToolImpl(
 export function createToolRegistry(options?: ToolRegistryOptions) {
   const registry = new DefaultToolRegistry();
 
+  // Register default tools (echo, current_time, http_request)
   const tools = createDefaultTools();
   for (const toolImpl of tools) {
     registry.register(toolImpl);
   }
 
+  // Register sandbox skills (file ops, shell exec, etc.)
+  if (options?.env) {
+    const sandboxSkills = createSandboxSkills(options.env);
+    for (const skill of sandboxSkills) {
+      registry.register(skill);
+    }
+  }
+
+  // Register MCP tools
   for (const mcpTool of options?.mcpTools ?? []) {
     registry.register(buildMcpToolImpl(mcpTool, options?.onToolError));
   }

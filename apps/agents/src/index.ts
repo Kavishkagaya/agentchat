@@ -8,6 +8,9 @@ import {
   handleAgentRunStream,
 } from "./handlers";
 
+// Required by Cloudflare Sandbox SDK
+export { Sandbox } from "@cloudflare/sandbox";
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     try {

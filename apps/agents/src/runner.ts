@@ -47,6 +47,7 @@ export async function buildAgentRunner(
   config.tools = toolRefs;
 
   const toolRegistry = createToolRegistry({
+    env,
     mcpTools,
     onToolError: callbacks?.onToolError,
   });

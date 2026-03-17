@@ -36,12 +36,18 @@ importers:
       '@axon/agent-factory':
         specifier: workspace:*
         version: link:../../packages/agent-factory
+      '@axon/agent-skills-sandbox':
+        specifier: workspace:*
+        version: link:../../packages/agent-skills-sandbox
       '@axon/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       '@axon/worker-database':
         specifier: workspace:*
         version: link:../../packages/worker-database
+      '@cloudflare/sandbox':
+        specifier: latest
+        version: 0.7.18
       '@modelcontextprotocol/sdk':
         specifier: ^1.27.1
         version: 1.27.1(zod@4.3.6)
@@ -305,6 +311,28 @@ importers:
       '@axon/typescript-config':
         specifier: workspace:^
         version: link:../typescript-config
+      typescript:
+        specifier: 5.6.3
+        version: 5.6.3
+
+  packages/agent-skills-sandbox:
+    dependencies:
+      '@axon/agent-factory':
+        specifier: workspace:^
+        version: link:../agent-factory
+      '@cloudflare/sandbox':
+        specifier: latest
+        version: 0.7.18
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@axon/typescript-config':
+        specifier: workspace:^
+        version: link:../typescript-config
+      '@cloudflare/workers-types':
+        specifier: ^4.20260307.1
+        version: 4.20260307.1
       typescript:
         specifier: 5.6.3
         version: 5.6.3
@@ -810,9 +838,26 @@ packages:
     resolution: {integrity: sha512-nGCP1MpyFj8TxF8Vg7/WJLS+1cUjFCYJ03/2tEbDedYOwB+LgRRrHCMchSmWDehdcjlTUHC6MQYWMyGThLirLg==}
     engines: {node: '>=20.9.0'}
 
+  '@cloudflare/containers@0.1.1':
+    resolution: {integrity: sha512-YTdobRTnTlUOUPMFemufH367A9Z8pDfZ+UboYMLbGpO0VlvEXZDiioSmXPQMHld2vRtkL31mcRii3bcbQU6fdw==}
+
   '@cloudflare/kv-asset-handler@0.4.2':
     resolution: {integrity: sha512-SIOD2DxrRRwQ+jgzlXCqoEFiKOFqaPjhnNTGKXSRLvp1HiOvapLaFG2kEr9dYQTYe8rKrd9uvDUzmAITeNyaHQ==}
     engines: {node: '>=18.0.0'}
+
+  '@cloudflare/sandbox@0.7.18':
+    resolution: {integrity: sha512-v9hNXik88TfhLu83RRf1I8t98L86bt2RJVJB+EPIyZB7vBVwsx8w/veQ1BoJfbf/MSETtc/zLpQROgtbe5RYRw==}
+    peerDependencies:
+      '@openai/agents': ^0.3.3
+      '@opencode-ai/sdk': ^1.1.40
+      '@xterm/xterm': '>=5.0.0'
+    peerDependenciesMeta:
+      '@openai/agents':
+        optional: true
+      '@opencode-ai/sdk':
+        optional: true
+      '@xterm/xterm':
+        optional: true
 
   '@cloudflare/unenv-preset@2.14.0':
     resolution: {integrity: sha512-XKAkWhi1nBdNsSEoNG9nkcbyvfUrSjSf+VYVPfOto3gLTZVc3F4g6RASCMh6IixBKCG2yDgZKQIHGKtjcnLnKg==}
@@ -6762,7 +6807,14 @@ snapshots:
       - supports-color
       - typescript
 
+  '@cloudflare/containers@0.1.1': {}
+
   '@cloudflare/kv-asset-handler@0.4.2': {}
+
+  '@cloudflare/sandbox@0.7.18':
+    dependencies:
+      '@cloudflare/containers': 0.1.1
+      aws4fetch: 1.0.20
 
   '@cloudflare/unenv-preset@2.14.0(unenv@2.0.0-rc.24)(workerd@1.20260305.0)':
     dependencies:
@@ -8899,8 +8951,7 @@ snapshots:
     dependencies:
       possible-typed-array-names: 1.1.0
 
-  aws4fetch@1.0.20:
-    optional: true
+  aws4fetch@1.0.20: {}
 
   axe-core@4.11.1: {}
 
@@ -12032,7 +12083,7 @@ snapshots:
 
   rpc-websockets@9.3.5:
     dependencies:
-      '@swc/helpers': 0.5.15
+      '@swc/helpers': 0.5.17
       '@types/uuid': 10.0.0
       '@types/ws': 8.18.1
       buffer: 6.0.3

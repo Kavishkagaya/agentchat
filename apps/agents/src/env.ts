@@ -1,3 +1,5 @@
+import type { Sandbox } from "@cloudflare/sandbox";
+
 export interface Env {
   ENVIRONMENT: string;
   DATABASE_URL: string;
@@ -5,6 +7,9 @@ export interface Env {
   // Cache Configuration
   AGENTS_KV?: KVNamespace;
   AGENT_CONFIG_CACHE_TTL_SECONDS?: string;
+
+  // Sandbox Durable Object
+  Sandbox: DurableObjectNamespace<Sandbox>;
 
   // Secrete keys and tokens
   ORCHESTRATOR_PUBLIC_KEY?: string;

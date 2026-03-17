@@ -12,8 +12,10 @@
   "dependencies": {
     "@ai-sdk/openai": "^3.0.30",
     "@axon/agent-factory": "workspace:*",
+    "@axon/agent-skills-sandbox": "workspace:*",
     "@axon/shared": "workspace:*",
     "@axon/worker-database": "workspace:*",
+    "@cloudflare/sandbox": "latest",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@neondatabase/serverless": "0.10.4",
     "drizzle-orm": "0.45.1",

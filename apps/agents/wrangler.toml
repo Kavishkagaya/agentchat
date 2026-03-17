@@ -3,6 +3,10 @@ main = "src/index.ts"
 compatibility_date = "2025-02-01"
 compatibility_flags = ["nodejs_compat"]
 
+[[durable_objects.bindings]]
+name = "Sandbox"
+class_name = "Sandbox"
+
 [vars]
 ENVIRONMENT = "dev"
 CLOUDFLARE_AIG_TOKEN = ""
