@@ -151,6 +151,8 @@ export type AgentConfigJson = {
   model?: string;
   system_prompt?: string;
   tools?: AgentToolRef[];
+  sandboxTools?: string[];
+  skills?: string[];
   temperature?: number;
   max_tokens?: number;
   top_p?: number;
@@ -159,6 +161,16 @@ export type AgentConfigJson = {
   stop?: string[];
   seed?: number;
   [key: string]: unknown;
+};
+
+export type SkillRecord = {
+  id: string;
+  name: string;
+  description?: string;
+  content: string;
+  orgId?: string;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 // ── Agent SSE event types (agents service → memory-controller) ──
@@ -554,3 +566,43 @@ export function buildChatConfig(input: {
     mention_map: mentionMap,
   });
 }
+
+// ── Sandbox Tool Metadata ──
+
+export const SANDBOX_TOOL_METADATA = [
+  { id: "sandbox_exec", name: "Shell Exec", description: "Run shell commands" },
+  { id: "sandbox_read_file", name: "Read File", description: "Read files from sandbox" },
+  { id: "sandbox_write_file", name: "Write File", description: "Write/create files" },
+  { id: "sandbox_list_files", name: "List Files", description: "List files/directories" },
+  { id: "sandbox_mkdir", name: "Make Dir", description: "Create directories" },
+  { id: "sandbox_delete_file", name: "Delete File", description: "Delete files" },
+  { id: "sandbox_file_exists", name: "File Exists", description: "Check if file exists" },
+  { id: "sandbox_rename_file", name: "Rename File", description: "Move or rename files" },
+] as const;
+
+export type SandboxToolId = (typeof SANDBOX_TOOL_METADATA)[number]["id"];
+
+// ── Sandbox Session Interface ──
+// Used by agent-factory (createSandboxTools) and apps/agents (CF resolver)
+
+export interface SandboxSession {
+  exec(cmd: string, opts?: { cwd?: string }): Promise<{ stdout: string; stderr: string; exitCode: number; duration?: number }>;
+  readFile(path: string, opts?: { encoding?: string }): Promise<string>;
+  writeFile(path: string, content: string, opts?: { encoding?: string }): Promise<void>;
+  listFiles(path: string, opts?: { recursive?: boolean; includeHidden?: boolean }): Promise<unknown>;
+  mkdir(path: string, opts?: { recursive?: boolean }): Promise<void>;
+  deleteFile(path: string): Promise<void>;
+  exists(path: string): Promise<boolean>;
+  renameFile(from: string, to: string): Promise<void>;
+}
+
+export type SandboxResolver = (agentId: string) => SandboxSession | Promise<SandboxSession>;
+
+// ── MCP Server Resolution ──
+// Used by apps/agents (resolution.ts + runner.ts)
+
+export type ResolvedMcpServer = {
+  serverId: string;
+  url: string;
+  token: string;
+};

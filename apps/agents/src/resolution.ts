@@ -1,7 +1,6 @@
-import type { AgentToolRef, ModelEnv } from "@axon/agent-factory";
+import type { ModelEnv } from "@axon/agent-factory";
+import type { ResolvedMcpServer } from "@axon/shared";
 import { getMcpServer, getModel, getSecretValue } from "@axon/worker-database";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { TtlCache } from "./cache";
 import {
   readLatestVersion,
@@ -19,17 +18,6 @@ type ModelRecord = NonNullable<Awaited<ReturnType<typeof getModel>>>;
 type SecretRecord = NonNullable<Awaited<ReturnType<typeof getSecretValue>>>;
 
 type McpServerRecord = NonNullable<Awaited<ReturnType<typeof getMcpServer>>>;
-
-export type ResolvedMcpTool = {
-  description?: string | null;
-  id: string;
-  inputSchema?: Record<string, unknown> | null;
-  name: string;
-  serverId: string;
-  serverUrl: string;
-  token: string;
-  toolId: string;
-};
 
 const modelCache = new TtlCache<ModelRecord>(MAX_CACHE_ENTRIES);
 const secretCache = new TtlCache<SecretRecord>(MAX_CACHE_ENTRIES);
@@ -185,40 +173,6 @@ async function loadMcpServerCached(
   return record;
 }
 
-async function fetchMcpToolsLive(
-  url: string,
-  token: string,
-): Promise<
-  Array<{
-    toolId: string;
-    name: string;
-    description: string | null;
-    inputSchema: Record<string, unknown> | null;
-  }>
-> {
-  const client = new Client({ name: "AgentChat", version: "1.0.0" });
-  const transport = new StreamableHTTPClientTransport(new URL(url), {
-    requestInit: {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      } as HeadersInit,
-    },
-  });
-
-  try {
-    await client.connect(transport);
-    const result = await client.listTools();
-    return result.tools.map((tool) => ({
-      toolId: tool.name,
-      name: tool.name,
-      description: tool.description ?? null,
-      inputSchema: (tool.inputSchema as Record<string, unknown>) ?? null,
-    }));
-  } finally {
-    await transport.close();
-  }
-}
-
 function extractMcpServerIds(rawConfig: unknown): string[] {
   if (!rawConfig || typeof rawConfig !== "object") {
     return [];
@@ -230,55 +184,25 @@ function extractMcpServerIds(rawConfig: unknown): string[] {
   return config.mcpServers.filter((id): id is string => typeof id === "string");
 }
 
-function extractAgentToolRefs(rawTools: unknown): AgentToolRef[] {
-  if (!Array.isArray(rawTools)) {
+function extractSandboxToolIds(rawConfig: unknown): string[] {
+  if (!rawConfig || typeof rawConfig !== "object") {
     return [];
   }
-  const refs: AgentToolRef[] = [];
-  for (const tool of rawTools) {
-    if (!tool || typeof tool !== "object") {
-      continue;
-    }
-    const candidate = tool as Record<string, unknown>;
-    if (typeof candidate.id !== "string") {
-      continue;
-    }
-    refs.push({
-      id: candidate.id,
-      name: typeof candidate.name === "string" ? candidate.name : undefined,
-      description:
-        typeof candidate.description === "string"
-          ? candidate.description
-          : undefined,
-      parameters:
-        candidate.parameters && typeof candidate.parameters === "object"
-          ? (candidate.parameters as Record<string, unknown>)
-          : undefined,
-      config:
-        candidate.config && typeof candidate.config === "object"
-          ? (candidate.config as Record<string, unknown>)
-          : undefined,
-    });
+  const config = rawConfig as Record<string, unknown>;
+  if (!Array.isArray(config.sandboxTools)) {
+    return [];
   }
-  return refs;
+  return config.sandboxTools.filter((id): id is string => typeof id === "string");
 }
 
-export async function resolveTooling(
+export async function resolveMcpServers(
   env: Env,
   orgId: string,
-  rawConfig: unknown,
-): Promise<{ toolRefs: AgentToolRef[]; mcpTools: ResolvedMcpTool[] }> {
-  const mcpServerIds = extractMcpServerIds(rawConfig);
-  const directToolRefs = extractAgentToolRefs(rawConfig);
+  serverIds: string[],
+): Promise<ResolvedMcpServer[]> {
+  const servers: ResolvedMcpServer[] = [];
 
-  if (mcpServerIds.length === 0) {
-    return { toolRefs: directToolRefs, mcpTools: [] };
-  }
-
-  const resolvedTools: ResolvedMcpTool[] = [];
-  const toolRefs: AgentToolRef[] = [...directToolRefs];
-
-  for (const serverId of mcpServerIds) {
+  for (const serverId of serverIds) {
     const server = await loadMcpServerCached(env, orgId, serverId);
     if (!server || server.status !== "valid") {
       continue;
@@ -297,29 +221,25 @@ export async function resolveTooling(
       continue;
     }
 
-    const tools = await fetchMcpToolsLive(server.url, token);
-    for (const tool of tools) {
-      const toolId = `mcp:${server.id}:${tool.toolId}`;
-      resolvedTools.push({
-        id: toolId,
-        serverId: server.id,
-        toolId: tool.toolId,
-        name: tool.name,
-        description: tool.description ?? undefined,
-        inputSchema: tool.inputSchema ?? undefined,
-        serverUrl: server.url,
-        token,
-      });
-      toolRefs.push({
-        id: toolId,
-        name: tool.name,
-        description: tool.description ?? undefined,
-        parameters: tool.inputSchema ?? undefined,
-      });
-    }
+    servers.push({
+      serverId: server.id,
+      url: server.url,
+      token,
+    });
   }
 
-  return { toolRefs, mcpTools: resolvedTools };
+  return servers;
+}
+
+export async function resolveTooling(
+  env: Env,
+  orgId: string,
+  rawConfig: unknown,
+): Promise<{ sandboxToolIds: string[]; mcpServerIds: string[] }> {
+  const mcpServerIds = extractMcpServerIds(rawConfig);
+  const sandboxToolIds = extractSandboxToolIds(rawConfig);
+
+  return { sandboxToolIds, mcpServerIds };
 }
 
 function resolveApiKeyEnvVar(kind: string | null | undefined): string {

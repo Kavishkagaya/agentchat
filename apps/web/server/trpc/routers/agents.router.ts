@@ -19,6 +19,8 @@ const agentConfigSchema = z
     systemPrompt: z.string().min(1),
     model: z.string().min(1).optional(),
     mcpServers: z.array(z.string()).optional(),
+    sandboxTools: z.array(z.string()).optional(),
+    skills: z.array(z.string()).optional(),
     temperature: z.number().optional(),
     maxTokens: z.number().optional(),
     topP: z.number().optional(),

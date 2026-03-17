@@ -1,5 +1,5 @@
 import type { ModelMessage } from "ai";
-import type { ZodTypeAny } from "zod";
+import type { z, ZodTypeAny } from "zod";
 
 export type AgentToolRef = {
   id: string;
@@ -53,20 +53,23 @@ export type ToolExecutionContext = {
   tool: AgentToolRef;
 };
 
-export type ToolImplementation = {
+export type ToolImplementation<TSchema extends ZodTypeAny = ZodTypeAny> = {
   id: string;
-  description?: string;
-  schema?: ZodTypeAny;
-  execute: (args: unknown, context: ToolExecutionContext) => Promise<unknown>;
+  description: string;
+  schema: TSchema;
+  execute: (args: z.infer<TSchema>, context: ToolExecutionContext) => Promise<unknown>;
 };
 
 export type ToolRegistry = {
   get: (toolId: string) => ToolImplementation | undefined;
+  has: (toolId: string) => boolean;
+  list: () => ToolImplementation[];
 };
 
 export type AgentFactoryOptions = {
   maxSteps?: number;
   onToolCall?: (toolId: string, args: unknown, toolName?: string) => void;
+  onFinish?: () => Promise<void>;
 };
 
 export type AgentStreamEvent =

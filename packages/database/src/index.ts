@@ -8,4 +8,5 @@ export * from "./services/chats";
 export * from "./services/mcp-servers";
 export * from "./services/model-catalog";
 export * from "./services/secrets";
+export * from "./services/skills";
 export * from "./services/system-config";

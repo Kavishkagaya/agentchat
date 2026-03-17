@@ -1,5 +1,6 @@
 "use client";
 
+import { SANDBOX_TOOL_METADATA } from "@axon/shared";
 import { Trash2 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -11,6 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -40,6 +42,7 @@ export default function AgentEditPage() {
   const agentQuery = api.agents.get.useQuery({ agentId });
   const mcpQuery = api.mcp.list.useQuery();
   const modelsQuery = api.models.list.useQuery();
+  const skillsQuery = api.skills.list.useQuery();
   const updateAgent = api.agents.update.useMutation();
   const deleteAgent = api.agents.delete.useMutation();
 
@@ -50,6 +53,10 @@ export default function AgentEditPage() {
     modelId: "",
   });
   const [selectedServers, setSelectedServers] = useState<McpServer[]>([]);
+  const [selectedSandboxTools, setSelectedSandboxTools] = useState<string[]>(
+    [],
+  );
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [mcpDialogOpen, setMcpDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
@@ -74,6 +81,12 @@ export default function AgentEditPage() {
           setSelectedServers(servers);
         }
       }
+      if (config?.sandboxTools && Array.isArray(config.sandboxTools)) {
+        setSelectedSandboxTools(config.sandboxTools);
+      }
+      if (config?.skills && Array.isArray(config.skills)) {
+        setSelectedSkills(config.skills);
+      }
       setIsInitialized(true);
     }
   }, [agentQuery.data, isInitialized, mcpQuery.data]);
@@ -97,6 +110,9 @@ export default function AgentEditPage() {
         systemPrompt: form.systemPrompt,
         model: selectedModel.modelId,
         mcpServers: selectedServers.map((s) => s.id),
+        sandboxTools:
+          selectedSandboxTools.length > 0 ? selectedSandboxTools : undefined,
+        skills: selectedSkills.length > 0 ? selectedSkills : undefined,
       },
     });
     router.push("/dashboard/agents");
@@ -251,6 +267,98 @@ export default function AgentEditPage() {
         ) : (
           <div className="rounded-xl border-2 border-dashed py-10 text-center text-muted-foreground">
             Select an MCP server to add its tools to this agent.
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-4">
+        <div>
+          <h2 className="font-semibold text-xl">Sandbox Tools</h2>
+          <p className="text-sm text-muted-foreground">
+            Select which sandbox tools this agent can use.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {SANDBOX_TOOL_METADATA.map((tool) => (
+            <div
+              key={tool.id}
+              className="flex items-start space-x-3 p-3 border rounded hover:bg-slate-50 cursor-pointer text-left transition-colors"
+            >
+              <Checkbox
+                checked={selectedSandboxTools.includes(tool.id)}
+                onCheckedChange={(checked) => {
+                  if (checked) {
+                    setSelectedSandboxTools([...selectedSandboxTools, tool.id]);
+                  } else {
+                    setSelectedSandboxTools(
+                      selectedSandboxTools.filter((t) => t !== tool.id),
+                    );
+                  }
+                }}
+                className="mt-1"
+              />
+              <div className="flex-1">
+                <p className="font-medium text-sm">{tool.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {tool.description}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <div>
+          <h2 className="font-semibold text-xl">Skills</h2>
+          <p className="text-sm text-muted-foreground">
+            Select which skills this agent should have access to.
+          </p>
+        </div>
+
+        {skillsQuery.isLoading ? (
+          <Skeleton className="h-32 w-full rounded" />
+        ) : skillsQuery.data && skillsQuery.data.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {skillsQuery.data.map((skill) => (
+              <div
+                key={skill.id}
+                className="flex items-start space-x-3 p-3 border rounded hover:bg-slate-50 cursor-pointer text-left transition-colors"
+              >
+                <Checkbox
+                  checked={selectedSkills.includes(skill.id)}
+                  onCheckedChange={(checked) => {
+                    if (checked) {
+                      setSelectedSkills([...selectedSkills, skill.id]);
+                    } else {
+                      setSelectedSkills(
+                        selectedSkills.filter((s) => s !== skill.id),
+                      );
+                    }
+                  }}
+                  className="mt-1"
+                />
+                <div className="flex-1">
+                  <p className="font-medium text-sm">{skill.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {skill.description}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-xl border-2 border-dashed py-10 text-center text-muted-foreground">
+            <p>No skills available yet.</p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-2"
+              onClick={() => router.push("/dashboard/skills")}
+            >
+              Create a skill
+            </Button>
           </div>
         )}
       </section>

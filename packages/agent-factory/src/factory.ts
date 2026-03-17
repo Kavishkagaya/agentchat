@@ -58,54 +58,66 @@ function resolveMessages(input: AgentRunInput) {
 
 function resolveTools(
   agentId: string,
-  tools: AgentConfig["tools"],
+  toolRefs: AgentConfig["tools"],
   registry: ToolRegistry,
+  mcpToolSets?: ToolSet[],
   options?: AgentFactoryOptions,
 ): ToolSet | undefined {
-  if (!tools || tools.length === 0) {
-    return undefined;
-  }
+  // Start with MCP tools (if any) — these are pre-built by @ai-sdk/mcp
+  const mcpMerged = Object.assign({}, ...(mcpToolSets ?? []));
 
-  return tools.reduce<ToolSet>((acc, toolRef) => {
-    const implementation = registry.get(toolRef.id);
-    const preferredName = toolRef.name ?? toolRef.id;
-    const toolName = acc[preferredName] ? toolRef.id : preferredName;
-    if (!implementation) {
+  // Build registry-based tools from toolRefs
+  let registryTools: ToolSet = {};
+
+  if (toolRefs && toolRefs.length > 0) {
+    registryTools = toolRefs.reduce<ToolSet>((acc, toolRef) => {
+      const implementation = registry.get(toolRef.id);
+      const preferredName = toolRef.name ?? toolRef.id;
+      const toolName = acc[preferredName] ? toolRef.id : preferredName;
+
+      if (!implementation) {
+        acc[toolName] = tool({
+          description: toolRef.description ?? "Unregistered tool",
+          inputSchema: z.record(z.string(), z.any()),
+          execute: async (args) => ({
+            ok: false,
+            error: "tool not registered",
+            tool: toolRef.id,
+            args,
+          }),
+        });
+        return acc;
+      }
+
       acc[toolName] = tool({
-        description: toolRef.description ?? "Unregistered tool",
-        inputSchema: z.record(z.string(), z.any()),
-        execute: async (args) => ({
-          ok: false,
-          error: "tool not registered",
-          tool: toolRef.id,
-          args,
-        }),
+        description: toolRef.description ?? implementation.description ?? "",
+        inputSchema: implementation.schema ?? z.record(z.string(), z.any()),
+        execute: async (args) => {
+          console.log(`[Tool Execute] ${toolName} called with:`, args);
+          options?.onToolCall?.(toolRef.id, args, toolName);
+          const result = await implementation.execute(args, {
+            agent_id: agentId,
+            tool: toolRef,
+          });
+          console.log(`[Tool Execute] ${toolName} returned:`, result);
+          return result;
+        },
       });
       return acc;
-    }
+    }, {});
+  }
 
-    acc[toolName] = tool({
-      description: toolRef.description ?? implementation.description ?? "",
-      inputSchema: implementation.schema ?? z.record(z.string(), z.any()),
-      execute: async (args) => {
-        console.log(`[Tool Execute] ${toolName} called with:`, args);
-        options?.onToolCall?.(toolRef.id, args, toolName);
-        const result = await implementation.execute(args, {
-          agent_id: agentId,
-          tool: toolRef,
-        });
-        console.log(`[Tool Execute] ${toolName} returned:`, result);
-        return result;
-      },
-    });
-    return acc;
-  }, {});
+  // Merge: registry tools win on name collision
+  const merged = { ...mcpMerged, ...registryTools };
+
+  return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
 export function createAgentRunner(params: {
   config: AgentConfig;
   env: ModelEnv;
   toolRegistry: ToolRegistry;
+  mcpToolSets?: ToolSet[];
   modelRegistry?: ModelRegistry;
   options?: AgentFactoryOptions;
 }) {
@@ -123,6 +135,7 @@ export function createAgentRunner(params: {
     params.config.agent_id,
     params.config.tools,
     params.toolRegistry,
+    params.mcpToolSets,
     params.options,
   );
 
@@ -140,7 +153,11 @@ export function createAgentRunner(params: {
         tools,
       });
 
-      return agent.generate({ messages });
+      try {
+        return await agent.generate({ messages });
+      } finally {
+        await params.options?.onFinish?.();
+      }
     },
 
     async *runStream(input: AgentRunInput): AsyncGenerator<AgentStreamEvent> {
@@ -165,56 +182,60 @@ export function createAgentRunner(params: {
         maxSteps: params.options?.maxSteps ?? 10,
       } as any);
 
-      for await (const part of result.fullStream) {
-        const p = part as any;
-        switch (p.type) {
-          case "text-delta":
-            yield { type: "text_delta", text: p.textDelta || p.text || "" };
-            break;
-          case "reasoning":
-            yield { type: "reasoning", text: p.textDelta || p.text || "" };
-            break;
-          case "tool-call":
-            params.options?.onToolCall?.(
-              p.toolCallId,
-              p.args || p.input,
-              p.toolName,
-            );
-            yield {
-              type: "tool_call",
-              tool_call_id: p.toolCallId,
-              name: p.toolName,
-              args: p.args || p.input,
-            };
-            break;
-          case "tool-result":
-            yield {
-              type: "tool_result",
-              tool_call_id: p.toolCallId,
-              name: p.toolName,
-              result: p.result,
-            };
-            break;
-          case "error":
-            yield { type: "error", error: String(p.error) };
-            break;
-          case "step-finish":
-            yield {
-              type: "step_finish",
-              finish_reason: p.finishReason,
-              usage: p.usage,
-            };
-            break;
+      try {
+        for await (const part of result.fullStream) {
+          const p = part as any;
+          switch (p.type) {
+            case "text-delta":
+              yield { type: "text_delta", text: p.textDelta || p.text || "" };
+              break;
+            case "reasoning":
+              yield { type: "reasoning", text: p.textDelta || p.text || "" };
+              break;
+            case "tool-call":
+              params.options?.onToolCall?.(
+                p.toolCallId,
+                p.args || p.input,
+                p.toolName,
+              );
+              yield {
+                type: "tool_call",
+                tool_call_id: p.toolCallId,
+                name: p.toolName,
+                args: p.args || p.input,
+              };
+              break;
+            case "tool-result":
+              yield {
+                type: "tool_result",
+                tool_call_id: p.toolCallId,
+                name: p.toolName,
+                result: p.result,
+              };
+              break;
+            case "error":
+              yield { type: "error", error: String(p.error) };
+              break;
+            case "step-finish":
+              yield {
+                type: "step_finish",
+                finish_reason: p.finishReason,
+                usage: p.usage,
+              };
+              break;
+          }
         }
-      }
 
-      const finalResult = (await result) as any;
-      yield {
-        type: "final",
-        text: (await finalResult.text) ?? "",
-        usage: (await finalResult.usage) ?? undefined,
-        finish_reason: (await finalResult.finishReason) ?? "stop",
-      };
+        const finalResult = (await result) as any;
+        yield {
+          type: "final",
+          text: (await finalResult.text) ?? "",
+          usage: (await finalResult.usage) ?? undefined,
+          finish_reason: (await finalResult.finishReason) ?? "stop",
+        };
+      } finally {
+        await params.options?.onFinish?.();
+      }
     },
   };
 }

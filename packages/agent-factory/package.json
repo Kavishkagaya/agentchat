@@ -13,6 +13,7 @@
   "dependencies": {
     "@ai-sdk/openai": "3.0.30",
     "@ai-sdk/react": "^3.0.99",
+    "@axon/shared": "workspace:*",
     "ai": "6.0.97",
     "ai-gateway-provider": "latest",
     "zod": "4.3.6"

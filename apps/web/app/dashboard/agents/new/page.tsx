@@ -1,8 +1,8 @@
 "use client";
 
+import { SANDBOX_TOOL_METADATA } from "@axon/shared";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-
 import { api } from "@/app/trpc/client";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,6 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -35,6 +36,7 @@ export default function AgentCreatePage() {
   const router = useRouter();
   const mcpQuery = api.mcp.list.useQuery();
   const modelsQuery = api.models.list.useQuery();
+  const skillsQuery = api.skills.list.useQuery();
   const createAgent = api.agents.create.useMutation();
   const publishAgent = api.agents.publish.useMutation();
 
@@ -45,6 +47,10 @@ export default function AgentCreatePage() {
     modelId: "",
   });
   const [selectedServers, setSelectedServers] = useState<McpServer[]>([]);
+  const [selectedSandboxTools, setSelectedSandboxTools] = useState<string[]>(
+    [],
+  );
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [mcpDialogOpen, setMcpDialogOpen] = useState(false);
   const [publishPrompt, setPublishPrompt] = useState<string | null>(null);
 
@@ -66,6 +72,9 @@ export default function AgentCreatePage() {
         systemPrompt: form.systemPrompt,
         model: selectedModel.modelId,
         mcpServers: selectedServers.map((s) => s.id),
+        sandboxTools:
+          selectedSandboxTools.length > 0 ? selectedSandboxTools : undefined,
+        skills: selectedSkills.length > 0 ? selectedSkills : undefined,
       },
     });
 
@@ -200,6 +209,118 @@ export default function AgentCreatePage() {
         ) : (
           <div className="rounded-xl border-2 border-dashed py-10 text-center text-muted-foreground">
             Select an MCP server to add its tools to this agent.
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-4">
+        <div>
+          <h2 className="font-semibold text-xl">Sandbox Tools</h2>
+          <p className="text-sm text-muted-foreground">
+            Select which sandbox tools this agent can use.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {SANDBOX_TOOL_METADATA.map((tool) => (
+            <button
+              key={tool.id}
+              type="button"
+              className="flex items-start space-x-3 p-3 border rounded hover:bg-slate-50 cursor-pointer text-left transition-colors"
+              onClick={() => {
+                if (selectedSandboxTools.includes(tool.id)) {
+                  setSelectedSandboxTools(
+                    selectedSandboxTools.filter((t) => t !== tool.id),
+                  );
+                } else {
+                  setSelectedSandboxTools([...selectedSandboxTools, tool.id]);
+                }
+              }}
+            >
+              <Checkbox
+                checked={selectedSandboxTools.includes(tool.id)}
+                onCheckedChange={(checked) => {
+                  if (checked) {
+                    setSelectedSandboxTools([...selectedSandboxTools, tool.id]);
+                  } else {
+                    setSelectedSandboxTools(
+                      selectedSandboxTools.filter((t) => t !== tool.id),
+                    );
+                  }
+                }}
+                className="mt-1"
+              />
+              <div className="flex-1">
+                <p className="font-medium text-sm">{tool.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {tool.description}
+                </p>
+              </div>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <div>
+          <h2 className="font-semibold text-xl">Skills</h2>
+          <p className="text-sm text-muted-foreground">
+            Select which skills this agent should have access to.
+          </p>
+        </div>
+
+        {skillsQuery.isLoading ? (
+          <Skeleton className="h-32 w-full rounded" />
+        ) : skillsQuery.data && skillsQuery.data.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {skillsQuery.data.map((skill) => (
+              <button
+                key={skill.id}
+                type="button"
+                className="flex items-start space-x-3 p-3 border rounded hover:bg-slate-50 cursor-pointer text-left transition-colors"
+                onClick={() => {
+                  if (selectedSkills.includes(skill.id)) {
+                    setSelectedSkills(
+                      selectedSkills.filter((s) => s !== skill.id),
+                    );
+                  } else {
+                    setSelectedSkills([...selectedSkills, skill.id]);
+                  }
+                }}
+              >
+                <Checkbox
+                  checked={selectedSkills.includes(skill.id)}
+                  onCheckedChange={(checked) => {
+                    if (checked) {
+                      setSelectedSkills([...selectedSkills, skill.id]);
+                    } else {
+                      setSelectedSkills(
+                        selectedSkills.filter((s) => s !== skill.id),
+                      );
+                    }
+                  }}
+                  className="mt-1"
+                />
+                <div className="flex-1">
+                  <p className="font-medium text-sm">{skill.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {skill.description}
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-xl border-2 border-dashed py-10 text-center text-muted-foreground">
+            <p>No skills available yet.</p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-2"
+              onClick={() => router.push("/dashboard/skills")}
+            >
+              Create a skill
+            </Button>
           </div>
         )}
       </section>

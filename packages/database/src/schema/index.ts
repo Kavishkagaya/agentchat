@@ -192,6 +192,33 @@ export const chatAgentsRelations = relations(chatAgents, ({ one }) => ({
   }),
 }));
 
+// --- Skills ---
+
+export const skills = pgTable(
+  "skills",
+  {
+    id: text("id").primaryKey(),
+    orgId: text("org_id")
+      .notNull()
+      .references(() => orgs.id),
+    name: text("name").notNull(),
+    description: text("description"),
+    content: text("content").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    orgIdIdx: index("skills_org_id_idx").on(table.orgId),
+  }),
+);
+
+export const skillsRelations = relations(skills, ({ one }) => ({
+  org: one(orgs, {
+    fields: [skills.orgId],
+    references: [orgs.id],
+  }),
+}));
+
 // --- MCP Servers ---
 
 export const mcpServers = pgTable(

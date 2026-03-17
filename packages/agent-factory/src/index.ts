@@ -1,8 +1,9 @@
 export { createAgentRunner } from "./factory";
 export { ModelRegistry } from "./models/registry";
 export { normalizeAgentConfig } from "./normalize";
-export { createDefaultTools } from "./tools/defaults";
 export { DefaultToolRegistry } from "./tools/registry";
+export { createSandboxTools } from "./tools/sandbox";
+export { createSkillLoaderTool } from "./skills/loader";
 export type {
   AgentConfig,
   AgentFactoryOptions,
@@ -16,3 +17,4 @@ export type {
   ToolImplementation,
   ToolRegistry,
 } from "./types";
+export type { ToolProvider } from "./tools/provider";

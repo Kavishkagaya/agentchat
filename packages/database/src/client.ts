@@ -9,7 +9,6 @@ if (
     try {
       // Hide from static analysis to prevent bundling issues in workers
       const mod = "dotenv/config";
-      // @ts-expect-error
       await import(mod);
     } catch (e) {
       // Ignore error if dotenv is not available
