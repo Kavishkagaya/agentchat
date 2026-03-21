@@ -18,7 +18,7 @@ export function createCfSandboxResolver(env: Env): SandboxResolver {
     // Adapt Cloudflare's Sandbox to our SandboxSession interface
     const adapted: SandboxSession = {
       async exec(cmd: string, opts?: { cwd?: string }) {
-        const result = await cfSandbox.exec(cmd);
+        const result = await cfSandbox.exec(cmd, opts);
         return {
           stdout: result.stdout ?? "",
           stderr: result.stderr ?? "",

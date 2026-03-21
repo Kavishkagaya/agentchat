@@ -10,14 +10,6 @@ const REQUIRED_KEYS = [
   "CLOUDFLARE_PROVIDER_KIND",
 ] as const;
 
-function requireEnv(env: ModelEnv, key: (typeof REQUIRED_KEYS)[number]) {
-  const value = env[key];
-  if (!value) {
-    throw new Error(`${key} is not configured`);
-  }
-  return value;
-}
-
 function normalizeModelId(modelId: string, kind: string) {
   if (modelId.includes("/")) {
     return modelId;
@@ -28,18 +20,21 @@ function normalizeModelId(modelId: string, kind: string) {
 export const cloudflareAiGatewayModel: ModelAdapter = {
   name: "cloudflare_ai_gateway",
   createModel(modelId: string, env: ModelEnv) {
+    // Validate all required keys are present before using them
     for (const key of REQUIRED_KEYS) {
-      requireEnv(env, key);
+      if (!env[key]) {
+        throw new Error(`${key} is not configured`);
+      }
     }
 
     const gateway = createAiGateway({
-      accountId: requireEnv(env, "CLOUDFLARE_AIG_ACCOUNT_ID"),
-      gateway: requireEnv(env, "CLOUDFLARE_AIG_GATEWAY_ID"),
-      apiKey: requireEnv(env, "CLOUDFLARE_AIG_TOKEN"),
+      accountId: env.CLOUDFLARE_AIG_ACCOUNT_ID!,
+      gateway: env.CLOUDFLARE_AIG_GATEWAY_ID!,
+      apiKey: env.CLOUDFLARE_AIG_TOKEN!,
     });
 
-    const providerKey = requireEnv(env, "CLOUDFLARE_PROVIDER_KEY");
-    const providerKind = requireEnv(env, "CLOUDFLARE_PROVIDER_KIND");
+    const providerKey = env.CLOUDFLARE_PROVIDER_KEY!;
+    const providerKind = env.CLOUDFLARE_PROVIDER_KIND!;
     const unified = createUnified({ apiKey: providerKey });
 
     const targetModel = normalizeModelId(modelId, providerKind);

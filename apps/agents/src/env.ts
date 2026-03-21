@@ -74,4 +74,8 @@ export function validateEnv(env: Env): void {
   ) {
     throw new Error(keyErrorMessage("AGENT_CONFIG_CACHE_TTL_SECONDS"));
   }
+
+  if (!env.Sandbox) {
+    throw new Error("Sandbox DurableObject binding is not configured");
+  }
 }

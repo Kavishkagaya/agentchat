@@ -8,6 +8,11 @@ export class DefaultToolRegistry implements ToolRegistry {
   register<TSchema extends ZodTypeAny = ZodTypeAny>(
     tool: ToolImplementation<TSchema>,
   ) {
+    if (this.tools.has(tool.id)) {
+      console.warn(
+        `[ToolRegistry] Duplicate registration for tool ID '${tool.id}' — overwriting`,
+      );
+    }
     this.tools.set(tool.id, tool as ToolImplementation);
   }
 
@@ -34,8 +39,16 @@ export class DefaultToolRegistry implements ToolRegistry {
   ): Promise<DefaultToolRegistry> {
     const registry = new DefaultToolRegistry();
     for (const provider of providers) {
-      const tools = await provider.getTools();
-      registry.registerAll(tools);
+      try {
+        const tools = await provider.getTools();
+        registry.registerAll(tools);
+      } catch (error) {
+        console.error(
+          `[ToolRegistry] Provider '${provider.name}' failed to load tools:`,
+          error,
+        );
+        // Continue with remaining providers instead of aborting all
+      }
     }
     return registry;
   }

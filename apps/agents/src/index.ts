@@ -7,6 +7,8 @@ import {
   handleAgentRunDevStream,
   handleAgentRunStream,
 } from "./handlers";
+import { snapshotMetrics } from "./telemetry";
+import { getAllTraces, getTrace } from "./tracing";
 
 // Required by Cloudflare Sandbox SDK
 export { Sandbox } from "@cloudflare/sandbox";
@@ -66,6 +68,23 @@ export default {
       url.pathname === "/agents/run-dev-stream"
     ) {
       return handleAgentRunDevStream(request, env);
+    }
+
+    if (request.method === "GET" && url.pathname === "/metrics") {
+      return Response.json(snapshotMetrics());
+    }
+
+    if (request.method === "GET" && url.pathname.startsWith("/traces/")) {
+      const invocationId = url.pathname.replace("/traces/", "");
+      const trace = getTrace(invocationId);
+      if (!trace) {
+        return new Response("Not Found", { status: 404 });
+      }
+      return Response.json(trace);
+    }
+
+    if (request.method === "GET" && url.pathname === "/traces") {
+      return Response.json(getAllTraces());
     }
 
     return new Response("Not Found", { status: 404 });

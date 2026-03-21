@@ -76,6 +76,9 @@ function resolveTools(
       const toolName = acc[preferredName] ? toolRef.id : preferredName;
 
       if (!implementation) {
+        console.warn(
+          `[Agent ${agentId}] Tool '${toolRef.id}' is referenced in config but not registered in the tool registry`,
+        );
         acc[toolName] = tool({
           description: toolRef.description ?? "Unregistered tool",
           inputSchema: z.record(z.string(), z.any()),
@@ -108,6 +111,16 @@ function resolveTools(
   }
 
   // Merge: registry tools win on name collision
+  const mcpNames = new Set(Object.keys(mcpMerged));
+  const registryNames = new Set(Object.keys(registryTools));
+  for (const name of registryNames) {
+    if (mcpNames.has(name)) {
+      console.warn(
+        `[Agent ${agentId}] Registry tool '${name}' shadows MCP tool with same name`,
+      );
+    }
+  }
+
   const merged = { ...mcpMerged, ...registryTools };
 
   return Object.keys(merged).length > 0 ? merged : undefined;
@@ -130,7 +143,7 @@ export function createAgentRunner(params: {
   const model = adapter.createModel(
     params.config.model,
     params.env,
-  ) as LanguageModel;
+  );
   const tools = resolveTools(
     params.config.agent_id,
     params.config.tools,
@@ -192,12 +205,9 @@ export function createAgentRunner(params: {
             case "reasoning":
               yield { type: "reasoning", text: p.textDelta || p.text || "" };
               break;
-            case "tool-call":
-              params.options?.onToolCall?.(
-                p.toolCallId,
-                p.args || p.input,
-                p.toolName,
-              );
+            case "tool-call": {
+              // onToolCall already called inside tool.execute() wrapper in resolveTools
+              // No need to call again here to avoid duplicate logging
               yield {
                 type: "tool_call",
                 tool_call_id: p.toolCallId,
@@ -205,6 +215,7 @@ export function createAgentRunner(params: {
                 args: p.args || p.input,
               };
               break;
+            }
             case "tool-result":
               yield {
                 type: "tool_result",
@@ -226,12 +237,11 @@ export function createAgentRunner(params: {
           }
         }
 
-        const finalResult = (await result) as any;
         yield {
           type: "final",
-          text: (await finalResult.text) ?? "",
-          usage: (await finalResult.usage) ?? undefined,
-          finish_reason: (await finalResult.finishReason) ?? "stop",
+          text: await result.text,
+          usage: await result.usage,
+          finish_reason: (await result.finishReason) ?? "stop",
         };
       } finally {
         await params.options?.onFinish?.();

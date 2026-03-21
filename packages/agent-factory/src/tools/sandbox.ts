@@ -66,20 +66,28 @@ export function createSandboxTools(resolver: SandboxResolver): ToolImplementatio
         "Execute a shell command in the agent sandbox. Files and state persist across calls. Use this for npm, git, python, bash, etc.",
       schema: execSchema,
       execute: async (args, context) => {
-        const { command, args: cmdArgs = [], cwd } = args as z.infer<typeof execSchema>;
-        const sandbox = await resolver(context.agent_id);
-        const fullCmd = [command, ...cmdArgs].join(" ");
-        const cmdToRun = cwd ? `cd ${cwd} && ${fullCmd}` : fullCmd;
+        try {
+          const { command, args: cmdArgs = [], cwd } = args as z.infer<typeof execSchema>;
+          const sandbox = await resolver(context.agent_id);
+          const fullCmd = [command, ...cmdArgs].join(" ");
+          // Pass cwd as an option instead of interpolating into the shell string to avoid injection
+          const result = await sandbox.exec(fullCmd, { cwd });
 
-        const result = await sandbox.exec(cmdToRun);
-
-        return {
-          stdout: result.stdout,
-          stderr: result.stderr,
-          exitCode: result.exitCode,
-          ok: result.exitCode === 0,
-          duration: result.duration,
-        };
+          return {
+            stdout: result.stdout,
+            stderr: result.stderr,
+            exitCode: result.exitCode,
+            ok: result.exitCode === 0,
+            duration: result.duration,
+          };
+        } catch (error) {
+          return {
+            stdout: "",
+            stderr: error instanceof Error ? error.message : "Unknown error",
+            exitCode: 1,
+            ok: false,
+          };
+        }
       },
     },
     {
@@ -87,11 +95,20 @@ export function createSandboxTools(resolver: SandboxResolver): ToolImplementatio
       description: "Read a file from the agent sandbox. Returns file content.",
       schema: readFileSchema,
       execute: async (args, context) => {
-        const { path } = args as z.infer<typeof readFileSchema>;
-        const sandbox = await resolver(context.agent_id);
-        const content = await sandbox.readFile(path, { encoding: "utf-8" });
+        try {
+          const { path } = args as z.infer<typeof readFileSchema>;
+          const sandbox = await resolver(context.agent_id);
+          const content = await sandbox.readFile(path, { encoding: "utf-8" });
 
-        return { content, path, ok: true };
+          return { content, path, ok: true };
+        } catch (error) {
+          return {
+            content: "",
+            path: (args as z.infer<typeof readFileSchema>).path ?? "",
+            ok: false,
+            error: error instanceof Error ? error.message : "Unknown error",
+          };
+        }
       },
     },
     {
@@ -99,11 +116,18 @@ export function createSandboxTools(resolver: SandboxResolver): ToolImplementatio
       description: "Write or create a file in the agent sandbox.",
       schema: writeFileSchema,
       execute: async (args, context) => {
-        const { path, content } = args as z.infer<typeof writeFileSchema>;
-        const sandbox = await resolver(context.agent_id);
-        await sandbox.writeFile(path, content, { encoding: "utf-8" });
+        try {
+          const { path, content } = args as z.infer<typeof writeFileSchema>;
+          const sandbox = await resolver(context.agent_id);
+          await sandbox.writeFile(path, content, { encoding: "utf-8" });
 
-        return { ok: true, path };
+          return { ok: true, path };
+        } catch (error) {
+          return {
+            ok: false,
+            error: error instanceof Error ? error.message : "Unknown error",
+          };
+        }
       },
     },
     {
@@ -111,14 +135,22 @@ export function createSandboxTools(resolver: SandboxResolver): ToolImplementatio
       description: "List files and directories in the agent sandbox.",
       schema: listFilesSchema,
       execute: async (args, context) => {
-        const { path, recursive = false } = args as z.infer<typeof listFilesSchema>;
-        const sandbox = await resolver(context.agent_id);
-        const files = await sandbox.listFiles(path, {
-          recursive,
-          includeHidden: false,
-        });
+        try {
+          const { path, recursive = false } = args as z.infer<typeof listFilesSchema>;
+          const sandbox = await resolver(context.agent_id);
+          const files = await sandbox.listFiles(path, {
+            recursive,
+            includeHidden: false,
+          });
 
-        return { files, ok: true };
+          return { files, ok: true };
+        } catch (error) {
+          return {
+            files: [],
+            ok: false,
+            error: error instanceof Error ? error.message : "Unknown error",
+          };
+        }
       },
     },
     {
@@ -127,11 +159,18 @@ export function createSandboxTools(resolver: SandboxResolver): ToolImplementatio
         "Create a directory in the agent sandbox. Creates parent directories if needed.",
       schema: mkdirSchema,
       execute: async (args, context) => {
-        const { path } = args as z.infer<typeof mkdirSchema>;
-        const sandbox = await resolver(context.agent_id);
-        await sandbox.mkdir(path, { recursive: true });
+        try {
+          const { path } = args as z.infer<typeof mkdirSchema>;
+          const sandbox = await resolver(context.agent_id);
+          await sandbox.mkdir(path, { recursive: true });
 
-        return { ok: true };
+          return { ok: true };
+        } catch (error) {
+          return {
+            ok: false,
+            error: error instanceof Error ? error.message : "Unknown error",
+          };
+        }
       },
     },
     {
@@ -139,11 +178,18 @@ export function createSandboxTools(resolver: SandboxResolver): ToolImplementatio
       description: "Delete a file or directory from the agent sandbox.",
       schema: deleteFileSchema,
       execute: async (args, context) => {
-        const { path } = args as z.infer<typeof deleteFileSchema>;
-        const sandbox = await resolver(context.agent_id);
-        await sandbox.deleteFile(path);
+        try {
+          const { path } = args as z.infer<typeof deleteFileSchema>;
+          const sandbox = await resolver(context.agent_id);
+          await sandbox.deleteFile(path);
 
-        return { ok: true };
+          return { ok: true };
+        } catch (error) {
+          return {
+            ok: false,
+            error: error instanceof Error ? error.message : "Unknown error",
+          };
+        }
       },
     },
     {
@@ -151,11 +197,19 @@ export function createSandboxTools(resolver: SandboxResolver): ToolImplementatio
       description: "Check if a file or directory exists in the agent sandbox.",
       schema: fileExistsSchema,
       execute: async (args, context) => {
-        const { path } = args as z.infer<typeof fileExistsSchema>;
-        const sandbox = await resolver(context.agent_id);
-        const exists = await sandbox.exists(path);
+        try {
+          const { path } = args as z.infer<typeof fileExistsSchema>;
+          const sandbox = await resolver(context.agent_id);
+          const exists = await sandbox.exists(path);
 
-        return { exists, ok: true };
+          return { exists, ok: true };
+        } catch (error) {
+          return {
+            exists: false,
+            ok: false,
+            error: error instanceof Error ? error.message : "Unknown error",
+          };
+        }
       },
     },
     {
@@ -163,11 +217,18 @@ export function createSandboxTools(resolver: SandboxResolver): ToolImplementatio
       description: "Rename or move a file in the agent sandbox.",
       schema: renameFileSchema,
       execute: async (args, context) => {
-        const { from, to } = args as z.infer<typeof renameFileSchema>;
-        const sandbox = await resolver(context.agent_id);
-        await sandbox.renameFile(from, to);
+        try {
+          const { from, to } = args as z.infer<typeof renameFileSchema>;
+          const sandbox = await resolver(context.agent_id);
+          await sandbox.renameFile(from, to);
 
-        return { ok: true };
+          return { ok: true };
+        } catch (error) {
+          return {
+            ok: false,
+            error: error instanceof Error ? error.message : "Unknown error",
+          };
+        }
       },
     },
   ];

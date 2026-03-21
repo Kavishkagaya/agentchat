@@ -4,6 +4,7 @@ import { loadAgentConfig } from "./config";
 import type { Env } from "./env";
 import { streamAgent } from "./runner";
 import { createEventStream } from "./stream";
+import { createTracer, storeTrace } from "./tracing";
 
 export type AgentRunRequest = {
   agent_id?: string;
@@ -39,17 +40,31 @@ async function authorizeRequest(
   });
 }
 
-async function executeAndStreamAgent(
+/**
+ * Execute agent with streaming events.
+ * @param mode 'stream' sends all events (text_delta, reasoning); 'coarse' only sends tool/final events
+ */
+async function executeAgent(
   env: Env,
   agentId: string | undefined,
   body: AgentRunRequest,
   configId: string | null,
   send: ReturnType<typeof createEventStream>["send"],
+  mode: "stream" | "coarse",
 ): Promise<void> {
+  const tracer = createTracer(agentId ?? "unknown");
+  const traceId = tracer.invocationId;
+
   send("status", { status: "thinking" });
+  send("trace", { invocationId: traceId });
 
   try {
+    const configStart = Date.now();
     const record = await loadAgentConfig(env, agentId, body.runtime_id);
+    tracer.recordPhase("configLoad", Date.now() - configStart, {
+      cacheHit: false, // TODO: expose cache hit from loadAgentConfig
+    });
+
     send("status", { status: "running" });
 
     const input: AgentRunInput = {
@@ -58,18 +73,37 @@ async function executeAndStreamAgent(
       chat_context: body.chat_context,
     };
 
+    let streamStart = Date.now();
+    let streamPhaseRecorded = false;
+
     for await (const event of streamAgent(record, env, input, {
       onToolError: (toolId, error) => {
         send("tool_error", { tool_call_id: toolId, error });
+        tracer.recordError("stream", "tool_error", `${toolId}: ${error}`);
       },
     })) {
+      // Record phase timing on first event after stream starts
+      if (event.type !== "error" && !streamPhaseRecorded) {
+        tracer.recordPhase("stream", 0, {
+          startLatency: Date.now() - streamStart,
+          duration: 0,
+          finishReason: "in_progress",
+        });
+        streamPhaseRecorded = true;
+        streamStart = Date.now();
+      }
+
       switch (event.type) {
         case "text_delta":
-          send("text_delta", { text: event.text });
+          if (mode === "stream") {
+            send("text_delta", { text: event.text });
+          }
           break;
 
         case "reasoning":
-          send("reasoning", { text: event.text });
+          if (mode === "stream") {
+            send("reasoning", { text: event.text });
+          }
           break;
 
         case "tool_call":
@@ -97,6 +131,7 @@ async function executeAndStreamAgent(
 
         case "error":
           send("error", { code: "stream_error", message: event.error });
+          tracer.recordError("stream", "stream_error", event.error);
           break;
 
         case "final":
@@ -110,313 +145,141 @@ async function executeAndStreamAgent(
             usage: event.usage,
             agent_nickname: record.agentName,
           });
+          // Update stream phase with final timing
+          if (streamPhaseRecorded) {
+            tracer.recordPhase("stream", Date.now() - streamStart, {
+              startLatency: 0,
+              finishReason: event.finish_reason ?? "stop",
+            });
+          }
           break;
       }
     }
+
+    // Finalize and store trace
+    const trace = tracer.finalize();
+    storeTrace(trace);
+    send("trace_complete", { invocationId: traceId, totalDuration: trace.endTime - trace.startTime });
   } catch (error) {
+    const message = error instanceof Error ? error.message : "agent error";
     send("error", {
       code: "agent_error",
-      message: error instanceof Error ? error.message : "agent error",
+      message,
     });
+    tracer.recordError("execute", "agent_error", message);
+    const trace = tracer.finalize();
+    storeTrace(trace);
+    send("trace_complete", { invocationId: traceId, totalDuration: trace.endTime - trace.startTime });
   }
 }
 
-async function executeAgentCoarse(
-  env: Env,
-  agentId: string | undefined,
-  body: AgentRunRequest,
-  configId: string | null,
-  send: ReturnType<typeof createEventStream>["send"],
-): Promise<void> {
-  send("status", { status: "thinking" });
+// Handler factory — eliminates boilerplate across 4 endpoint handlers
 
-  try {
-    const record = await loadAgentConfig(env, agentId, body.runtime_id);
-    send("status", { status: "running" });
+type HandlerOptions = {
+  requireAuth: boolean;
+  mode: "stream" | "coarse";
+  devOnly?: boolean;
+};
 
-    const input: AgentRunInput = {
-      prompt: body.prompt,
-      messages: body.messages,
-      chat_context: body.chat_context,
-    };
-
-    for await (const event of streamAgent(record, env, input, {
-      onToolError: (toolId, error) => {
-        send("tool_error", { tool_call_id: toolId, error });
-      },
-    })) {
-      switch (event.type) {
-        case "text_delta":
-        case "reasoning":
-          break;
-
-        case "tool_call":
-          send("tool_call", {
-            tool_call_id: event.tool_call_id,
-            name: event.name,
-            args: event.args,
-          });
-          break;
-
-        case "tool_result":
-          send("tool_result", {
-            tool_call_id: event.tool_call_id,
-            name: event.name,
-            result: event.result,
-          });
-          break;
-
-        case "step_finish":
-          send("step_finish", {
-            finish_reason: event.finish_reason,
-            usage: event.usage,
-          });
-          break;
-
-        case "error":
-          send("error", { code: "agent_error", message: event.error });
-          break;
-
-        case "final":
-          send("status", { status: "completed" });
-          send("final", {
-            agent_id: record.agentId,
-            config_id: configId,
-            runtime_id: body.runtime_id,
-            text: event.text,
-            finish_reason: event.finish_reason,
-            usage: event.usage,
-            agent_nickname: record.agentName,
-          });
-          break;
-      }
-    }
-  } catch (error) {
-    send("error", {
-      code: "agent_error",
-      message: error instanceof Error ? error.message : "agent error",
-    });
-  }
-}
-
-// Handlers
-
-export async function handleAgentRun(
-  request: Request,
-  env: Env,
-): Promise<Response> {
-  const { stream, send, close } = createEventStream();
-
-  const response = new Response(stream, {
-    status: 200,
-    headers: {
-      "content-type": "text/event-stream",
-      "cache-control": "no-cache",
-      connection: "keep-alive",
-    },
-  });
-
-  (async () => {
-    try {
-      let body: AgentRunRequest;
-      try {
-        body = (await request.json()) as AgentRunRequest;
-      } catch {
-        send("error", structuredError("invalid_json", "invalid JSON body"));
-        return;
-      }
-
-      let authPayload: Awaited<ReturnType<typeof authorizeRequest>>;
-      try {
-        authPayload = await authorizeRequest(
-          request,
-          env,
-          body.config_id,
-          body.agent_id,
-        );
-      } catch (error) {
-        send(
-          "error",
-          structuredError(
-            "unauthorized",
-            error instanceof Error ? error.message : "authorization failed",
-          ),
-        );
-        return;
-      }
-
-      const agentId = body.agent_id ?? authPayload.agent_id;
-      await executeAgentCoarse(env, agentId, body, authPayload.config_id, send);
-    } finally {
-      await close();
-    }
-  })();
-
-  return response;
-}
-
-export async function handleAgentRunStream(
-  request: Request,
-  env: Env,
-): Promise<Response> {
-  const { stream, send, close } = createEventStream();
-
-  const response = new Response(stream, {
-    status: 200,
-    headers: {
-      "content-type": "text/event-stream",
-      "cache-control": "no-cache",
-      connection: "keep-alive",
-    },
-  });
-
-  (async () => {
-    try {
-      let body: AgentRunRequest;
-      try {
-        body = (await request.json()) as AgentRunRequest;
-      } catch {
-        send("error", structuredError("invalid_json", "invalid JSON body"));
-        return;
-      }
-
-      let authPayload: Awaited<ReturnType<typeof authorizeRequest>>;
-      try {
-        authPayload = await authorizeRequest(
-          request,
-          env,
-          body.config_id,
-          body.agent_id,
-        );
-      } catch (error) {
-        send(
-          "error",
-          structuredError(
-            "unauthorized",
-            error instanceof Error ? error.message : "authorization failed",
-          ),
-        );
-        return;
-      }
-
-      const agentId = body.agent_id ?? authPayload.agent_id;
-      await executeAndStreamAgent(
-        env,
-        agentId,
-        body,
-        authPayload.config_id,
-        send,
+function createAgentHandler(options: HandlerOptions) {
+  return async (request: Request, env: Env): Promise<Response> => {
+    // Dev-only endpoint guard
+    if (options.devOnly && env.ENVIRONMENT === "production") {
+      return Response.json(
+        structuredError(
+          "forbidden",
+          "dev endpoint is not available in production",
+        ),
+        { status: 403 },
       );
-    } finally {
-      await close();
     }
-  })();
 
-  return response;
-}
+    const { stream, send, close } = createEventStream();
 
-export async function handleAgentRunDev(
-  request: Request,
-  env: Env,
-): Promise<Response> {
-  if (env.ENVIRONMENT === "production") {
-    return Response.json(
-      structuredError(
-        "forbidden",
-        "dev endpoint is not available in production",
-      ),
-      { status: 403 },
-    );
-  }
+    const response = new Response(stream, {
+      status: 200,
+      headers: {
+        "content-type": "text/event-stream",
+        "cache-control": "no-cache",
+        connection: "keep-alive",
+      },
+    });
 
-  const { stream, send, close } = createEventStream();
-
-  const response = new Response(stream, {
-    status: 200,
-    headers: {
-      "content-type": "text/event-stream",
-      "cache-control": "no-cache",
-      connection: "keep-alive",
-    },
-  });
-
-  (async () => {
-    try {
-      let body: AgentRunRequest;
+    (async () => {
       try {
-        body = (await request.json()) as AgentRunRequest;
-      } catch {
-        send("error", structuredError("invalid_json", "invalid JSON body"));
-        return;
+        let body: AgentRunRequest;
+        try {
+          body = (await request.json()) as AgentRunRequest;
+        } catch {
+          send("error", structuredError("invalid_json", "invalid JSON body"));
+          return;
+        }
+
+        // Optional authentication
+        let authPayload: Awaited<ReturnType<typeof authorizeRequest>> | null = null;
+        let configId: string | null = null;
+        let agentId = body.agent_id;
+
+        if (options.requireAuth) {
+          try {
+            authPayload = await authorizeRequest(
+              request,
+              env,
+              body.config_id,
+              body.agent_id,
+            );
+            configId = authPayload.config_id;
+            agentId = agentId ?? authPayload.agent_id;
+          } catch (error) {
+            send(
+              "error",
+              structuredError(
+                "unauthorized",
+                error instanceof Error ? error.message : "authorization failed",
+              ),
+            );
+            return;
+          }
+        } else {
+          // Dev endpoints require agent_id in body
+          if (!agentId) {
+            send(
+              "error",
+              structuredError("missing_agent_id", "agent_id is required"),
+            );
+            return;
+          }
+        }
+
+        await executeAgent(env, agentId, body, configId, send, options.mode);
+      } finally {
+        await close();
       }
+    })();
 
-      const agentId = body.agent_id;
-      if (!agentId) {
-        send(
-          "error",
-          structuredError("missing_agent_id", "agent_id is required"),
-        );
-        return;
-      }
-
-      await executeAgentCoarse(env, agentId, body, null, send);
-    } finally {
-      await close();
-    }
-  })();
-
-  return response;
+    return response;
+  };
 }
 
-export async function handleAgentRunDevStream(
-  request: Request,
-  env: Env,
-): Promise<Response> {
-  if (env.ENVIRONMENT === "production") {
-    return Response.json(
-      structuredError(
-        "forbidden",
-        "dev endpoint is not available in production",
-      ),
-      { status: 403 },
-    );
-  }
+// Export the 4 handlers as factory instances
+export const handleAgentRun = createAgentHandler({
+  requireAuth: true,
+  mode: "coarse",
+});
 
-  const { stream, send, close } = createEventStream();
+export const handleAgentRunStream = createAgentHandler({
+  requireAuth: true,
+  mode: "stream",
+});
 
-  const response = new Response(stream, {
-    status: 200,
-    headers: {
-      "content-type": "text/event-stream",
-      "cache-control": "no-cache",
-      connection: "keep-alive",
-    },
-  });
+export const handleAgentRunDev = createAgentHandler({
+  requireAuth: false,
+  mode: "coarse",
+  devOnly: true,
+});
 
-  (async () => {
-    try {
-      let body: AgentRunRequest;
-      try {
-        body = (await request.json()) as AgentRunRequest;
-      } catch {
-        send("error", structuredError("invalid_json", "invalid JSON body"));
-        return;
-      }
-
-      const agentId = body.agent_id;
-      if (!agentId) {
-        send(
-          "error",
-          structuredError("missing_agent_id", "agent_id is required"),
-        );
-        return;
-      }
-
-      await executeAndStreamAgent(env, agentId, body, null, send);
-    } finally {
-      await close();
-    }
-  })();
-
-  return response;
-}
+export const handleAgentRunDevStream = createAgentHandler({
+  requireAuth: false,
+  mode: "stream",
+  devOnly: true,
+});

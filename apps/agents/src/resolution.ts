@@ -2,16 +2,10 @@ import type { ModelEnv } from "@axon/agent-factory";
 import type { ResolvedMcpServer } from "@axon/shared";
 import { getMcpServer, getModel, getSecretValue } from "@axon/worker-database";
 import { TtlCache } from "./cache";
-import {
-  readLatestVersion,
-  readVersionedCache,
-  writeVersionedCache,
-} from "./cache-store";
-import { type Env, getTtlMs } from "./env";
-import { recordCacheMetric, recordResolutionMetric } from "./telemetry";
+import { resolveUpdatedAt, createCachedLoader } from "./cache-utils";
+import { type Env } from "./env";
 
 const MAX_CACHE_ENTRIES = 500;
-const DEFAULT_TTL_MS = 5 * 60 * 1000;
 
 type ModelRecord = NonNullable<Awaited<ReturnType<typeof getModel>>>;
 
@@ -23,155 +17,47 @@ const modelCache = new TtlCache<ModelRecord>(MAX_CACHE_ENTRIES);
 const secretCache = new TtlCache<SecretRecord>(MAX_CACHE_ENTRIES);
 const mcpServerCache = new TtlCache<McpServerRecord>(MAX_CACHE_ENTRIES);
 
-function resolveUpdatedAt(value: unknown) {
-  if (typeof value === "string") {
-    return value;
-  }
-  if (value instanceof Date) {
-    return value.toISOString();
-  }
-  return undefined;
-}
-
-async function loadModelCached(
-  env: Env,
-  orgId: string,
-  id: string,
-): Promise<ModelRecord | null> {
-  const cacheKey = `model:${id}`;
-  const ttlMs = getTtlMs(env.AGENT_CONFIG_CACHE_TTL_SECONDS, DEFAULT_TTL_MS);
-  const cached = modelCache.get(cacheKey);
-  if (cached) {
-    const latest = await readLatestVersion(env, cacheKey);
-    if (!latest || latest === cached.version) {
-      recordCacheMetric("model", true);
-      return cached.value;
-    }
-  }
-
-  const l2 = await readVersionedCache<ModelRecord>(env, cacheKey);
-  if (l2) {
-    modelCache.set(cacheKey, l2.value, ttlMs, l2.version);
-    recordCacheMetric("model", true);
-    return l2.value;
-  }
-
-  recordCacheMetric("model", false);
-  const started = Date.now();
-  const model = await getModel({ orgId, providerId: id });
-  if (!model) {
-    recordResolutionMetric("model", Date.now() - started, false);
-    return null;
-  }
-  const record: ModelRecord = model;
-  const version = resolveUpdatedAt(model.updatedAt) ?? new Date().toISOString();
-  modelCache.set(cacheKey, record, ttlMs, version);
-  await writeVersionedCache(
+// Create cached loaders for each entity type
+const loadModelCached = (env: Env) =>
+  createCachedLoader<ModelRecord>({
+    cache: modelCache,
+    cacheKeyPrefix: "model",
+    writeL2: true,
+    dbFetch: async (id, orgId) => (await getModel({ orgId, providerId: id })) ?? null,
+    getVersion: (m) => resolveUpdatedAt(m.updatedAt) ?? "v0",
+    cacheKind: "model",
     env,
-    cacheKey,
-    version,
-    record,
-    Math.ceil(ttlMs / 1000),
-  );
-  recordResolutionMetric("model", Date.now() - started, true);
-  return record;
-}
-
-async function loadSecretCached(
-  env: Env,
-  orgId: string,
-  secretId: string,
-): Promise<SecretRecord | null> {
-  const cacheKey = `secret:${secretId}`;
-  const ttlMs = getTtlMs(env.AGENT_CONFIG_CACHE_TTL_SECONDS, DEFAULT_TTL_MS);
-  const cached = secretCache.get(cacheKey);
-  if (cached) {
-    const latest = await readLatestVersion(env, cacheKey);
-    if (!latest || latest === cached.version?.toString()) {
-      recordCacheMetric("secret", true);
-      return cached.value;
-    }
-  }
-
-  const l2 = await readVersionedCache<SecretRecord>(env, cacheKey);
-  if (l2) {
-    secretCache.set(cacheKey, l2.value, ttlMs, l2.version);
-    recordCacheMetric("secret", true);
-    return l2.value;
-  }
-
-  recordCacheMetric("secret", false);
-  const started = Date.now();
-  const secret = await getSecretValue({
-    orgId,
-    secretId,
-    encryptionKey: env.SECRETS_ENCRYPTION_KEY,
   });
-  if (!secret) {
-    recordResolutionMetric("secret", Date.now() - started, false);
-    return null;
-  }
-  const version = secret.version?.toString() ?? "1";
-  secretCache.set(cacheKey, secret, ttlMs, version);
-  // NOTE: secret.value is already decrypted plaintext. L2 cache stores plaintext intentionally
-  // for agent runtime performance. Do NOT call decryptSecretValue() on values read from cache.
-  await writeVersionedCache(
+
+const loadSecretCached = (env: Env) =>
+  createCachedLoader<SecretRecord>({
+    cache: secretCache,
+    cacheKeyPrefix: "secret",
+    writeL2: false, // SECURITY: never persist secrets to KV
+    dbFetch: async (id, orgId) =>
+      (await getSecretValue({
+        orgId,
+        secretId: id,
+        encryptionKey: env.SECRETS_ENCRYPTION_KEY,
+      })) ?? null,
+    getVersion: (s) => s.version?.toString() ?? "1",
+    cacheKind: "secret",
     env,
-    cacheKey,
-    version,
-    secret,
-    Math.ceil(ttlMs / 1000),
-  );
-  recordResolutionMetric("secret", Date.now() - started, true);
-  return secret;
-}
+  });
 
-async function loadMcpServerCached(
-  env: Env,
-  orgId: string,
-  serverId: string,
-): Promise<McpServerRecord | null> {
-  const cacheKey = `mcp-server:${serverId}`;
-  const ttlMs = getTtlMs(env.AGENT_CONFIG_CACHE_TTL_SECONDS, DEFAULT_TTL_MS);
-  const cached = mcpServerCache.get(cacheKey);
-  if (cached) {
-    const latest = await readLatestVersion(env, cacheKey);
-    if (!latest || latest === cached.version) {
-      recordCacheMetric("mcp_server", true);
-      return cached.value;
-    }
-  }
-
-  const l2 = await readVersionedCache<McpServerRecord>(env, cacheKey);
-  if (l2) {
-    mcpServerCache.set(cacheKey, l2.value, ttlMs, l2.version);
-    recordCacheMetric("mcp_server", true);
-    return l2.value;
-  }
-
-  recordCacheMetric("mcp_server", false);
-  const started = Date.now();
-  const server = await getMcpServer({ orgId, serverId });
-  if (!server) {
-    recordResolutionMetric("mcp_server", Date.now() - started, false);
-    return null;
-  }
-  const record: McpServerRecord = server;
-  const version =
-    resolveUpdatedAt(server.updatedAt) ??
-    resolveUpdatedAt(server.lastValidatedAt) ??
-    new Date().toISOString();
-  mcpServerCache.set(cacheKey, record, ttlMs, version);
-  await writeVersionedCache(
+const loadMcpServerCached = (env: Env) =>
+  createCachedLoader<McpServerRecord>({
+    cache: mcpServerCache,
+    cacheKeyPrefix: "mcp-server",
+    writeL2: true,
+    dbFetch: async (id, orgId) => (await getMcpServer({ orgId, serverId: id })) ?? null,
+    getVersion: (s) =>
+      resolveUpdatedAt(s.updatedAt) ??
+      resolveUpdatedAt(s.lastValidatedAt) ??
+      "v0",
+    cacheKind: "mcp_server",
     env,
-    cacheKey,
-    version,
-    record,
-    Math.ceil(ttlMs / 1000),
-  );
-  recordResolutionMetric("mcp_server", Date.now() - started, true);
-  return record;
-}
+  });
 
 function extractMcpServerIds(rawConfig: unknown): string[] {
   if (!rawConfig || typeof rawConfig !== "object") {
@@ -201,23 +87,32 @@ export async function resolveMcpServers(
   serverIds: string[],
 ): Promise<ResolvedMcpServer[]> {
   const servers: ResolvedMcpServer[] = [];
+  const loadServer = loadMcpServerCached(env);
+  const loadSecret = loadSecretCached(env);
 
   for (const serverId of serverIds) {
-    const server = await loadMcpServerCached(env, orgId, serverId);
+    const server = await loadServer(serverId, orgId);
     if (!server || server.status !== "valid") {
+      console.warn(
+        `[MCP] Skipping server ${serverId}: status=${server?.status ?? "not found"}`,
+      );
       continue;
     }
 
     let token = server.token ?? "";
     if (server.secretRef) {
-      const secret = await loadSecretCached(env, orgId, server.secretRef);
+      const secret = await loadSecret(server.secretRef, orgId);
       if (!secret) {
+        console.warn(
+          `[MCP] Skipping server ${serverId}: secretRef="${server.secretRef}" resolved to null`,
+        );
         continue;
       }
       token = secret.value;
     }
 
     if (!token) {
+      console.warn(`[MCP] Skipping server ${serverId}: no token available`);
       continue;
     }
 
@@ -232,8 +127,6 @@ export async function resolveMcpServers(
 }
 
 export async function resolveTooling(
-  env: Env,
-  orgId: string,
   rawConfig: unknown,
 ): Promise<{ sandboxToolIds: string[]; mcpServerIds: string[] }> {
   const mcpServerIds = extractMcpServerIds(rawConfig);
@@ -262,14 +155,17 @@ export async function resolveModelEnv(
     throw new Error("modelId is required for agent execution");
   }
 
-  const model = await loadModelCached(env, orgId, modelId);
+  const loadModel = loadModelCached(env);
+  const loadSecret = loadSecretCached(env);
+
+  const model = await loadModel(modelId, orgId);
   if (!model) {
     throw new Error("model not found for agent");
   }
   if (!model.secretRef) {
     throw new Error("model secret is not configured");
   }
-  const secret = await loadSecretCached(env, orgId, model.secretRef);
+  const secret = await loadSecret(model.secretRef, orgId);
   if (!secret) {
     throw new Error("model secret not found");
   }

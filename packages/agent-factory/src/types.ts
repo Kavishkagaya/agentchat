@@ -1,4 +1,4 @@
-import type { ModelMessage } from "ai";
+import type { LanguageModel, ModelMessage } from "ai";
 import type { z, ZodTypeAny } from "zod";
 
 export type AgentToolRef = {
@@ -45,7 +45,7 @@ export type ModelEnv = Record<string, string | undefined>;
 
 export type ModelAdapter = {
   name: string;
-  createModel: (modelId: string, env: ModelEnv) => unknown;
+  createModel: (modelId: string, env: ModelEnv) => LanguageModel;
 };
 
 export type ToolExecutionContext = {

@@ -23,7 +23,11 @@ export async function readVersionedCache<T>(
   try {
     const value = JSON.parse(raw) as T;
     return { value, version };
-  } catch {
+  } catch (error) {
+    console.error(
+      `[Cache] JSON parse error for key ${baseKey}:v:${version}:`,
+      error,
+    );
     return undefined;
   }
 }
@@ -39,10 +43,12 @@ export async function writeVersionedCache<T>(
     return;
   }
   const payload = JSON.stringify(value);
-  await env.AGENTS_KV.put(`${baseKey}:v:${version}`, payload, {
+  // Write :latest pointer first. If we crash between writes, :latest pointing to a non-existent
+  // key is safer than having the data but an outdated pointer.
+  await env.AGENTS_KV.put(`${baseKey}:latest`, version, {
     expirationTtl: ttlSeconds,
   });
-  await env.AGENTS_KV.put(`${baseKey}:latest`, version, {
+  await env.AGENTS_KV.put(`${baseKey}:v:${version}`, payload, {
     expirationTtl: ttlSeconds,
   });
 }

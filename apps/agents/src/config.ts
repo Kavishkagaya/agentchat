@@ -1,15 +1,15 @@
 import { eq, getDb, schema } from "@axon/worker-database";
-
-const { agentRuntimes, agents } = schema;
-
 import { TtlCache } from "./cache";
 import {
   readLatestVersion,
   readVersionedCache,
   writeVersionedCache,
 } from "./cache-store";
+import { resolveUpdatedAt } from "./cache-utils";
 import { type Env, getTtlMs } from "./env";
 import { recordCacheMetric, recordResolutionMetric } from "./telemetry";
+
+const { agentRuntimes, agents } = schema;
 
 export type AgentConfigRecord = {
   agentId: string;
@@ -23,16 +23,6 @@ export type AgentConfigRecord = {
 const MAX_CACHE_ENTRIES = 500;
 const DEFAULT_TTL_MS = 5 * 60 * 1000;
 const configCache = new TtlCache<AgentConfigRecord>(MAX_CACHE_ENTRIES);
-
-function resolveUpdatedAt(value: unknown) {
-  if (typeof value === "string") {
-    return value;
-  }
-  if (value instanceof Date) {
-    return value.toISOString();
-  }
-  return undefined;
-}
 
 function runtimeCacheKey(agentId: string) {
   return `agent:${agentId}`;
@@ -98,7 +88,8 @@ export async function loadAgentConfig(
     updatedAt: resolveUpdatedAt(agent.updatedAt),
     agentName: agent.name,
   };
-  const version = record.updatedAt ?? new Date().toISOString();
+  // Use stable sentinel "v0" for null updatedAt to avoid cache misses on every fetch
+  const version = record.updatedAt ?? "v0";
   configCache.set(cacheKey, record, ttlMs, version);
   await writeVersionedCache(
     env,

@@ -26,6 +26,7 @@ const cacheMisses: Record<CacheKind, number> = {
 
 const resolutionTimings: Record<string, number[]> = {};
 const toolErrors: Record<string, number> = {};
+const MAX_TIMING_ENTRIES = 1000;
 
 export function recordCacheMetric(kind: CacheKind, hit: boolean) {
   if (hit) {
@@ -43,6 +44,10 @@ export function recordResolutionMetric(
   const key = `${name}:${success ? "ok" : "error"}`;
   const existing = resolutionTimings[key] ?? [];
   existing.push(durationMs);
+  // Bound the array to prevent unbounded growth in long-lived isolates
+  if (existing.length > MAX_TIMING_ENTRIES) {
+    existing.shift();
+  }
   resolutionTimings[key] = existing;
 }
 

@@ -25,6 +25,102 @@ export type ToolEventCallbacks = {
   onToolError?: (toolId: string, error: string) => void;
 };
 
+/**
+ * Load and inject skills into the agent config.
+ * Fetches skill records from DB and prepends them to the system prompt.
+ */
+async function resolveSkills(
+  rawConfig: unknown,
+): Promise<{ skills: SkillRecord[]; systemPromptInjection?: string }> {
+  let skills: SkillRecord[] = [];
+  let systemPromptInjection: string | undefined;
+
+  const rawSkillIds = (rawConfig as Record<string, unknown>)?.skills;
+  // Runtime validation: filter to only string IDs to prevent DB query corruption
+  const skillIds = Array.isArray(rawSkillIds)
+    ? rawSkillIds.filter((id): id is string => typeof id === "string")
+    : undefined;
+
+  if (skillIds?.length) {
+    try {
+      const db = getDb();
+      const dbSkills = await db.query.skills.findMany({
+        where: (t, { inArray }) => inArray(t.id, skillIds),
+      });
+      skills = dbSkills.map((s) => ({
+        id: s.id,
+        name: s.name,
+        description: s.description ?? undefined,
+        content: s.content,
+        orgId: s.orgId,
+        createdAt: s.createdAt.toISOString(),
+        updatedAt: s.updatedAt.toISOString(),
+      }));
+
+      // Build skill list injection for system prompt
+      if (skills.length > 0) {
+        systemPromptInjection = `Available skills:\n${skills
+          .map((s) => `- \`${s.name}\`: ${s.description || ""}`)
+          .join("\n")}`;
+      }
+    } catch (error) {
+      // Log but don't fail if skill loading fails
+      console.error("Failed to load skills:", error);
+    }
+  }
+
+  return { skills, systemPromptInjection };
+}
+
+/**
+ * Create MCP clients for configured servers and extract their tool sets.
+ * Handles partial failures gracefully with cleanup.
+ */
+async function buildMcpClients(
+  env: Env,
+  orgId: string,
+  serverIds: string[],
+): Promise<{ toolSets: ToolSet[]; close: () => Promise<void> }> {
+  const mcpClients: Awaited<ReturnType<typeof createMCPClient>>[] = [];
+
+  try {
+    for (const serverId of serverIds) {
+      const servers = await resolveMcpServers(env, orgId, [serverId]);
+      if (servers.length === 0) {
+        console.warn(`[MCP] Failed to resolve MCP server: ${serverId}`);
+        continue;
+      }
+      const server = servers[0];
+      const client = await createMCPClient({
+        transport: {
+          type: "http",
+          url: server.url,
+          headers: { Authorization: `Bearer ${server.token}` },
+        },
+      });
+      mcpClients.push(client);
+    }
+  } catch (err) {
+    // If MCP resolution fails partway through, close the clients we did create
+    await Promise.allSettled(mcpClients.map((client) => client.close()));
+    throw err;
+  }
+
+  // Get tool sets from MCP clients and merge them
+  const mcpToolSetsList = await Promise.all(
+    mcpClients.map((client) => client.tools()),
+  );
+  const toolSets =
+    mcpToolSetsList.length > 0 ? [Object.assign({}, ...mcpToolSetsList)] : [];
+
+  // Return tools and cleanup function
+  const close = async () => {
+    await Promise.allSettled(mcpClients.map((client) => client.close()));
+  };
+
+  return { toolSets, close };
+}
+
 export async function buildAgentRunner(
   record: AgentConfigRecord,
   env: Env,
@@ -46,80 +142,27 @@ export async function buildAgentRunner(
 
   // Resolve which tools and MCP servers are needed
   const { sandboxToolIds, mcpServerIds } = await resolveTooling(
-    env,
-    record.orgId,
     record.config,
   );
 
-  // Load skills if configured
-  let skills: SkillRecord[] = [];
-  const skillIds = (record.config as Record<string, unknown>)?.skills as
-    | string[]
-    | undefined;
-
-  if (skillIds?.length) {
-    try {
-      const db = getDb();
-      const dbSkills = await db.query.skills.findMany({
-        where: (t, { inArray }) => inArray(t.id, skillIds),
-      });
-      skills = dbSkills.map((s) => ({
-        id: s.id,
-        name: s.name,
-        description: s.description ?? undefined,
-        content: s.content,
-        orgId: s.orgId,
-        createdAt: s.createdAt.toISOString(),
-        updatedAt: s.updatedAt.toISOString(),
-      }));
-
-      // Inject skill list into system prompt
-      if (skills.length > 0) {
-        const skillsPrompt = `Available skills:\n${skills
-          .map((s) => `- \`${s.name}\`: ${s.description || ""}`)
-          .join("\n")}`;
-
-        if (config.system_prompt) {
-          config.system_prompt = `${skillsPrompt}\n\n${config.system_prompt}`;
-        } else {
-          config.system_prompt = skillsPrompt;
-        }
-      }
-    } catch (error) {
-      // Log but don't fail if skill loading fails
-      console.error("Failed to load skills:", error);
+  // Load skills and get system prompt injection
+  const { skills, systemPromptInjection } = await resolveSkills(
+    record.config,
+  );
+  if (systemPromptInjection) {
+    if (config.system_prompt) {
+      config.system_prompt = `${systemPromptInjection}\n\n${config.system_prompt}`;
+    } else {
+      config.system_prompt = systemPromptInjection;
     }
   }
 
-  // Create MCP clients and get tool sets
-  const mcpClients = await Promise.all(
-    mcpServerIds.map((serverId) =>
-      resolveMcpServers(env, record.orgId, [serverId]).then((servers) => {
-        if (servers.length === 0) {
-          throw new Error(`Failed to resolve MCP server: ${serverId}`);
-        }
-        const server = servers[0];
-        return createMCPClient({
-          transport: {
-            type: "http",
-            url: server.url,
-            headers: { Authorization: `Bearer ${server.token}` },
-          },
-        });
-      }),
-    ),
+  // Build MCP clients and get tool sets
+  const { toolSets: mcpToolSets, close: closeMcpClients } = await buildMcpClients(
+    env,
+    record.orgId,
+    mcpServerIds,
   );
-
-  // Get tool sets from MCP clients and merge them
-  const mcpToolSetsList = await Promise.all(
-    mcpClients.map((client) => client.tools()),
-  );
-  const mcpToolSets = mcpToolSetsList.length > 0 ? [Object.assign({}, ...mcpToolSetsList)] : [];
-
-  // Clean up MCP clients after run/stream completes
-  const closeMcpClients = async () => {
-    await Promise.all(mcpClients.map((client) => client.close()));
-  };
 
   // Create sandbox resolver (CF-specific implementation)
   const sandboxResolver = createCfSandboxResolver(env);
@@ -131,8 +174,13 @@ export async function buildAgentRunner(
     skills,
   });
 
-  // Set config.tools to empty since all tools come through registry now
-  config.tools = [];
+  // Wire registry tools into agent config by generating tool refs from the registry
+  // This ensures sandbox tools, skill tools, and any other registered tools are available to the agent
+  const registeredToolRefs = toolRegistry.list().map((impl) => ({
+    id: impl.id,
+    description: impl.description,
+  }));
+  config.tools = registeredToolRefs;
 
   const runner = createAgentRunner({
     config,
