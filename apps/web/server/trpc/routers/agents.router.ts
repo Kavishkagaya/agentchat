@@ -31,6 +31,12 @@ const agentConfigSchema = z
   })
   .strict();
 
+type PublicAgentRow = {
+  id: string;
+  name: string;
+  description: string | null;
+};
+
 export const agentsRouter = createTRPCRouter({
   list: orgProcedure.query(async ({ ctx }) => {
     return await getAgents(ctx.auth.orgId);
@@ -49,7 +55,7 @@ export const agentsRouter = createTRPCRouter({
 
   listPublic: orgProcedure.query(async () => {
     const agents = await getPublicAgents();
-    return agents.map((agent: any) => ({
+    return agents.map((agent: PublicAgentRow) => ({
       id: agent.id,
       name: agent.name,
       description: agent.description,

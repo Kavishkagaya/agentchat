@@ -31,7 +31,10 @@ async function requestOrchestrator<T>(
   headers: Record<string, string> = {},
   authClaims?: { org_id?: string; sub?: string },
 ): Promise<T> {
-  const baseUrl = process.env.ORCHESTRATOR_URL || "http://localhost:8789";
+  const baseUrl = process.env.ORCHESTRATOR_URL ?? "http://localhost:8789";
+  if (!process.env.ORCHESTRATOR_URL && process.env.NODE_ENV === "production") {
+    throw new Error("ORCHESTRATOR_URL must be set in production");
+  }
 
   const requestHeaders: Record<string, string> = {
     "content-type": "application/json",

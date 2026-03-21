@@ -40,6 +40,18 @@ const modelCatalogEntrySchema = z.object({
   models: z.array(z.string()),
 });
 
+type ModelRow = {
+  id: string;
+  name: string;
+  modelType: string;
+  kind: string;
+  modelId: string;
+  secretRef: string | null;
+  gatewayAccountId: string;
+  gatewayId: string;
+  config: unknown;
+};
+
 export const modelsRouter = createTRPCRouter({
   getCatalog: orgProcedure.query(async () => {
     return await fetchCatalog();
@@ -54,11 +66,8 @@ export const modelsRouter = createTRPCRouter({
     }),
 
   list: orgProcedure.query(async ({ ctx }) => {
-    if (!ctx.auth.orgId) {
-      throw new TRPCError({ code: "UNAUTHORIZED" });
-    }
     const models = await listModels(ctx.auth.orgId);
-    return models.map((model: any) => ({
+    return models.map((model: ModelRow) => ({
       id: model.id,
       name: model.name,
       modelType: model.modelType,
@@ -79,9 +88,6 @@ export const modelsRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      if (!(ctx.auth.orgId && ctx.auth.userId)) {
-        throw new TRPCError({ code: "UNAUTHORIZED" });
-      }
       const secret = await getSecretMetadata({
         orgId: ctx.auth.orgId,
         secretId: input.config.credentials_ref.secret_id,
@@ -139,9 +145,6 @@ export const modelsRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      if (!(ctx.auth.orgId && ctx.auth.userId)) {
-        throw new TRPCError({ code: "UNAUTHORIZED" });
-      }
       const existing = await getModel({
         orgId: ctx.auth.orgId,
         id: input.id,
@@ -206,9 +209,6 @@ export const modelsRouter = createTRPCRouter({
   delete: orgAdminProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      if (!(ctx.auth.orgId && ctx.auth.userId)) {
-        throw new TRPCError({ code: "UNAUTHORIZED" });
-      }
       const existing = await getModel({
         orgId: ctx.auth.orgId,
         id: input.id,

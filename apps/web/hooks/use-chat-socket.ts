@@ -46,6 +46,7 @@ export function useChatSocket(chatId: string) {
 
   const getTokenMutation = api.chats.getToken.useMutation();
   const { data: historyData } = api.chats.getHistory.useQuery({ chatId });
+  const getTokenRef = useRef(getTokenMutation.mutateAsync);
 
   // Hydrate from history (only if no messages yet)
   useEffect(() => {
@@ -60,6 +61,11 @@ export function useChatSocket(chatId: string) {
     }
   }, [historyData]);
 
+  // Update getTokenRef without triggering reconnections
+  useEffect(() => {
+    getTokenRef.current = getTokenMutation.mutateAsync;
+  });
+
   // WebSocket lifecycle
   useEffect(() => {
     if (connectingRef.current) return;
@@ -73,7 +79,7 @@ export function useChatSocket(chatId: string) {
       );
 
       try {
-        const { routing_token } = await getTokenMutation.mutateAsync({
+        const { routing_token } = await getTokenRef.current({
           chatId,
         });
 
@@ -96,6 +102,7 @@ export function useChatSocket(chatId: string) {
         };
 
         socket.onmessage = (event) => {
+          if (cancelled) return;
           const data = JSON.parse(event.data) as ChatWsEvent;
           handleEvent(data);
         };

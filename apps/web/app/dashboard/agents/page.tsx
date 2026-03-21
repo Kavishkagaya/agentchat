@@ -3,6 +3,7 @@
 import { Bot, Edit, PlusCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { toast } from "sonner";
 import { api } from "@/app/trpc/client";
 import { Button } from "@/components/ui/button";
 import {
@@ -42,9 +43,13 @@ export default function AgentsPage() {
   const [addDialogOpen, setAddDialogOpen] = useState(false);
 
   const handleCopy = async (agentId: string) => {
-    await copyAgent.mutateAsync({ agentId });
-    await agentsQuery.refetch();
-    setAddDialogOpen(false);
+    try {
+      await copyAgent.mutateAsync({ agentId });
+      await agentsQuery.refetch();
+      setAddDialogOpen(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to copy agent");
+    }
   };
 
   return (
@@ -168,8 +173,9 @@ export default function AgentsPage() {
                       size="sm"
                       variant="secondary"
                       onClick={() => handleCopy(agent.id)}
+                      disabled={copyAgent.isPending}
                     >
-                      Add to org
+                      {copyAgent.isPending ? "Loading..." : "Add to org"}
                     </Button>
                   </CardHeader>
                 </Card>

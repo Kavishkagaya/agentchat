@@ -9,6 +9,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { api } from "@/app/trpc/client";
 import { Button } from "@/components/ui/button";
 import {
@@ -79,14 +80,22 @@ function SecretRow({
   secret,
   onEdit,
   onDelete,
+  deleteIsPending,
 }: {
   secret: SecretRow;
   onEdit: (secret: SecretRow) => void;
   onDelete: (secretId: string) => void;
+  deleteIsPending?: boolean;
 }) {
   const revealMutation = api.secrets.reveal.useMutation();
   const [revealedValue, setRevealedValue] = useState<string | null>(null);
   const [revealError, setRevealError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!revealedValue) return;
+    const timer = setTimeout(() => setRevealedValue(null), 30_000);
+    return () => clearTimeout(timer);
+  }, [revealedValue]);
 
   const handleReveal = async () => {
     setRevealError(null);
@@ -125,6 +134,7 @@ function SecretRow({
             }
             size="sm"
             variant="ghost"
+            disabled={revealMutation.isPending}
           >
             {revealedValue ? (
               <EyeOff className="h-4 w-4" />
@@ -142,7 +152,7 @@ function SecretRow({
           <Button onClick={() => onEdit(secret)} size="sm" variant="ghost">
             <Edit2 className="h-4 w-4" />
           </Button>
-          <Button onClick={() => onDelete(secret.id)} size="sm" variant="ghost">
+          <Button onClick={() => onDelete(secret.id)} size="sm" variant="ghost" disabled={deleteIsPending}>
             <Trash2 className="h-4 w-4 text-destructive" />
           </Button>
         </div>
@@ -203,14 +213,18 @@ export default function SecretsPage() {
       return;
     }
 
-    await createSecret.mutateAsync({
-      name: form.name,
-      namespace: form.namespace,
-      value: form.value,
-    });
-    await secretsQuery.refetch();
-    setCreateOpen(false);
-    resetForm();
+    try {
+      await createSecret.mutateAsync({
+        name: form.name,
+        namespace: form.namespace,
+        value: form.value,
+      });
+      await secretsQuery.refetch();
+      setCreateOpen(false);
+      resetForm();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to create secret");
+    }
   };
 
   const handleEdit = async () => {
@@ -223,20 +237,28 @@ export default function SecretsPage() {
       return;
     }
 
-    await updateSecret.mutateAsync({
-      secretId: editingSecret.id,
-      name: form.name || undefined,
-      value: form.value || undefined,
-    });
-    await secretsQuery.refetch();
-    setEditOpen(false);
-    setEditingSecret(null);
-    resetForm();
+    try {
+      await updateSecret.mutateAsync({
+        secretId: editingSecret.id,
+        name: form.name || undefined,
+        value: form.value || undefined,
+      });
+      await secretsQuery.refetch();
+      setEditOpen(false);
+      setEditingSecret(null);
+      resetForm();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update secret");
+    }
   };
 
   const handleDelete = async (secretId: string) => {
-    await deleteSecret.mutateAsync({ secretId });
-    await secretsQuery.refetch();
+    try {
+      await deleteSecret.mutateAsync({ secretId });
+      await secretsQuery.refetch();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete secret");
+    }
   };
 
   const openEdit = (secret: SecretRow) => {
@@ -345,6 +367,7 @@ export default function SecretsPage() {
                             onDelete={handleDelete}
                             onEdit={openEdit}
                             secret={secret}
+                            deleteIsPending={deleteSecret.isPending}
                           />
                         ))}
                       </TableBody>
@@ -409,7 +432,9 @@ export default function SecretsPage() {
             <Button onClick={() => setCreateOpen(false)} variant="outline">
               Cancel
             </Button>
-            <Button onClick={handleCreate}>Create secret</Button>
+            <Button onClick={handleCreate} disabled={createSecret.isPending}>
+              {createSecret.isPending ? "Saving..." : "Create secret"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -466,7 +491,9 @@ export default function SecretsPage() {
             >
               Cancel
             </Button>
-            <Button onClick={handleEdit}>Save changes</Button>
+            <Button onClick={handleEdit} disabled={updateSecret.isPending}>
+              {updateSecret.isPending ? "Saving..." : "Save changes"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

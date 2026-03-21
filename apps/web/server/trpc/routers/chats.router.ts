@@ -14,9 +14,24 @@ import {
   chatUpdateInputSchema,
   normalizeChatRoutingConfig,
 } from "@axon/shared";
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { getOrchestratorClient } from "../../workers/orchestrator";
 import { createTRPCRouter, orgProcedure } from "../trpc";
+
+/**
+ * Procedure that resolves + verifies chat ownership, injects ctx.chat.
+ * Ensures the fetched chat belongs to the authenticated user's org.
+ */
+const orgChatProcedure = orgProcedure
+  .input(z.object({ chatId: z.string() }))
+  .use(async ({ ctx, input, next }) => {
+    const chat = await getChat(input.chatId);
+    if (!chat || chat.orgId !== ctx.auth.orgId) {
+      throw new TRPCError({ code: "NOT_FOUND" });
+    }
+    return next({ ctx: { ...ctx, chat } });
+  });
 
 export const chatsRouter = createTRPCRouter({
   list: orgProcedure.query(async ({ ctx }) => {
@@ -56,15 +71,7 @@ export const chatsRouter = createTRPCRouter({
       return { chatId };
     }),
 
-  get: orgProcedure
-    .input(z.object({ chatId: z.string() }))
-    .query(async ({ input }) => {
-      const chat = await getChat(input.chatId);
-      if (!chat) {
-        throw new Error("Chat not found");
-      }
-      return chat;
-    }),
+  get: orgChatProcedure.query(({ ctx }) => ctx.chat),
 
   getToken: orgProcedure
     .input(z.object({ chatId: z.string() }))
@@ -76,27 +83,21 @@ export const chatsRouter = createTRPCRouter({
       );
     }),
 
-  getHistory: orgProcedure
-    .input(
-      z.object({
-        chatId: z.string(),
-      }),
-    )
-    .query(async ({ input }) => {
+  getHistory: orgChatProcedure
+    .query(async ({ ctx }) => {
       const orchestrator = getOrchestratorClient();
       // Get routing token for client-side use
       const { routing_token } = await orchestrator.getRoutingToken(
-        { config_id: input.chatId, role: "admin" },
-        { sub: "system" },
+        { config_id: ctx.chat.id, role: "admin" },
+        { sub: ctx.auth.userId as string },
       );
 
-      return await orchestrator.getChatHistory(input.chatId, routing_token);
+      return await orchestrator.getChatHistory(ctx.chat.id, routing_token);
     }),
 
-  update: orgProcedure
+  update: orgChatProcedure
     .input(
       z.object({
-        chatId: z.string(),
         title: z.string().min(1).max(255).optional(),
         agentSetup: chatUpdateInputSchema.shape.agentSetup,
         agentIds: z.array(z.string()).optional(),
@@ -108,13 +109,8 @@ export const chatsRouter = createTRPCRouter({
       let agentIdsToPersist: string[] | undefined;
 
       if (input.config || input.agentSetup || input.agentIds) {
-        const existing = await getChat(input.chatId);
-        if (!existing || existing.orgId !== ctx.auth.orgId) {
-          throw new Error("Chat not found");
-        }
-
         const existingConfig = normalizeChatRoutingConfig(
-          (existing.config as Record<string, unknown> | undefined) ?? {},
+          (ctx.chat.config as Record<string, unknown> | undefined) ?? {},
         );
         const nextAgentSetup =
           input.agentSetup ??
@@ -171,28 +167,19 @@ export const chatsRouter = createTRPCRouter({
       return result;
     }),
 
-  clearHistory: orgProcedure
-    .input(z.object({ chatId: z.string() }))
-    .mutation(async ({ input }) => {
-      const orchestrator = getOrchestratorClient();
-      return await orchestrator.clearHistory(input.chatId);
-    }),
+  clearHistory: orgChatProcedure.mutation(async ({ ctx }) => {
+    const orchestrator = getOrchestratorClient();
+    return await orchestrator.clearHistory(ctx.chat.id);
+  }),
 
-  delete: orgProcedure
-    .input(z.object({ chatId: z.string() }))
-    .mutation(async ({ ctx, input }) => {
-      const chat = await getChat(input.chatId);
-      if (!chat) {
-        throw new Error("Chat not found");
-      }
+  delete: orgChatProcedure.mutation(async ({ ctx }) => {
+    // 1. Destroy DO + worker-db records via orchestrator
+    const orchestrator = getOrchestratorClient();
+    await orchestrator.deleteChat(ctx.chat.id);
 
-      // 1. Destroy DO + worker-db records via orchestrator
-      const orchestrator = getOrchestratorClient();
-      await orchestrator.deleteChat(input.chatId);
+    // 2. Delete main DB records
+    await deleteChat(ctx.chat.id, ctx.auth.orgId);
 
-      // 2. Delete main DB records
-      await deleteChat(input.chatId, ctx.auth.orgId);
-
-      return { deleted: true };
-    }),
+    return { deleted: true };
+  }),
 });

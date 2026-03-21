@@ -19,7 +19,20 @@ const mcpAddInput = z.object({
   secretId: z.string().uuid().nullable().optional(),
 });
 
-async function fetchMcpTools(
+type McpServerRow = {
+  id: string;
+  name: string;
+  url: string;
+  status: string;
+  config: unknown;
+  secretRef: string | null;
+  errorMessage: string | null;
+  lastValidatedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+async function _fetchMcpToolsInternal(
   url: string,
   token?: string | null,
 ): Promise<
@@ -63,10 +76,30 @@ async function fetchMcpTools(
   }
 }
 
+async function fetchMcpTools(
+  url: string,
+  token?: string | null,
+  timeoutMs = 15_000,
+): Promise<
+  Array<{
+    name: string;
+    description?: string | null;
+    inputSchema?: Record<string, unknown> | null;
+  }>
+> {
+  const timeout = new Promise<never>((_, rej) =>
+    setTimeout(
+      () => rej(new Error(`MCP fetch timed out after ${timeoutMs}ms`)),
+      timeoutMs,
+    ),
+  );
+  return Promise.race([_fetchMcpToolsInternal(url, token), timeout]);
+}
+
 export const mcpRouter = createTRPCRouter({
   list: orgProcedure.query(async ({ ctx }) => {
     const servers = await listMcpServers(ctx.auth.orgId);
-    return servers.map((server: any) => ({
+    return servers.map((server: McpServerRow) => ({
       id: server.id,
       name: server.name,
       url: server.url,
@@ -165,7 +198,10 @@ export const mcpRouter = createTRPCRouter({
             secretId,
           });
           if (!secret) {
-            throw new Error("Secret not found for MCP server");
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Secret not found for MCP server",
+            });
           }
 
           // Use bearer token as-is
@@ -184,6 +220,7 @@ export const mcpRouter = createTRPCRouter({
         });
         return { ok: true, toolCount: tools.length };
       } catch (error) {
+        if (error instanceof TRPCError) throw error;
         await updateMcpServerStatus({
           serverId: server.id,
           orgId: ctx.auth.orgId,
@@ -290,7 +327,10 @@ export const mcpRouter = createTRPCRouter({
             version: "latest",
           },
         };
+      } else if (input.secretId === null) {
+        delete newConfig.auth; // explicitly clear stale credentials
       }
+      // if input.secretId is undefined → not changed → inherit from existingConfig
 
       try {
         await fetchMcpTools(input.url, token);

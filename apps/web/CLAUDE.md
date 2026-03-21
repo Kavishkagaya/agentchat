@@ -88,3 +88,171 @@ npm run typecheck  # tsc --noEmit
 - `DATABASE_URL` — PostgreSQL connection string
 - `CLERK_SECRET_KEY` / `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` — Clerk auth
 - `NEXT_PUBLIC_ORCHESTRATOR_URL` — Client-side orchestrator URL (WebSocket)
+
+## Rules & Patterns
+
+### tRPC Error Handling
+
+**Rule:** All procedure errors must use `TRPCError` from `@trpc/server`. Never throw raw `Error` inside a tRPC handler — it surfaces to clients as a generic `INTERNAL_SERVER_ERROR 500`.
+
+✅ Correct
+```ts
+throw new TRPCError({ code: "NOT_FOUND", message: "Chat not found" });
+```
+
+❌ Wrong
+```ts
+throw new Error("Chat not found"); // becomes 500 INTERNAL_SERVER_ERROR
+```
+
+**Rule:** Use `NOT_FOUND` (not `FORBIDDEN`) when a resource belongs to another org — do not reveal that the resource exists.
+
+**Rule:** Always add `if (error instanceof TRPCError) throw error;` as the first line of any `catch` block that re-maps errors to `TRPCError`. This prevents double-wrapping.
+
+---
+
+### Org Isolation on Resource Access
+
+**Rule:** Any procedure that fetches a resource by ID must verify the resource belongs to `ctx.auth.orgId`. The middleware only guarantees the user is authenticated — it does not scope the fetch to the org.
+
+✅ Correct
+```ts
+const chat = await getChat(input.chatId);
+if (!chat || chat.orgId !== ctx.auth.orgId) {
+  throw new TRPCError({ code: "NOT_FOUND" });
+}
+```
+
+❌ Wrong
+```ts
+const chat = await getChat(input.chatId); // anyone can read any chat by ID
+if (!chat) throw new Error("Chat not found");
+```
+
+---
+
+### Redundant Auth Guards
+
+**Rule:** Procedures using `orgProcedure` or `orgAdminProcedure` must NOT add manual `if (!ctx.auth.orgId)` guards inside the handler body. The middleware already guarantees non-null values — the guard is dead code.
+
+❌ Wrong — dead code, misleads readers:
+```ts
+list: orgAdminProcedure.query(async ({ ctx }) => {
+  if (!ctx.auth.orgId) throw new TRPCError({ code: "UNAUTHORIZED" }); // unreachable
+  return await listSecrets(ctx.auth.orgId);
+}),
+```
+
+✅ Correct:
+```ts
+list: orgAdminProcedure.query(async ({ ctx }) => {
+  return await listSecrets(ctx.auth.orgId);
+}),
+```
+
+---
+
+### Client Mutation Error Handling
+
+**Rule:** Every client-side `mutateAsync` call must be wrapped in `try/catch`. On error, show a toast using `sonner`. Never let async errors propagate silently.
+
+✅ Correct
+```ts
+import { toast } from "sonner";
+try {
+  await createChat.mutateAsync(input);
+  router.push("/dashboard");
+} catch (err) {
+  toast.error(err instanceof Error ? err.message : "Failed to create chat");
+}
+```
+
+❌ Wrong — silent failure, user gets no feedback:
+```ts
+await createChat.mutateAsync(input);
+router.push("/dashboard");
+```
+
+---
+
+### Loading States on Submit Buttons
+
+**Rule:** Every button that triggers a mutation must be `disabled` while `mutation.isPending` is `true`. This prevents double-submission.
+
+✅ Correct
+```tsx
+<Button onClick={handleCreate} disabled={createChat.isPending}>
+  {createChat.isPending ? "Creating…" : "Create"}
+</Button>
+```
+
+❌ Wrong
+```tsx
+<Button onClick={handleCreate}>Create</Button>
+```
+
+---
+
+### Form Initialization from Async Data
+
+**Rule:** Use `useEffect` — not `useMemo` — to initialize form state from query data. `useMemo` is for pure computation; calling `setState` inside it is forbidden in React 19.
+
+✅ Correct
+```ts
+useEffect(() => {
+  if (agentQuery.data && !isInitialized) {
+    setForm({ name: agentQuery.data.name, ... });
+    setIsInitialized(true);
+  }
+}, [agentQuery.data, isInitialized]);
+```
+
+❌ Wrong — causes render-loop warnings in React 19 StrictMode:
+```ts
+useMemo(() => {
+  if (agentQuery.data && !isInitialized) {
+    setForm({ ... }); // setState inside useMemo — forbidden
+  }
+}, [agentQuery.data, isInitialized]);
+```
+
+---
+
+### External Service Timeouts
+
+**Rule:** All calls to external services (MCP servers via `fetchMcpTools`) must have a timeout. Use `Promise.race` with a rejection timer if the SDK does not accept an `AbortController` signal.
+
+✅ Correct
+```ts
+const timeout = new Promise<never>((_, rej) =>
+  setTimeout(() => rej(new Error("MCP fetch timed out after 15000ms")), 15_000)
+);
+return Promise.race([_fetchMcpToolsInternal(url, token), timeout]);
+```
+
+❌ Wrong — hangs indefinitely on an unresponsive server:
+```ts
+return fetchMcpTools(url, token); // no timeout
+```
+
+---
+
+### String-Based Error Matching
+
+**Rule:** Do not match `error.message` strings to determine error type. If the database layer changes its error text, the catch handler silently breaks. Prefer structured error classes or checking `instanceof TRPCError` first.
+
+❌ Wrong — fragile:
+```ts
+if (error instanceof Error && error.message === "Skill not found") {
+  throw new TRPCError({ code: "NOT_FOUND" });
+}
+```
+
+✅ Acceptable (temporary — until DB layer exports typed errors):
+```ts
+if (error instanceof TRPCError) throw error; // don't double-wrap
+if (error instanceof Error && error.message.includes("not found")) {
+  throw new TRPCError({ code: "NOT_FOUND", message: error.message });
+}
+throw error;
+```

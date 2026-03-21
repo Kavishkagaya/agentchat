@@ -3,7 +3,8 @@
 import { SANDBOX_TOOL_METADATA } from "@axon/shared";
 import { Trash2 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { api } from "@/app/trpc/client";
 import { Button } from "@/components/ui/button";
 import {
@@ -62,7 +63,7 @@ export default function AgentEditPage() {
   const [isInitialized, setIsInitialized] = useState(false);
 
   // Initialize form from agent data
-  useMemo(() => {
+  useEffect(() => {
     if (agentQuery.data && !isInitialized) {
       const agent = agentQuery.data;
       const config = agent.config as any;
@@ -101,28 +102,36 @@ export default function AgentEditPage() {
       return;
     }
 
-    await updateAgent.mutateAsync({
-      agentId,
-      name: form.name,
-      description: form.description || undefined,
-      modelId: form.modelId,
-      config: {
-        systemPrompt: form.systemPrompt,
-        model: selectedModel.modelId,
-        mcpServers: selectedServers.map((s) => s.id),
-        sandboxTools:
-          selectedSandboxTools.length > 0 ? selectedSandboxTools : undefined,
-        skills: selectedSkills.length > 0 ? selectedSkills : undefined,
-      },
-    });
-    router.push("/dashboard/agents");
+    try {
+      await updateAgent.mutateAsync({
+        agentId,
+        name: form.name,
+        description: form.description || undefined,
+        modelId: form.modelId,
+        config: {
+          systemPrompt: form.systemPrompt,
+          model: selectedModel.modelId,
+          mcpServers: selectedServers.map((s) => s.id),
+          sandboxTools:
+            selectedSandboxTools.length > 0 ? selectedSandboxTools : undefined,
+          skills: selectedSkills.length > 0 ? selectedSkills : undefined,
+        },
+      });
+      router.push("/dashboard/agents");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update agent");
+    }
   };
 
   const handleDelete = async () => {
-    await deleteAgent.mutateAsync({ agentId });
-    utils.agents.get.setData({ agentId }, undefined);
-    utils.agents.list.invalidate();
-    router.push("/dashboard/agents");
+    try {
+      await deleteAgent.mutateAsync({ agentId });
+      utils.agents.get.setData({ agentId }, undefined);
+      utils.agents.list.invalidate();
+      router.push("/dashboard/agents");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete agent");
+    }
   };
 
   if (agentQuery.isLoading) {
@@ -370,7 +379,9 @@ export default function AgentEditPage() {
         >
           Cancel
         </Button>
-        <Button onClick={handleUpdate}>Update agent</Button>
+        <Button onClick={handleUpdate} disabled={updateAgent.isPending}>
+          {updateAgent.isPending ? "Saving..." : "Update agent"}
+        </Button>
         <div className="flex-1" />
         <div className="flex items-center gap-2">
           {(agentQuery.data.chatCount ?? 0) > 0 && (

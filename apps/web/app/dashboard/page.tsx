@@ -4,6 +4,7 @@ import { Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { toast } from "sonner";
 import { api } from "@/app/trpc/client";
 import {
   type ChatFormData,
@@ -34,20 +35,28 @@ export default function DashboardPage() {
   } | null>(null);
 
   const handleCreate = async (data: ChatFormData) => {
-    const result = await createChat.mutateAsync({
-      title: data.title,
-      agentSetup: data.agentSetup,
-      config: data.config,
-    });
-    setCreateOpen(false);
-    router.push(`/dashboard/chats/${result.chatId}`);
+    try {
+      const result = await createChat.mutateAsync({
+        title: data.title,
+        agentSetup: data.agentSetup,
+        config: data.config,
+      });
+      setCreateOpen(false);
+      router.push(`/dashboard/chats/${result.chatId}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to create chat");
+    }
   };
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    await deleteChatMutation.mutateAsync({ chatId: deleteTarget.id });
-    setDeleteTarget(null);
-    await chatsQuery.refetch();
+    try {
+      await deleteChatMutation.mutateAsync({ chatId: deleteTarget.id });
+      setDeleteTarget(null);
+      await chatsQuery.refetch();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete chat");
+    }
   };
 
   return (

@@ -20,7 +20,7 @@ type ChatState = {
 };
 
 export const useChatStore = create<ChatState>((set) => ({
-  orgId: "org_demo",
+  orgId: "",
   chatTitle: "",
   agentIdsInput: "",
   agentName: "",

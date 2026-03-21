@@ -2,7 +2,7 @@
 
 import { useAuth } from "@clerk/nextjs";
 import { useEffect } from "react";
-import { useAxonUserActions } from "../store/user";
+import { useAxonUser, useAxonUserActions } from "../store/user";
 import { api } from "../trpc/client";
 
 export function AxonAuthProvider({ children }: { children: React.ReactNode }) {

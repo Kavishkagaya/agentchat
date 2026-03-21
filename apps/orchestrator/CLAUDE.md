@@ -105,3 +105,63 @@ npm run typecheck  # tsc --noEmit
 
 - `*/5 * * * *` — Activity check (currently disabled)
 - `0 3 * * *` — Auto-archive (currently disabled)
+
+## Implementation Details & Rules
+
+### Request Validation
+
+**Rule**: All user-facing request bodies must be validated against schemas from `@axon/shared/chat-contract.ts` **before** forwarding to Memory Controller.
+
+- `POST /chats/:id/messages` validates against `chatMessageRequestSchema.omit({ type: true })`
+  - The `type: "message"` field is injected server-side by memory-controller; clients must NOT send it
+  - Use `.clone()` to read the body for validation without consuming the original stream
+  - Return 400 with first validation error message if parsing fails
+- All other POST bodies validated via `readJson<Type>()` with explicit type casting (see `readJson` in `http/request.ts`)
+
+### Error Response Format
+
+**Rule**: All error responses must use `errorResponse(status, code, message)` helper, never bare `new Response()`.
+
+- Ensures consistent JSON format: `{ ok: false, error: { code: string, message: string } }`
+- Auth failures (403): use code `"forbidden"` with message `"invalid or expired routing token"`
+- Validation failures (400): use code `"invalid_request"` with issue-specific message
+- Route not found (404): use code `"not_found"` with message `"route not found"`
+- All error paths in `router.ts` must go through `handleError()` or explicitly call `errorResponse()`
+
+### Service Layer Error Handling
+
+**Rule**: Business logic in `services/` must throw `ServiceError(status, code, message)` for all known errors.
+
+- `ServiceError` is caught by router's `handleError()` and formatted consistently
+- Never continue execution after a failed external call (DO, DB); fail fast
+  - Example: `destroyChat()` throws `ServiceError(502)` if DO destroy fails; DB delete only runs on success
+  - This ensures data consistency (no orphaned DO state)
+- Wrap any potentially-throwing operations (`res.json()`, `DB.query()`) in try-catch and rethrow as `ServiceError`
+
+### Memory Controller Communication
+
+**Rule**: All DO calls go through `controllerClient` in `do/controller-client.ts` and must have timeout protection.
+
+- Default timeout: **30 seconds** (30,000ms) for all non-WebSocket calls
+  - Prevents indefinite hangs if DO is slow/stuck
+  - Timeouts throw `Error` with message `"DO call timed out after Xms (METHOD /path)"`
+- **WebSocket connections exempt**: pass `timeoutMs: 0` to `this.fetch()` to disable timeout
+  - WebSocket handshakes are open-ended; cannot apply a timeout
+- All DO responses checked with `if (!res.ok)` before parsing; throw `ServiceError` on failure
+- JSON parsing from DO responses must be wrapped in try-catch (DO may return non-JSON on error)
+
+### Message Routing to Memory Controller
+
+**Rule**: The orchestrator acts as a thin gateway; message routing logic is in memory-controller.
+
+- `POST /chats/:id/messages` forwards the validated request body unchanged to memory-controller
+- Memory-controller handles agent selection, mention parsing, response generation
+- Orchestrator responsibility: validate early, forward cleanly, handle timeouts
+
+### Path Extraction
+
+**Rule**: Use `url.pathname.split("/")[2]` to extract `configId` from client routes (e.g., `/chats/ID/messages`).
+
+- Client routes: `/chats/:id/...` — split gives `["", "chats", "ID", ...]`, so index 2 is the ID
+- Infra routes: `/infra/chats/:id/...` — same structure but with `"infra"` at index 1
+- Use existing `parseConfigId(pathname, prefix)` helper when available for dev routes

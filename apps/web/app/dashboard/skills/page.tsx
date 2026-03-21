@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { toast } from "sonner";
 import { api } from "@/app/trpc/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,14 +26,22 @@ export default function SkillsPage() {
 
   const handleCreateSkill = async () => {
     if (!newSkill.name || !newSkill.content) return;
-    await createSkillMutation.mutateAsync(newSkill);
-    setNewSkill({ name: "", description: "", content: "" });
-    setShowCreate(false);
+    try {
+      await createSkillMutation.mutateAsync(newSkill);
+      setNewSkill({ name: "", description: "", content: "" });
+      setShowCreate(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to create skill");
+    }
   };
 
   const handleDeleteSkill = async (skillId: string) => {
     if (confirm("Delete this skill?")) {
-      await deleteSkillMutation.mutateAsync({ skillId });
+      try {
+        await deleteSkillMutation.mutateAsync({ skillId });
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Failed to delete skill");
+      }
     }
   };
 
@@ -70,9 +79,9 @@ export default function SkillsPage() {
           <div className="flex gap-2">
             <Button
               onClick={handleCreateSkill}
-              disabled={!newSkill.name || !newSkill.content}
+              disabled={!newSkill.name || !newSkill.content || createSkillMutation.isPending}
             >
-              Create
+              {createSkillMutation.isPending ? "Saving..." : "Create"}
             </Button>
             <Button variant="outline" onClick={() => setShowCreate(false)}>
               Cancel

@@ -16,11 +16,15 @@ export async function createContext(opts: { req: Request | NextRequest }) {
     opts.req as NextRequest,
   );
 
-  // Resolve internal IDs if available
-  const userId = clerkUserId ? await getInternalUserId(clerkUserId) : null;
-  const orgId = clerkOrgId ? await getInternalOrgId(clerkOrgId) : null;
-  const role = userId && orgId ? await getUserOrgRole(userId, orgId) : null;
-  const isAdmin = userId ? await isSuperAdmin(userId) : false;
+  // Resolve internal IDs if available (parallelize independent lookups)
+  const [userId, orgId] = await Promise.all([
+    clerkUserId ? getInternalUserId(clerkUserId) : Promise.resolve(null),
+    clerkOrgId ? getInternalOrgId(clerkOrgId) : Promise.resolve(null),
+  ]);
+  const [role, isAdmin] = await Promise.all([
+    userId && orgId ? getUserOrgRole(userId, orgId) : Promise.resolve(null),
+    userId ? isSuperAdmin(userId) : Promise.resolve(false),
+  ]);
 
   return {
     db: getDb(),

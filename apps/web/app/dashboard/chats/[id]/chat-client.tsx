@@ -4,6 +4,7 @@ import { normalizeChatRoutingConfig } from "@axon/shared";
 import { Edit, Eraser, Send, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import { api } from "@/app/trpc/client";
 import {
   type ChatFormData,
@@ -64,19 +65,27 @@ export function ChatClient({ chatId }: { chatId: string }) {
   };
 
   const handleUpdate = async (data: ChatFormData) => {
-    await updateChat.mutateAsync({
-      chatId,
-      title: data.title,
-      agentSetup: data.agentSetup,
-      config: data.config,
-    });
-    await chatQuery.refetch();
-    setEditOpen(false);
+    try {
+      await updateChat.mutateAsync({
+        chatId,
+        title: data.title,
+        agentSetup: data.agentSetup,
+        config: data.config,
+      });
+      await chatQuery.refetch();
+      setEditOpen(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update chat");
+    }
   };
 
   const handleDelete = async () => {
-    await deleteChatMutation.mutateAsync({ chatId });
-    router.push("/dashboard");
+    try {
+      await deleteChatMutation.mutateAsync({ chatId });
+      router.push("/dashboard");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete chat");
+    }
   };
 
   const chatTitle = chatQuery.data?.title ?? "Loading...";

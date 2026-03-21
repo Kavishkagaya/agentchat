@@ -2,6 +2,7 @@
 
 import { Database, Edit2, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import { api } from "@/app/trpc/client";
 import { Button } from "@/components/ui/button";
 import {
@@ -164,7 +165,7 @@ export default function ModelsPage() {
       await deleteModel.mutateAsync({ id });
       await modelsQuery.refetch();
     } catch (error) {
-      console.error("Failed to delete model:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to delete model");
     }
   };
 

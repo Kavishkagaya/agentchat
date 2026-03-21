@@ -3,6 +3,7 @@
 import { SANDBOX_TOOL_METADATA } from "@axon/shared";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import { api } from "@/app/trpc/client";
 import { Button } from "@/components/ui/button";
 import {
@@ -64,30 +65,38 @@ export default function AgentCreatePage() {
       return;
     }
 
-    const result = await createAgent.mutateAsync({
-      name: form.name,
-      description: form.description || undefined,
-      modelId: form.modelId,
-      config: {
-        systemPrompt: form.systemPrompt,
-        model: selectedModel.modelId,
-        mcpServers: selectedServers.map((s) => s.id),
-        sandboxTools:
-          selectedSandboxTools.length > 0 ? selectedSandboxTools : undefined,
-        skills: selectedSkills.length > 0 ? selectedSkills : undefined,
-      },
-    });
+    try {
+      const result = await createAgent.mutateAsync({
+        name: form.name,
+        description: form.description || undefined,
+        modelId: form.modelId,
+        config: {
+          systemPrompt: form.systemPrompt,
+          model: selectedModel.modelId,
+          mcpServers: selectedServers.map((s) => s.id),
+          sandboxTools:
+            selectedSandboxTools.length > 0 ? selectedSandboxTools : undefined,
+          skills: selectedSkills.length > 0 ? selectedSkills : undefined,
+        },
+      });
 
-    setPublishPrompt(result.agentId);
+      setPublishPrompt(result.agentId);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to create agent");
+    }
   };
 
   const handlePublish = async () => {
     if (!publishPrompt) {
       return;
     }
-    await publishAgent.mutateAsync({ agentId: publishPrompt });
-    setPublishPrompt(null);
-    router.push("/dashboard/agents");
+    try {
+      await publishAgent.mutateAsync({ agentId: publishPrompt });
+      setPublishPrompt(null);
+      router.push("/dashboard/agents");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to publish agent");
+    }
   };
 
   return (
@@ -332,7 +341,9 @@ export default function AgentCreatePage() {
         >
           Cancel
         </Button>
-        <Button onClick={handleCreate}>Create agent</Button>
+        <Button onClick={handleCreate} disabled={createAgent.isPending}>
+          {createAgent.isPending ? "Saving..." : "Create agent"}
+        </Button>
       </div>
 
       <Dialog open={mcpDialogOpen} onOpenChange={setMcpDialogOpen}>
@@ -417,7 +428,9 @@ export default function AgentCreatePage() {
             >
               Not now
             </Button>
-            <Button onClick={handlePublish}>Publish</Button>
+            <Button onClick={handlePublish} disabled={publishAgent.isPending}>
+              {publishAgent.isPending ? "Publishing..." : "Publish"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

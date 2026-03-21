@@ -21,11 +21,6 @@ const useAxonUserStore = create<AxonUserState>((set) => ({
 }));
 
 export const useAxonUser = () =>
-  useAxonUserStore((s) => {
-    if (!s.isLoaded) {
-      return null; // User data is still loading
-    }
-    return s.axonUser;
-  });
+  useAxonUserStore((s) => ({ user: s.axonUser, isLoaded: s.isLoaded }));
 
 export const useAxonUserActions = () => useAxonUserStore((s) => s.actions);
