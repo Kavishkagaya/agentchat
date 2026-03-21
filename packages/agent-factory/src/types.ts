@@ -1,5 +1,5 @@
 import type { LanguageModel, ModelMessage } from "ai";
-import type { z, ZodTypeAny } from "zod";
+import type { ZodTypeAny, z } from "zod";
 
 export type AgentToolRef = {
   id: string;
@@ -57,7 +57,10 @@ export type ToolImplementation<TSchema extends ZodTypeAny = ZodTypeAny> = {
   id: string;
   description: string;
   schema: TSchema;
-  execute: (args: z.infer<TSchema>, context: ToolExecutionContext) => Promise<unknown>;
+  execute: (
+    args: z.infer<TSchema>,
+    context: ToolExecutionContext,
+  ) => Promise<unknown>;
 };
 
 export type ToolRegistry = {

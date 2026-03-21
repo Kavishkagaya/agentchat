@@ -1,5 +1,4 @@
 import { createMCPClient } from "@ai-sdk/mcp";
-import type { ToolSet } from "ai";
 import {
   type AgentRunInput,
   type AgentStreamEvent,
@@ -8,9 +7,14 @@ import {
 } from "@axon/agent-factory";
 import type { SkillRecord } from "@axon/shared";
 import { getDb } from "@axon/worker-database";
+import type { ToolSet } from "ai";
 import type { AgentConfigRecord } from "./config";
 import type { Env } from "./env";
-import { resolveMcpServers, resolveModelEnv, resolveTooling } from "./resolution";
+import {
+  resolveMcpServers,
+  resolveModelEnv,
+  resolveTooling,
+} from "./resolution";
 import { createToolRegistry } from "./tools";
 import { createCfSandboxResolver } from "./tools/sandbox-resolver";
 
@@ -141,14 +145,10 @@ export async function buildAgentRunner(
   }
 
   // Resolve which tools and MCP servers are needed
-  const { sandboxToolIds, mcpServerIds } = await resolveTooling(
-    record.config,
-  );
+  const { sandboxToolIds, mcpServerIds } = await resolveTooling(record.config);
 
   // Load skills and get system prompt injection
-  const { skills, systemPromptInjection } = await resolveSkills(
-    record.config,
-  );
+  const { skills, systemPromptInjection } = await resolveSkills(record.config);
   if (systemPromptInjection) {
     if (config.system_prompt) {
       config.system_prompt = `${systemPromptInjection}\n\n${config.system_prompt}`;
@@ -158,11 +158,8 @@ export async function buildAgentRunner(
   }
 
   // Build MCP clients and get tool sets
-  const { toolSets: mcpToolSets, close: closeMcpClients } = await buildMcpClients(
-    env,
-    record.orgId,
-    mcpServerIds,
-  );
+  const { toolSets: mcpToolSets, close: closeMcpClients } =
+    await buildMcpClients(env, record.orgId, mcpServerIds);
 
   // Create sandbox resolver (CF-specific implementation)
   const sandboxResolver = createCfSandboxResolver(env);

@@ -1,10 +1,14 @@
 import type { Env } from "../index";
 
 export class WorkflowHandler {
-  constructor(_ctx: DurableObjectState, _env: Env) {}
+  // ctx and env are intentionally unused — workflow is not yet implemented
+  constructor(
+    private ctx: DurableObjectState,
+    private env: Env,
+  ) {}
 
-  async ensureSchema() {
-    // TODO: implement when workflow is in scope
+  async ensureSchema(): Promise<void> {
+    // No-op until workflow is implemented
   }
 
   async handle(_request: Request, _route: string): Promise<Response> {

@@ -61,7 +61,10 @@ export const skillsRouter = createTRPCRouter({
         });
       } catch (error) {
         if (error instanceof Error && error.message === "Skill not found") {
-          throw new TRPCError({ code: "NOT_FOUND", message: "Skill not found" });
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Skill not found",
+          });
         }
         throw error;
       }
@@ -74,7 +77,10 @@ export const skillsRouter = createTRPCRouter({
         return await deleteSkill(input.skillId, ctx.auth.orgId);
       } catch (error) {
         if (error instanceof Error && error.message === "Skill not found") {
-          throw new TRPCError({ code: "NOT_FOUND", message: "Skill not found" });
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Skill not found",
+          });
         }
         throw error;
       }

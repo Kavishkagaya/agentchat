@@ -9,9 +9,7 @@ export function createSkillLoaderTool(
   skills: Array<{ name: string; description?: string; content: string }>,
 ): ToolImplementation {
   // Build a case-insensitive lookup map
-  const skillMap = new Map(
-    skills.map((s) => [s.name.toLowerCase(), s]),
-  );
+  const skillMap = new Map(skills.map((s) => [s.name.toLowerCase(), s]));
 
   const loadSkillSchema = z.object({
     name: z

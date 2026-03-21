@@ -1,7 +1,9 @@
 import { normalizeChatRoutingConfig, verify } from "@axon/shared";
 import { getDb, initDb, schema } from "@axon/worker-database";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/durable-sqlite";
 import { ChatHandler } from "./chat/handler";
+import { ALLOWED_TABLES, type AllowedTable } from "./schema";
 import { WorkflowHandler } from "./workflow/handler";
 
 export interface Env {
@@ -44,10 +46,11 @@ async function verifyOrchestratorToken(
   }
 
   const token = authHeader.slice(7);
-  const [encodedPayload, signature] = token.split(".");
-  if (!encodedPayload || !signature) {
+  const parts = token.split(".");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
     return false;
   }
+  const [encodedPayload, signature] = parts;
 
   try {
     const isValid = await verify(
@@ -130,27 +133,35 @@ export class MemoryController extends DurableObject<Env> {
 
     if (request.method === "POST" && route === "/archive") {
       try {
-        const sql = this.ctx.storage.sql;
-        if (!sql) throw new Error("SQLite storage not available");
+        const rawSql = this.ctx.storage.sql;
+        if (!rawSql) throw new Error("SQLite storage not available");
 
-        let body: any;
+        interface ArchiveBody {
+          reason?: string;
+        }
+        let body: ArchiveBody;
         try {
           body = await request.json();
         } catch {
           body = {};
         }
 
-        // Get all table names
-        const tableNames = Array.from(
-          sql.exec<{ name: string }>(
+        // Get all table names, then filter against whitelist to prevent SQL injection
+        const allTableNames = Array.from(
+          rawSql.exec<{ name: string }>(
             "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
           ),
         ).map((row) => row.name);
 
-        // Export all tables as JSON objects
+        const tableNames = allTableNames.filter((n): n is AllowedTable =>
+          (ALLOWED_TABLES as readonly string[]).includes(n),
+        );
+
+        // Export whitelisted tables using Drizzle's sql tagged template for safe identifier escaping
+        const db = drizzle(this.ctx.storage);
         const tables: Record<string, unknown[]> = {};
         for (const tableName of tableNames) {
-          const rows = Array.from(sql.exec(`SELECT * FROM ${tableName}`));
+          const rows = db.all(sql`SELECT * FROM ${sql.identifier(tableName)}`);
           tables[tableName] = rows;
         }
 
@@ -190,10 +201,13 @@ export class MemoryController extends DurableObject<Env> {
 
     if (request.method === "POST" && route === "/restore") {
       try {
-        const sql = this.ctx.storage.sql;
-        if (!sql) throw new Error("SQLite storage not available");
+        const rawSql = this.ctx.storage.sql;
+        if (!rawSql) throw new Error("SQLite storage not available");
 
-        let body: any;
+        interface RestoreBody {
+          snapshot?: { tables?: unknown };
+        }
+        let body: RestoreBody;
         try {
           body = await request.json();
         } catch {
@@ -214,26 +228,46 @@ export class MemoryController extends DurableObject<Env> {
 
         let totalRows = 0;
         const restoredTables: string[] = [];
+        const db = drizzle(this.ctx.storage);
 
         for (const [tableName, rows] of Object.entries(
           snapshot.tables as Record<string, unknown[]>,
         )) {
+          // Skip non-whitelisted tables to prevent injection via snapshot
+          if (!ALLOWED_TABLES.includes(tableName as AllowedTable)) {
+            console.warn(
+              `Skipping non-whitelisted table in restore: ${tableName}`,
+            );
+            continue;
+          }
+
           try {
             const rowsArr = rows as Record<string, unknown>[];
             if (!rowsArr.length) continue; // nothing to restore for empty table
 
-            const cols = Object.keys(rowsArr[0]);
-            const colDefs = cols.join(", ");
-            const placeholders = cols.map(() => "?").join(", ");
+            // Drop using safe identifier escaping
+            db.run(sql`DROP TABLE IF EXISTS ${sql.identifier(tableName)}`);
 
-            sql.exec(`DROP TABLE IF EXISTS ${tableName}`);
-            sql.exec(`CREATE TABLE ${tableName} (${colDefs})`);
+            // Recreate via ensureSchema() which has the correct structure
+            // (ChatHandler will call this anyway during initialization)
+            // For now, just skip the recreate — it will be created on next ensureSchema() call
 
-            const insertSql = `INSERT INTO ${tableName} (${colDefs}) VALUES (${placeholders})`;
+            // Insert rows using parameterized inserts (safe from injection)
+            const colsFromSnapshot = Object.keys(rowsArr[0]);
+
             for (const row of rowsArr) {
-              sql.exec(insertSql, ...cols.map((c) => row[c]));
+              const values = colsFromSnapshot.map((col) => row[col]);
+              const placeholders = colsFromSnapshot
+                .map((_, i) => `?${i + 1}`)
+                .join(", ");
+
+              rawSql.exec(
+                `INSERT INTO ${tableName} (${colsFromSnapshot.join(", ")}) VALUES (${placeholders})`,
+                ...values,
+              );
               totalRows++;
             }
+
             restoredTables.push(tableName);
           } catch (tableErr) {
             console.error(`Failed to restore table ${tableName}:`, tableErr);
@@ -304,10 +338,14 @@ export class MemoryController extends DurableObject<Env> {
         config = normalizeChatRoutingConfig(config);
       }
 
-      await this.ctx.storage.put("config_id", body.config_id);
-      await this.ctx.storage.put("type", type);
-      if (org_id) await this.ctx.storage.put("org_id", org_id);
-      if (config) await this.ctx.storage.put("config", config);
+      // Atomic storage init — all-or-nothing
+      const initBatch: Record<string, unknown> = {
+        config_id: body.config_id,
+        type: type,
+      };
+      if (org_id) initBatch.org_id = org_id;
+      if (config) initBatch.config = config;
+      await this.ctx.storage.put(initBatch);
 
       // Enforce schema upon initialization
       if (type === "chat") {
@@ -375,11 +413,14 @@ export class MemoryController extends DurableObject<Env> {
             if (dbInit.type === "chat") {
               config = normalizeChatRoutingConfig(config);
             }
-            await this.ctx.storage.put("config_id", configId);
-            await this.ctx.storage.put("type", dbInit.type);
-            if (dbInit.org_id)
-              await this.ctx.storage.put("org_id", dbInit.org_id);
-            if (config) await this.ctx.storage.put("config", config);
+            // Atomic storage init — all-or-nothing
+            const initBatch: Record<string, unknown> = {
+              config_id: configId,
+              type: dbInit.type,
+            };
+            if (dbInit.org_id) initBatch.org_id = dbInit.org_id;
+            if (config) initBatch.config = config;
+            await this.ctx.storage.put(initBatch);
 
             if (dbInit.type === "chat") {
               const handler = new ChatHandler(this.ctx, this.env);

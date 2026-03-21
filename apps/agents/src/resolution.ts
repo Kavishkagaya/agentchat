@@ -2,8 +2,8 @@ import type { ModelEnv } from "@axon/agent-factory";
 import type { ResolvedMcpServer } from "@axon/shared";
 import { getMcpServer, getModel, getSecretValue } from "@axon/worker-database";
 import { TtlCache } from "./cache";
-import { resolveUpdatedAt, createCachedLoader } from "./cache-utils";
-import { type Env } from "./env";
+import { createCachedLoader, resolveUpdatedAt } from "./cache-utils";
+import type { Env } from "./env";
 
 const MAX_CACHE_ENTRIES = 500;
 
@@ -23,7 +23,8 @@ const loadModelCached = (env: Env) =>
     cache: modelCache,
     cacheKeyPrefix: "model",
     writeL2: true,
-    dbFetch: async (id, orgId) => (await getModel({ orgId, providerId: id })) ?? null,
+    dbFetch: async (id, orgId) =>
+      (await getModel({ orgId, providerId: id })) ?? null,
     getVersion: (m) => resolveUpdatedAt(m.updatedAt) ?? "v0",
     cacheKind: "model",
     env,
@@ -50,7 +51,8 @@ const loadMcpServerCached = (env: Env) =>
     cache: mcpServerCache,
     cacheKeyPrefix: "mcp-server",
     writeL2: true,
-    dbFetch: async (id, orgId) => (await getMcpServer({ orgId, serverId: id })) ?? null,
+    dbFetch: async (id, orgId) =>
+      (await getMcpServer({ orgId, serverId: id })) ?? null,
     getVersion: (s) =>
       resolveUpdatedAt(s.updatedAt) ??
       resolveUpdatedAt(s.lastValidatedAt) ??
@@ -78,7 +80,9 @@ function extractSandboxToolIds(rawConfig: unknown): string[] {
   if (!Array.isArray(config.sandboxTools)) {
     return [];
   }
-  return config.sandboxTools.filter((id): id is string => typeof id === "string");
+  return config.sandboxTools.filter(
+    (id): id is string => typeof id === "string",
+  );
 }
 
 export async function resolveMcpServers(

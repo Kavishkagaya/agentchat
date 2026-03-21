@@ -1,5 +1,5 @@
-import { z } from "zod";
 import type { SandboxResolver } from "@axon/shared";
+import { z } from "zod";
 import type { ToolImplementation } from "../types";
 
 // ── Zod Schemas ──
@@ -58,7 +58,9 @@ const renameFileSchema = z.object({
  * Each tool uses the provided resolver to get a SandboxSession for the agent.
  * Files and state persist across multiple tool calls within a session.
  */
-export function createSandboxTools(resolver: SandboxResolver): ToolImplementation[] {
+export function createSandboxTools(
+  resolver: SandboxResolver,
+): ToolImplementation[] {
   return [
     {
       id: "sandbox_exec",
@@ -67,7 +69,11 @@ export function createSandboxTools(resolver: SandboxResolver): ToolImplementatio
       schema: execSchema,
       execute: async (args, context) => {
         try {
-          const { command, args: cmdArgs = [], cwd } = args as z.infer<typeof execSchema>;
+          const {
+            command,
+            args: cmdArgs = [],
+            cwd,
+          } = args as z.infer<typeof execSchema>;
           const sandbox = await resolver(context.agent_id);
           const fullCmd = [command, ...cmdArgs].join(" ");
           // Pass cwd as an option instead of interpolating into the shell string to avoid injection
@@ -136,7 +142,9 @@ export function createSandboxTools(resolver: SandboxResolver): ToolImplementatio
       schema: listFilesSchema,
       execute: async (args, context) => {
         try {
-          const { path, recursive = false } = args as z.infer<typeof listFilesSchema>;
+          const { path, recursive = false } = args as z.infer<
+            typeof listFilesSchema
+          >;
           const sandbox = await resolver(context.agent_id);
           const files = await sandbox.listFiles(path, {
             recursive,

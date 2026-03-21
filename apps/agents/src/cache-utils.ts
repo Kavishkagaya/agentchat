@@ -1,4 +1,4 @@
-import { TtlCache } from "./cache";
+import type { TtlCache } from "./cache";
 import {
   readLatestVersion,
   readVersionedCache,
@@ -47,7 +47,15 @@ export function createCachedLoader<T>(
   options: CachedLoaderOptions<T>,
 ): (id: string, orgId: string) => Promise<T | null> {
   return async (id: string, orgId: string): Promise<T | null> => {
-    const { cache, cacheKeyPrefix, getVersion, writeL2, dbFetch, cacheKind, env } = options;
+    const {
+      cache,
+      cacheKeyPrefix,
+      getVersion,
+      writeL2,
+      dbFetch,
+      cacheKind,
+      env,
+    } = options;
     const cacheKey = `${cacheKeyPrefix}:${id}`;
     const ttlMs = getTtlMs(env.AGENT_CONFIG_CACHE_TTL_SECONDS, DEFAULT_TTL_MS);
 

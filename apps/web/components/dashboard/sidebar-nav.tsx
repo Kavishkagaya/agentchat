@@ -22,7 +22,12 @@ const workspaceNav = [
 ];
 
 const configNav = [
-  { name: "Settings", href: "/dashboard/settings", icon: Settings, exact: false },
+  {
+    name: "Settings",
+    href: "/dashboard/settings",
+    icon: Settings,
+    exact: false,
+  },
 ];
 
 export function SidebarNav() {

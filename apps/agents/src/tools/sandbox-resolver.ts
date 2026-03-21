@@ -1,5 +1,5 @@
-import { getSandbox } from "@cloudflare/sandbox";
 import type { SandboxResolver, SandboxSession } from "@axon/shared";
+import { getSandbox } from "@cloudflare/sandbox";
 import type { Env } from "../env";
 
 /**
@@ -30,10 +30,17 @@ export function createCfSandboxResolver(env: Env): SandboxResolver {
         const result = await cfSandbox.readFile(path, opts);
         return result.content ?? "";
       },
-      async writeFile(path: string, content: string, opts?: { encoding?: string }) {
+      async writeFile(
+        path: string,
+        content: string,
+        opts?: { encoding?: string },
+      ) {
         await cfSandbox.writeFile(path, content, opts);
       },
-      async listFiles(path: string, opts?: { recursive?: boolean; includeHidden?: boolean }) {
+      async listFiles(
+        path: string,
+        opts?: { recursive?: boolean; includeHidden?: boolean },
+      ) {
         const result = await cfSandbox.listFiles(path, opts);
         return result.files ?? [];
       },

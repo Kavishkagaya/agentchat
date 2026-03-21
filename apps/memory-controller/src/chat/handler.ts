@@ -7,61 +7,38 @@ import {
   chatMessageRequestSchema,
   createAgentAccessToken,
   type MessageOrigin,
+  normalizeChatRoutingConfig,
 } from "@axon/shared";
+import { asc, desc, eq, lt, sql } from "drizzle-orm";
+import {
+  type DrizzleSqliteDODatabase,
+  drizzle,
+} from "drizzle-orm/durable-sqlite";
+
 import { ContextManager } from "../context-manager";
 import type { Env } from "../index";
+import * as schema from "../schema";
 import { getTriggerDepthLimit, resolveChatTargets } from "./decision-maker";
 
 export class ChatHandler {
+  private db: DrizzleSqliteDODatabase<typeof schema>;
+  private contextManager: ContextManager;
+
   constructor(
     private ctx: DurableObjectState,
     private env: Env,
-  ) {}
+  ) {
+    this.db = drizzle(ctx.storage, { schema });
+    this.contextManager = new ContextManager(this.db);
+  }
 
   async ensureSchema() {
-    const sql = this.ctx.storage.sql;
-    if (!sql) throw new Error("SQLite storage not available");
-
-    sql.exec(`
-      CREATE TABLE IF NOT EXISTS messages (
-        message_id  TEXT PRIMARY KEY,
-        role        TEXT NOT NULL,
-        text        TEXT NOT NULL,
-        agent_id    TEXT,
-        sender_id   TEXT,
-        sender_name TEXT,
-        agent_nickname TEXT,
-        tokens      INTEGER,
-        created_at  TEXT NOT NULL
-      )
-    `);
-
-    // Migration: add agent_nickname column for existing tables
-    try {
-      sql.exec("ALTER TABLE messages ADD COLUMN agent_nickname TEXT");
-    } catch {
-      /* column already exists */
-    }
-
-    sql.exec(`
-      CREATE TABLE IF NOT EXISTS context_messages (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        role        TEXT NOT NULL,
-        text        TEXT NOT NULL,
-        tokens      INTEGER NOT NULL,
-        created_at  TEXT NOT NULL
-      )
-    `);
-
-    sql.exec(`
-      CREATE TABLE IF NOT EXISTS message_events (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        message_id  TEXT NOT NULL,
-        event_type  TEXT NOT NULL,
-        data        TEXT NOT NULL,
-        created_at  TEXT NOT NULL
-      )
-    `);
+    // Drizzle migrations are applied idempotently via the migrate() call
+    // This tracks which migrations have been applied in the __drizzle_migrations table
+    // The bundled migrations are generated from the schema via: npm run db:generate
+    const { migrate } = await import("drizzle-orm/durable-sqlite/migrator");
+    const migrationConfig = await import("../../drizzle/migrations");
+    migrate(this.db, migrationConfig.default);
   }
 
   private insertMessage(params: {
@@ -74,22 +51,23 @@ export class ChatHandler {
     senderName?: string;
     tokens?: number;
   }) {
-    const sql = this.ctx.storage.sql;
     const createdAt = new Date().toISOString();
     const tokens = params.tokens ?? ContextManager.estimateTokens(params.text);
 
-    sql.exec(
-      "INSERT INTO messages (message_id, role, text, agent_id, agent_nickname, sender_id, sender_name, tokens, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
-      params.messageId,
-      params.role,
-      params.text,
-      params.agentId ?? null,
-      params.agentNickname ?? null,
-      params.senderId ?? null,
-      params.senderName ?? null,
-      tokens,
-      createdAt,
-    );
+    this.db
+      .insert(schema.messages)
+      .values({
+        message_id: params.messageId,
+        role: params.role,
+        text: params.text,
+        agent_id: params.agentId ?? null,
+        agent_nickname: params.agentNickname ?? null,
+        sender_id: params.senderId ?? null,
+        sender_name: params.senderName ?? null,
+        tokens,
+        created_at: createdAt,
+      })
+      .run();
 
     // Context messages include attribution so the LLM knows who said what
     let contextText = params.text;
@@ -99,46 +77,39 @@ export class ChatHandler {
       contextText = `[${params.senderName}]: ${params.text}`;
     }
 
-    ContextManager.insertContextMessage(sql, {
+    this.contextManager.insertContextMessage({
       role: params.role,
       text: contextText,
       tokens,
+      created_at: createdAt,
     });
 
     return { ...params, tokens, created_at: createdAt };
   }
 
   private insertEvent(messageId: string, eventType: string, data: unknown) {
-    this.ctx.storage.sql.exec(
-      "INSERT INTO message_events (message_id, event_type, data, created_at) VALUES (?1,?2,?3,?4)",
-      messageId,
-      eventType,
-      JSON.stringify(data),
-      new Date().toISOString(),
-    );
+    this.db
+      .insert(schema.messageEvents)
+      .values({
+        message_id: messageId,
+        event_type: eventType,
+        data: JSON.stringify(data),
+        created_at: new Date().toISOString(),
+      })
+      .run();
   }
 
   public listMessages(params?: { cursor?: string; limit?: number }) {
     const limit = Math.min(params?.limit ?? 50, 200);
     const cursor = params?.cursor ?? new Date().toISOString();
 
-    const rows = Array.from(
-      this.ctx.storage.sql.exec(
-        "SELECT message_id, role, text, agent_id, agent_nickname, sender_id, sender_name, tokens, created_at FROM messages WHERE created_at < ?1 ORDER BY created_at DESC LIMIT ?2",
-        cursor,
-        limit,
-      ),
-    ) as Array<{
-      message_id: string;
-      role: string;
-      text: string;
-      agent_id: string | null;
-      agent_nickname: string | null;
-      sender_id: string | null;
-      sender_name: string | null;
-      tokens: number;
-      created_at: string;
-    }>;
+    const rows = this.db
+      .select()
+      .from(schema.messages)
+      .where(lt(schema.messages.created_at, cursor))
+      .orderBy(desc(schema.messages.created_at))
+      .limit(limit)
+      .all();
 
     const has_more = rows.length === limit;
     const next_cursor =
@@ -152,12 +123,16 @@ export class ChatHandler {
   }
 
   public getMessageEvents(messageId: string) {
-    return Array.from(
-      this.ctx.storage.sql.exec(
-        "SELECT event_type, data, created_at FROM message_events WHERE message_id = ?1 ORDER BY id ASC",
-        messageId,
-      ),
-    ) as Array<{ event_type: string; data: string; created_at: string }>;
+    return this.db
+      .select({
+        event_type: schema.messageEvents.event_type,
+        data: schema.messageEvents.data,
+        created_at: schema.messageEvents.created_at,
+      })
+      .from(schema.messageEvents)
+      .where(eq(schema.messageEvents.message_id, messageId))
+      .orderBy(asc(schema.messageEvents.id))
+      .all();
   }
 
   // SSE line parser — shared by both methods
@@ -184,8 +159,9 @@ export class ChatHandler {
           try {
             const data = JSON.parse(line.slice(6));
             yield { event: currentEvent, data };
-          } catch {
-            // malformed JSON, skip
+          } catch (err) {
+            // Log malformed JSON for debugging
+            console.warn("consumeSSE: malformed JSON on line:", line, err);
           }
           currentEvent = "message";
         }
@@ -241,7 +217,10 @@ export class ChatHandler {
     chatContext?: AgentChatContext,
   ): AsyncGenerator<{ event: string; data: unknown }> {
     const baseUrl = this.env.AGENTS_BASE_URL;
-    if (!baseUrl) return;
+    if (!baseUrl) {
+      console.error("invokeAgentCoarse: AGENTS_BASE_URL is not configured");
+      throw new Error("AGENTS_BASE_URL not configured");
+    }
 
     const opts = await this.buildAgentFetchOptions(
       agentId,
@@ -252,17 +231,25 @@ export class ChatHandler {
       chatContext,
     );
 
-    const res = await fetch(`${baseUrl.replace(/\/$/, "")}/agents/run`, {
-      method: "POST",
-      ...opts,
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30_000);
 
-    if (!res.ok) {
-      console.error(`Agent ${agentId} run failed: ${res.status}`);
-      return;
+    try {
+      const res = await fetch(`${baseUrl.replace(/\/$/, "")}/agents/run`, {
+        method: "POST",
+        signal: controller.signal,
+        ...opts,
+      });
+
+      if (!res.ok) {
+        console.error(`Agent ${agentId} run failed: ${res.status}`);
+        throw new Error(`Agent HTTP ${res.status}`);
+      }
+
+      yield* this.consumeSSE(res);
+    } finally {
+      clearTimeout(timeout);
     }
-
-    yield* this.consumeSSE(res);
   }
 
   // Fine stream: /agents/run-stream — token-by-token text_delta events
@@ -275,7 +262,10 @@ export class ChatHandler {
     chatContext?: AgentChatContext,
   ): AsyncGenerator<{ event: string; data: unknown }> {
     const baseUrl = this.env.AGENTS_BASE_URL;
-    if (!baseUrl) return;
+    if (!baseUrl) {
+      console.error("invokeAgentStream: AGENTS_BASE_URL is not configured");
+      throw new Error("AGENTS_BASE_URL not configured");
+    }
 
     const opts = await this.buildAgentFetchOptions(
       agentId,
@@ -286,17 +276,28 @@ export class ChatHandler {
       chatContext,
     );
 
-    const res = await fetch(`${baseUrl.replace(/\/$/, "")}/agents/run-stream`, {
-      method: "POST",
-      ...opts,
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30_000);
 
-    if (!res.ok) {
-      console.error(`Agent ${agentId} stream failed: ${res.status}`);
-      return;
+    try {
+      const res = await fetch(
+        `${baseUrl.replace(/\/$/, "")}/agents/run-stream`,
+        {
+          method: "POST",
+          signal: controller.signal,
+          ...opts,
+        },
+      );
+
+      if (!res.ok) {
+        console.error(`Agent ${agentId} stream failed: ${res.status}`);
+        throw new Error(`Agent HTTP ${res.status}`);
+      }
+
+      yield* this.consumeSSE(res);
+    } finally {
+      clearTimeout(timeout);
     }
-
-    yield* this.consumeSSE(res);
   }
 
   private resolveAgentNickname(
@@ -470,9 +471,12 @@ export class ChatHandler {
     const agentNickname = finalResult.agent_nickname || knownNickname;
 
     // Strip "[AgentName]: " prefix that agents echo back from context format
+    // Only strip if the prefix matches a known agent nickname in the config
     let cleanText = finalResult.text;
-    const bracketPrefix = cleanText.match(/^\[.+?\]:\s*/);
-    if (bracketPrefix) {
+    const knownNicknames =
+      options.config?.agent_setups?.map((s) => s.nickname) ?? [];
+    const bracketPrefix = cleanText.match(/^\[(.+?)\]:\s*/);
+    if (bracketPrefix && knownNicknames.includes(bracketPrefix[1])) {
       cleanText = cleanText.slice(bracketPrefix[0].length);
     }
 
@@ -593,7 +597,7 @@ export class ChatHandler {
         agentSetups: initialDecision.config.agent_setups ?? [],
       });
 
-      const context = ContextManager.assembleContext(this.ctx.storage.sql);
+      const context = this.contextManager.assembleContext();
 
       const eventStream = params.streamDeltas
         ? this.invokeAgentStream(
@@ -711,9 +715,12 @@ export class ChatHandler {
     const configId = (await this.ctx.storage.get("config_id")) as string;
     const orgId =
       ((await this.ctx.storage.get("org_id")) as string) ?? "dev_org";
-    const config = (await this.ctx.storage.get("config")) as
+    const rawConfig = (await this.ctx.storage.get("config")) as
       | Record<string, unknown>
       | undefined;
+    const config = rawConfig
+      ? normalizeChatRoutingConfig(rawConfig)
+      : undefined;
 
     const messageId = msg.message_id ?? `msg_${crypto.randomUUID()}`;
     this.insertMessage({
@@ -743,12 +750,12 @@ export class ChatHandler {
       streamDeltas: true,
     });
 
-    this.broadcast({ type: "done" });
-
-    ContextManager.maybeCompact(
-      this.ctx.storage.sql,
+    // Compact BEFORE broadcasting done so clients don't disconnect mid-compaction
+    this.contextManager.maybeCompact(
       config?.compaction_threshold as number | undefined,
     );
+
+    this.broadcast({ type: "done" });
   }
 
   private broadcast(event: ChatWsEvent): void {
@@ -763,10 +770,9 @@ export class ChatHandler {
   }
 
   public clearHistory() {
-    const sql = this.ctx.storage.sql;
-    sql.exec("DELETE FROM messages");
-    sql.exec("DELETE FROM context_messages");
-    sql.exec("DELETE FROM message_events");
+    this.db.delete(schema.messages).run();
+    this.db.delete(schema.contextMessages).run();
+    this.db.delete(schema.messageEvents).run();
   }
 
   async handle(request: Request, route: string): Promise<Response> {
@@ -823,10 +829,12 @@ export class ChatHandler {
       const configId = (await this.ctx.storage.get("config_id")) as string;
       const orgId =
         ((await this.ctx.storage.get("org_id")) as string) ?? "dev_org";
-      const config = (await this.ctx.storage.get("config")) as Record<
-        string,
-        unknown
-      >;
+      const rawConfig = (await this.ctx.storage.get("config")) as
+        | Record<string, unknown>
+        | undefined;
+      const config = rawConfig
+        ? normalizeChatRoutingConfig(rawConfig)
+        : undefined;
 
       const messageId = body.message_id ?? `msg_${crypto.randomUUID()}`;
       const senderName: string | undefined = body.sender_name;
@@ -860,12 +868,12 @@ export class ChatHandler {
         streamDeltas: false,
       });
 
-      this.broadcast({ type: "done" });
-
-      ContextManager.maybeCompact(
-        this.ctx.storage.sql,
+      // Compact BEFORE broadcasting done so clients don't disconnect mid-compaction
+      this.contextManager.maybeCompact(
         config?.compaction_threshold as number | undefined,
       );
+
+      this.broadcast({ type: "done" });
 
       return json({
         ok: true,

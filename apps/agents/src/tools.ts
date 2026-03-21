@@ -3,7 +3,7 @@ import {
   createSkillLoaderTool,
   DefaultToolRegistry,
 } from "@axon/agent-factory";
-import type { SkillRecord, SandboxResolver } from "@axon/shared";
+import type { SandboxResolver, SkillRecord } from "@axon/shared";
 
 export interface ToolRegistryOptions {
   sandboxResolver?: SandboxResolver;

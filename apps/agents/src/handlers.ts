@@ -159,7 +159,10 @@ async function executeAgent(
     // Finalize and store trace
     const trace = tracer.finalize();
     storeTrace(trace);
-    send("trace_complete", { invocationId: traceId, totalDuration: trace.endTime - trace.startTime });
+    send("trace_complete", {
+      invocationId: traceId,
+      totalDuration: trace.endTime - trace.startTime,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "agent error";
     send("error", {
@@ -169,7 +172,10 @@ async function executeAgent(
     tracer.recordError("execute", "agent_error", message);
     const trace = tracer.finalize();
     storeTrace(trace);
-    send("trace_complete", { invocationId: traceId, totalDuration: trace.endTime - trace.startTime });
+    send("trace_complete", {
+      invocationId: traceId,
+      totalDuration: trace.endTime - trace.startTime,
+    });
   }
 }
 
@@ -216,7 +222,8 @@ function createAgentHandler(options: HandlerOptions) {
         }
 
         // Optional authentication
-        let authPayload: Awaited<ReturnType<typeof authorizeRequest>> | null = null;
+        let authPayload: Awaited<ReturnType<typeof authorizeRequest>> | null =
+          null;
         let configId: string | null = null;
         let agentId = body.agent_id;
 

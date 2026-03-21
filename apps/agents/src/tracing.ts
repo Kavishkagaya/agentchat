@@ -11,9 +11,18 @@ export interface ExecutionTrace {
   phases: {
     configLoad?: { duration: number; cacheHit: boolean };
     modelResolution?: { duration: number; modelId?: string; provider?: string };
-    mcpSetup?: { duration: number; serverCount: number; failedServers: string[] };
+    mcpSetup?: {
+      duration: number;
+      serverCount: number;
+      failedServers: string[];
+    };
     toolRegistry?: { duration: number; toolCount: number };
-    stream?: { startLatency: number; duration: number; finishReason: string; tokenCount?: number };
+    stream?: {
+      startLatency: number;
+      duration: number;
+      finishReason: string;
+      tokenCount?: number;
+    };
   };
   toolExecutions: Array<{
     toolId: string;
@@ -55,7 +64,10 @@ export class ExecutionTracer {
     duration: number,
     data: Record<string, unknown>,
   ): void {
-    (this.trace.phases as Record<string, unknown>)[phase] = { duration, ...data };
+    (this.trace.phases as Record<string, unknown>)[phase] = {
+      duration,
+      ...data,
+    };
   }
 
   recordToolExecution(

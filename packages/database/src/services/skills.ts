@@ -65,13 +65,11 @@ export async function updateSkill(params: UpdateSkillParams) {
   };
 
   if (params.name !== undefined) updates.name = params.name;
-  if (params.description !== undefined) updates.description = params.description;
+  if (params.description !== undefined)
+    updates.description = params.description;
   if (params.content !== undefined) updates.content = params.content;
 
-  await db
-    .update(skills)
-    .set(updates)
-    .where(eq(skills.id, params.skillId));
+  await db.update(skills).set(updates).where(eq(skills.id, params.skillId));
 
   return { success: true };
 }

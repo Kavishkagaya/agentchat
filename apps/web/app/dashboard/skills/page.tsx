@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { api } from "@/app/trpc/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { api } from "@/app/trpc/client";
 
 export default function SkillsPage() {
   const utils = api.useUtils();

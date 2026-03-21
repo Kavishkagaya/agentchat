@@ -140,10 +140,7 @@ export function createAgentRunner(params: {
     throw new Error(`unsupported provider: ${params.config.provider}`);
   }
 
-  const model = adapter.createModel(
-    params.config.model,
-    params.env,
-  );
+  const model = adapter.createModel(params.config.model, params.env);
   const tools = resolveTools(
     params.config.agent_id,
     params.config.tools,
