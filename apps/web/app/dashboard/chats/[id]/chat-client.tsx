@@ -1,6 +1,10 @@
 "use client";
 
-import { normalizeChatRoutingConfig } from "@axon/shared";
+import {
+  buildMentionMap,
+  extractMentions,
+  normalizeChatRoutingConfig,
+} from "@axon/shared";
 import { Edit, Eraser, Send, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -32,35 +36,46 @@ export function ChatClient({ chatId }: { chatId: string }) {
   const [clearOpen, setClearOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  const { messages, isThinking, isConnected, sendMessage, connectionStatus } =
-    useChatSocket(chatId);
-
   const chatQuery = api.chats.get.useQuery({ chatId });
-  const agentsQuery = api.agents.list.useQuery();
   const updateChat = api.chats.update.useMutation();
   const clearHistoryMutation = api.chats.clearHistory.useMutation();
   const deleteChatMutation = api.chats.delete.useMutation();
 
-  const editInitialData = useMemo((): ChatFormInitialData | undefined => {
+  const chatConfig = useMemo(() => {
     if (!chatQuery.data) return undefined;
     const rawConfig = chatQuery.data.config as Record<string, unknown> | null;
-    const config = normalizeChatRoutingConfig(rawConfig);
+    return normalizeChatRoutingConfig(rawConfig);
+  }, [chatQuery.data]);
+
+  const { messages, isThinking, isConnected, sendMessage, connectionStatus } =
+    useChatSocket(chatId);
+
+  const editInitialData = useMemo((): ChatFormInitialData | undefined => {
+    if (!chatConfig || !chatQuery.data) return undefined;
     return {
       title: chatQuery.data.title,
-      agentSetups: config.agent_setups,
+      agentSetups: chatConfig.agent_setups,
       config: {
-        auto: config.auto,
-        default_agent: config.default_agent,
-        trigger_depth_limit: config.trigger_depth_limit,
-        history_mode: config.history_mode,
-        compaction_threshold: config.compaction_threshold,
+        auto: chatConfig.auto,
+        default_agent: chatConfig.default_agent,
+        trigger_depth_limit: chatConfig.trigger_depth_limit,
+        history_mode: chatConfig.history_mode,
+        compaction_threshold: chatConfig.compaction_threshold,
       },
     };
-  }, [chatQuery.data]);
+  }, [chatConfig, chatQuery.data]);
+
+  const mentionMap = useMemo(() => {
+    return chatConfig ? buildMentionMap(chatConfig.agent_setups) : {};
+  }, [chatConfig]);
 
   const handleSend = () => {
     if (!inputText.trim() || !isConnected) return;
-    sendMessage(inputText);
+    const mentions = extractMentions(inputText);
+    const agentIds = mentions
+      .map((mention) => mentionMap[mention.toLowerCase().trim()])
+      .filter(Boolean);
+    sendMessage(inputText, agentIds);
     setInputText("");
   };
 
@@ -158,8 +173,6 @@ export function ChatClient({ chatId }: { chatId: string }) {
         open={editOpen}
         onOpenChange={setEditOpen}
         onSubmit={handleUpdate}
-        agents={agentsQuery.data ?? []}
-        agentsLoading={agentsQuery.isLoading}
         isPending={updateChat.isPending}
         initialData={editInitialData}
       />

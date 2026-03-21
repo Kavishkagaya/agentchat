@@ -2,6 +2,7 @@
 
 import type { ChatAgentSetup } from "@axon/shared";
 import { useEffect, useState } from "react";
+import { api } from "@/app/trpc/client";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -48,8 +49,6 @@ type ChatFormDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (data: ChatFormData) => Promise<void>;
-  agents: AgentItem[];
-  agentsLoading?: boolean;
   isPending?: boolean;
   initialData?: ChatFormInitialData;
 };
@@ -114,11 +113,12 @@ export function ChatFormDialog({
   open,
   onOpenChange,
   onSubmit,
-  agents,
-  agentsLoading,
   isPending,
   initialData,
 }: ChatFormDialogProps) {
+  const agentsQuery = api.agents.list.useQuery();
+  const agents = agentsQuery.data ?? [];
+
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -249,7 +249,7 @@ export function ChatFormDialog({
 
             <div className="grid gap-2">
               <Label>Agents</Label>
-              {agentsLoading ? (
+              {agentsQuery.isLoading ? (
                 <p className="text-sm text-muted-foreground">
                   Loading agents...
                 </p>

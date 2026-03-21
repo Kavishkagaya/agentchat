@@ -5,4 +5,6 @@ export type ChatMessage = Pick<
   "message_id" | "role" | "text" | "sender_name" | "agent_id" | "agent_nickname"
 > & {
   isStreaming?: boolean;
+  isError?: boolean;
+  errorCode?: string;
 };

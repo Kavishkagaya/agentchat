@@ -201,6 +201,7 @@ export type AgentSseEvent =
       finish_reason: string;
       usage: AgentUsage | null;
       agent_nickname: string;
+      invocations: Array<{ nickname: string }>;
     };
 
 // ── Server → Client WebSocket events ────────────────────────
@@ -333,87 +334,50 @@ export function buildAgentChatContext(params: {
     (s) => normalizeNickname(s.nickname) === normalizedSelf,
   );
 
-  const identityLines: string[] = [];
-  identityLines.push(`Your name is ${params.agentNickname}.`);
-  if (selfSetup) {
-    identityLines.push(`Your responsibility: ${selfSetup.responsibility}`);
-  }
-  identityLines.push("");
-  identityLines.push("Identity rules:");
-  identityLines.push(
+  const identityLines = [
+    `Your name is ${params.agentNickname}.`,
+    ...(selfSetup ? [`Your responsibility: ${selfSetup.responsibility}`] : []),
+    "",
+    "Identity rules:",
     `- You ARE ${params.agentNickname}. Fully embody this identity throughout the conversation.`,
-  );
-  identityLines.push(
     `- Refer to yourself naturally as "I" — never write @${params.agentNickname} or tag yourself.`,
-  );
-  identityLines.push(
     `- Never say "As an AI", "As a language model", or "As an assistant".`,
-  );
-  identityLines.push(
     `- Do not echo or repeat name tags like [${params.agentNickname}] from message history.`,
-  );
-  identityLines.push(`- Always format your responses in Markdown.`);
+    `- Always format your responses in Markdown.`,
+  ];
 
-  const teamLines: string[] = [];
   const others = params.agentSetups.filter(
     (s) => normalizeNickname(s.nickname) !== normalizedSelf,
   );
-  if (others.length > 0) {
-    teamLines.push("You are collaborating in a multi-agent chat.");
-    teamLines.push("Other team members:");
-    for (const setup of others) {
-      teamLines.push(`- ${setup.nickname}: ${setup.responsibility}`);
-    }
-    teamLines.push("");
-    teamLines.push("Collaboration:");
-    teamLines.push(
-      "- You are a team. Actively @mention teammates when the task needs their expertise.",
-    );
-    teamLines.push(
-      "- If a request falls outside your responsibility or would benefit from another agent's skills, hand off with @name.",
-    );
-    teamLines.push(
-      "- Do not try to do everything yourself — leverage your team.",
-    );
-    teamLines.push("");
-    teamLines.push("@mention rules (using @ TRIGGERS that agent to run):");
-    teamLines.push(
-      "- Use @name to hand off, delegate, or ask a teammate to act.",
-    );
-    teamLines.push(
-      "- Do NOT use @ when merely referring to a teammate in conversation — just use their name.",
-    );
-    teamLines.push(`- NEVER @mention yourself (@${params.agentNickname}).`);
 
-    const otherNames = others.map((s) => s.nickname);
-    const exampleOther = otherNames[0];
-    teamLines.push("");
-    teamLines.push("Examples:");
-    teamLines.push(
-      `  Referring: "I agree with ${exampleOther}'s point" (no trigger)`,
-    );
-    teamLines.push(
-      `  Delegating: "@${exampleOther} can you handle the implementation?" (triggers ${exampleOther})`,
-    );
-    teamLines.push("");
-    teamLines.push("Keep responses concise, actionable, and role-aligned.");
-  }
+  const teamLines =
+    others.length > 0
+      ? [
+          "You are collaborating in a multi-agent chat.",
+          "Other team members:",
+          ...others.map((s) => `- ${s.nickname}: ${s.responsibility}`),
+          "",
+          "Collaboration:",
+          "- You are a team. Leverage teammates when the task needs their expertise.",
+          "- If a request falls outside your responsibility or would benefit from another agent's skills, delegate to them.",
+          "- Do not try to do everything yourself — leverage your team.",
+          "",
+          "Invocation rules:",
+          "- Use the invoke_agent tool when you want to hand off or delegate to a teammate.",
+          "- Use a teammate's plain name when mentioning them conversationally.",
+          "",
+          "Examples:",
+          `  Referring: "I agree with ${others[0]?.nickname}'s point" (conversational)`,
+          `  Delegating: Use invoke_agent(${others[0]?.nickname}) to hand off the task (triggers ${others[0]?.nickname})`,
+          "",
+          "Keep responses concise, actionable, and role-aligned.",
+        ]
+      : [];
 
   return {
     identity: identityLines.join("\n"),
     team: teamLines.join("\n"),
   };
-}
-
-function extractMentions(text: string): string[] {
-  const mentions = new Set<string>();
-  const regex = /(^|[\s.,;:!?()[\]{}"'`])@([a-zA-Z][a-zA-Z0-9_-]*)/g;
-  let match: RegExpExecArray | null = regex.exec(text);
-  while (match) {
-    mentions.add(normalizeNickname(match[2] ?? ""));
-    match = regex.exec(text);
-  }
-  return Array.from(mentions);
 }
 
 export function resolveMessageTargets(
@@ -432,42 +396,6 @@ export function resolveMessageTargets(
     };
   }
 
-  const mentionMap = {
-    ...(input.config.mention_map ?? {}),
-    ...buildMentionMap(input.config.agent_setups ?? []),
-  };
-  const mentions = extractMentions(input.text);
-  const validMentions: string[] = [];
-  const unknownMentions: string[] = [];
-  const mentionTargets: string[] = [];
-  for (const mention of mentions) {
-    const mappedAgentId = mentionMap[normalizeNickname(mention)];
-    if (mappedAgentId) {
-      validMentions.push(mention);
-      mentionTargets.push(mappedAgentId);
-    } else {
-      unknownMentions.push(mention);
-    }
-  }
-
-  const mentionTargetIds = Array.from(new Set(mentionTargets));
-  if (mentionTargetIds.length > 0) {
-    if (input.origin === "agent" && input.config.auto !== true) {
-      return {
-        targetAgentIds: [],
-        source: "none",
-        validMentions,
-        unknownMentions,
-      };
-    }
-    return {
-      targetAgentIds: mentionTargetIds,
-      source: "mention",
-      validMentions,
-      unknownMentions,
-    };
-  }
-
   if (
     input.origin !== "agent" &&
     input.config.auto === true &&
@@ -476,16 +404,16 @@ export function resolveMessageTargets(
     return {
       targetAgentIds: [input.config.default_agent],
       source: "default",
-      validMentions,
-      unknownMentions,
+      validMentions: [],
+      unknownMentions: [],
     };
   }
 
   return {
     targetAgentIds: [],
     source: "none",
-    validMentions,
-    unknownMentions,
+    validMentions: [],
+    unknownMentions: [],
   };
 }
 

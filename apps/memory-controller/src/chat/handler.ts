@@ -2,12 +2,14 @@ import {
   type AgentChatContext,
   type AgentUsage,
   buildAgentChatContext,
+  buildMentionMap,
   type ChatRoutingConfig,
   type ChatWsEvent,
   chatMessageRequestSchema,
   createAgentAccessToken,
   type MessageOrigin,
   normalizeChatRoutingConfig,
+  normalizeNickname,
 } from "@axon/shared";
 import { asc, desc, eq, lt, sql } from "drizzle-orm";
 import {
@@ -339,12 +341,14 @@ export class ChatHandler {
     usage: AgentUsage | null;
     agent_id: string;
     message_id: string;
+    invocations: Array<{ nickname: string }>;
   } | null> {
     const agentMsgId = `msg_${crypto.randomUUID()}`;
     let finalResult: {
       text: string;
       agent_nickname: string;
       usage: AgentUsage | null;
+      invocations: Array<{ nickname: string }>;
     } | null = null;
     const knownNickname = this.resolveAgentNickname(agentId, options.config);
 
@@ -434,8 +438,9 @@ export class ChatHandler {
         case "final":
           finalResult = {
             text: evt.text,
-            agent_nickname: evt.agent_nickname ?? knownNickname,
+            agent_nickname: knownNickname,
             usage: evt.usage,
+            invocations: evt.invocations ?? [],
           };
           break;
 
@@ -468,7 +473,7 @@ export class ChatHandler {
       return null;
     }
 
-    const agentNickname = finalResult.agent_nickname || knownNickname;
+    const agentNickname = knownNickname;
 
     // Strip "[AgentName]: " prefix that agents echo back from context format
     // Only strip if the prefix matches a known agent nickname in the config
@@ -505,6 +510,7 @@ export class ChatHandler {
       text: cleanText,
       agent_id: agentId,
       message_id: agentMsgId,
+      invocations: finalResult.invocations,
     };
   }
 
@@ -642,34 +648,51 @@ export class ChatHandler {
         continue;
       }
 
-      const chainedDecision = resolveChatTargets({
-        config: initialDecision.config,
-        text: result.text,
-        origin: "agent",
-      });
+      const mentionMap = {
+        ...(initialDecision.config.mention_map ?? {}),
+        ...buildMentionMap(initialDecision.config.agent_setups ?? []),
+      };
+
       this.insertEvent(result.message_id, "routing_decision", {
         origin: "agent",
-        source: chainedDecision.source,
-        targets: chainedDecision.targetAgentIds,
+        source: "invoke_agent_tool",
+        targets: result.invocations.map((i) => i.nickname),
       });
 
-      this.emitRoutingWarnings({
-        messageId: result.message_id,
-        unknownMentions: chainedDecision.unknownMentions,
-        source: chainedDecision.source,
-        origin: "agent",
-      });
+      const unknownMentions: string[] = [];
+      for (const inv of result.invocations) {
+        const normalized = normalizeNickname(inv.nickname);
+        const targetAgentId = mentionMap[normalized];
 
-      for (const targetAgentId of chainedDecision.targetAgentIds) {
-        // No self-triggering
+        if (!targetAgentId) {
+          unknownMentions.push(inv.nickname);
+          continue;
+        }
+        // No self-invocation
         if (targetAgentId === current.agentId) continue;
         // Skip if this agent is already queued / running
         if (runningAgents.has(targetAgentId)) continue;
+        if (current.depth >= maxDepth) {
+          this.insertEvent(result.message_id, "routing_depth_cap", {
+            depth: current.depth,
+            max_depth: maxDepth,
+          });
+          continue;
+        }
+
         runningAgents.add(targetAgentId);
         queue.push({
           agentId: targetAgentId,
           prompt: result.text,
           depth: current.depth + 1,
+        });
+      }
+
+      if (unknownMentions.length > 0) {
+        this.insertEvent(result.message_id, "routing_warning", {
+          unknown_mentions: unknownMentions,
+          source: "invoke_agent_tool",
+          origin: "agent",
         });
       }
     }

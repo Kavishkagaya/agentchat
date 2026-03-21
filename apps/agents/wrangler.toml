@@ -6,6 +6,11 @@ compatibility_flags = ["nodejs_compat"]
 [[durable_objects.bindings]]
 name = "Sandbox"
 class_name = "Sandbox"
+script_name = "agentchat-agents"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["Sandbox"]
 
 [vars]
 ENVIRONMENT = "dev"

@@ -218,8 +218,10 @@ export function useChatSocket(chatId: string) {
               m.message_id === data.message_id
                 ? {
                     ...m,
-                    text: `Error: ${data.message}`,
+                    text: data.message,
                     isStreaming: false,
+                    isError: true,
+                    errorCode: data.code,
                   }
                 : m,
             ),
@@ -253,8 +255,12 @@ export function useChatSocket(chatId: string) {
     };
   }, [chatId]);
 
-  const sendMessage = useCallback((text: string) => {
-    socketRef.current?.send(JSON.stringify({ type: "message", text }));
+  const sendMessage = useCallback((text: string, agent_ids?: string[]) => {
+    const payload: Record<string, unknown> = { type: "message", text };
+    if (agent_ids?.length) {
+      payload.agent_ids = agent_ids;
+    }
+    socketRef.current?.send(JSON.stringify(payload));
   }, []);
 
   return {

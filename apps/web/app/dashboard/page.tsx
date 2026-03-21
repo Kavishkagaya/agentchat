@@ -24,7 +24,6 @@ import {
 export default function DashboardPage() {
   const router = useRouter();
   const chatsQuery = api.chats.list.useQuery();
-  const agentsQuery = api.agents.list.useQuery();
   const createChat = api.chats.create.useMutation();
   const deleteChatMutation = api.chats.delete.useMutation();
 
@@ -129,8 +128,6 @@ export default function DashboardPage() {
         open={createOpen}
         onOpenChange={setCreateOpen}
         onSubmit={handleCreate}
-        agents={agentsQuery.data ?? []}
-        agentsLoading={agentsQuery.isLoading}
         isPending={createChat.isPending}
       />
 

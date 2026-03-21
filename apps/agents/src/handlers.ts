@@ -75,8 +75,17 @@ async function executeAgent(
 
     let streamStart = Date.now();
     let streamPhaseRecorded = false;
+    const invocations: Array<{ nickname: string }> = [];
 
     for await (const event of streamAgent(record, env, input, {
+      onToolCall: (toolId, args) => {
+        if (toolId === "invoke_agent") {
+          const a = args as { nickname?: string };
+          if (a.nickname) {
+            invocations.push({ nickname: a.nickname });
+          }
+        }
+      },
       onToolError: (toolId, error) => {
         send("tool_error", { tool_call_id: toolId, error });
         tracer.recordError("stream", "tool_error", `${toolId}: ${error}`);
@@ -143,7 +152,7 @@ async function executeAgent(
             text: event.text,
             finish_reason: event.finish_reason,
             usage: event.usage,
-            agent_nickname: record.agentName,
+            invocations,
           });
           // Update stream phase with final timing
           if (streamPhaseRecorded) {
