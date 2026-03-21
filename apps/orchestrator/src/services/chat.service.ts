@@ -98,7 +98,16 @@ export async function archiveChat(
     throw new ServiceError(500, "archive_failed", await res.text());
   }
 
-  const body = await res.json<ChatArchiveSnapshotResponse>();
+  let body: ChatArchiveSnapshotResponse;
+  try {
+    body = await res.json<ChatArchiveSnapshotResponse>();
+  } catch {
+    throw new ServiceError(
+      502,
+      "archive_failed",
+      "memory controller returned non-JSON archive response",
+    );
+  }
   if (!body.snapshot) {
     throw new ServiceError(
       500,
@@ -126,8 +135,11 @@ export async function destroyChat(env: Env, configId: string): Promise<void> {
 
   if (!res.ok) {
     const text = await res.text();
-    console.error("DO destroy failed:", text);
-    // Continue with DB cleanup even if DO destroy fails
+    throw new ServiceError(
+      502,
+      "destroy_failed",
+      `memory controller destroy failed: ${text || "empty response"}`,
+    );
   }
 
   await deleteChatRuntime(configId);

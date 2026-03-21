@@ -3,6 +3,7 @@ import type {
   CleanupRequestPayload,
   RoutingTokenRequestPayload,
 } from "@axon/shared";
+import { chatMessageRequestSchema } from "@axon/shared";
 import { initDb, touchChatActivity } from "@axon/worker-database";
 import { requireAppSignature } from "./auth/infra-auth";
 import { requireRoutingToken } from "./auth/routing-auth";
@@ -280,7 +281,11 @@ export async function handleRequest(
         configId,
       );
     } catch {
-      return new Response("Forbidden", { status: 403 });
+      return errorResponse(
+        403,
+        "forbidden",
+        "invalid or expired routing token",
+      );
     }
     if (request.headers.get("Upgrade") !== "websocket") {
       return new Response("Expected Upgrade: websocket", { status: 426 });
@@ -306,7 +311,11 @@ export async function handleRequest(
         configId,
       );
     } catch {
-      return new Response("Forbidden", { status: 403 });
+      return errorResponse(
+        403,
+        "forbidden",
+        "invalid or expired routing token",
+      );
     }
     await touchChatActivity(configId);
     return controllerClient.getMessages(env, configId, url.search);
@@ -329,13 +338,39 @@ export async function handleRequest(
         configId,
       );
     } catch {
-      return new Response("Forbidden", { status: 403 });
+      return errorResponse(
+        403,
+        "forbidden",
+        "invalid or expired routing token",
+      );
     }
+
+    let rawBody: unknown;
+    try {
+      rawBody = await request.clone().json();
+    } catch {
+      return errorResponse(
+        400,
+        "invalid_request",
+        "request body must be valid JSON",
+      );
+    }
+    const parsed = chatMessageRequestSchema
+      .omit({ type: true })
+      .safeParse(rawBody);
+    if (!parsed.success) {
+      return errorResponse(
+        400,
+        "invalid_request",
+        parsed.error.issues[0]?.message ?? "invalid message body",
+      );
+    }
+
     await touchChatActivity(configId);
     return controllerClient.postMessage(env, configId, request.body);
   }
 
-  return new Response("Not Found", { status: 404 });
+  return errorResponse(404, "not_found", "route not found");
 }
 
 export async function handleScheduled(

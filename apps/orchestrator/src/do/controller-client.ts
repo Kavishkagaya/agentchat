@@ -37,6 +37,7 @@ class ControllerClient {
       headers?: Record<string, string>;
       body?: ReadableStream<Uint8Array> | string | null;
       preserveHeaders?: Headers;
+      timeoutMs?: number;
     } = {},
   ): Promise<Response> {
     const stub = this.getStub(env, configId);
@@ -62,6 +63,26 @@ class ControllerClient {
       body: options.body,
     });
 
+    const timeoutMs = options.timeoutMs ?? 30_000;
+    if (timeoutMs > 0) {
+      const controller = new AbortController();
+      const timerId = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const resp = await stub.fetch(
+          new Request(request, { signal: controller.signal }),
+        );
+        clearTimeout(timerId);
+        return resp;
+      } catch (err) {
+        clearTimeout(timerId);
+        if (err instanceof Error && err.name === "AbortError") {
+          throw new Error(
+            `DO call timed out after ${timeoutMs}ms (${options.method ?? "GET"} ${path})`,
+          );
+        }
+        throw err;
+      }
+    }
     return stub.fetch(request);
   }
 
@@ -139,6 +160,7 @@ class ControllerClient {
   ): Promise<Response> {
     return this.fetch(env, configId, `/chats/${configId}/ws`, {
       preserveHeaders: clientHeaders,
+      timeoutMs: 0,
     });
   }
 
