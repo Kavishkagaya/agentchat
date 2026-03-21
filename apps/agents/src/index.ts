@@ -4,8 +4,6 @@ import { validateEnv } from "./env";
 import {
   handleAgentRun,
   handleAgentRunDev,
-  handleAgentRunDevStream,
-  handleAgentRunStream,
 } from "./handlers";
 import { snapshotMetrics } from "./telemetry";
 import { getAllTraces, getTrace } from "./tracing";
@@ -55,19 +53,8 @@ export default {
       }
     }
 
-    if (request.method === "POST" && url.pathname === "/agents/run-stream") {
-      return handleAgentRunStream(request, env);
-    }
-
     if (request.method === "POST" && url.pathname === "/agents/run-dev") {
       return handleAgentRunDev(request, env);
-    }
-
-    if (
-      request.method === "POST" &&
-      url.pathname === "/agents/run-dev-stream"
-    ) {
-      return handleAgentRunDevStream(request, env);
     }
 
     if (request.method === "GET" && url.pathname === "/metrics") {

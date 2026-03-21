@@ -35,11 +35,9 @@ export type AgentRunInput = {
   chat_context?: AgentChatContext;
 };
 
-import type { ToolLoopAgent } from "ai";
+import type { generateText } from "ai";
 
-export type AgentRunResult = Awaited<
-  ReturnType<InstanceType<typeof ToolLoopAgent>["generate"]>
->;
+export type AgentRunResult = Awaited<ReturnType<typeof generateText>>;
 
 export type ModelEnv = Record<string, string | undefined>;
 
@@ -72,6 +70,7 @@ export type ToolRegistry = {
 export type AgentFactoryOptions = {
   maxSteps?: number;
   onToolCall?: (toolId: string, args: unknown, toolName?: string) => void;
+  onToolError?: (toolId: string, error: string, toolName?: string) => void;
   onFinish?: () => Promise<void>;
 };
 

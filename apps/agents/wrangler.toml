@@ -6,11 +6,25 @@ compatibility_flags = ["nodejs_compat"]
 [[durable_objects.bindings]]
 name = "Sandbox"
 class_name = "Sandbox"
-script_name = "agentchat-agents"
 
 [[migrations]]
 tag = "v1"
-new_classes = ["Sandbox"]
+new_sqlite_classes = ["Sandbox"]
+
+[[containers]]
+class_name = "Sandbox"
+image = "./Dockerfile"
+
+[env.production.durable_objects]
+bindings = [{name = "Sandbox", class_name = "Sandbox"}]
+
+[[env.production.migrations]]
+tag = "v1"
+new_sqlite_classes = ["Sandbox"]
+
+[[env.production.containers]]
+class_name = "Sandbox"
+image = "./Dockerfile"
 
 [vars]
 ENVIRONMENT = "dev"

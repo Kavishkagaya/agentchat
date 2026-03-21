@@ -11,7 +11,7 @@ import {
   normalizeChatRoutingConfig,
   normalizeNickname,
 } from "@axon/shared";
-import { asc, desc, eq, lt, sql } from "drizzle-orm";
+import { asc, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import {
   type DrizzleSqliteDODatabase,
   drizzle,
@@ -117,8 +117,47 @@ export class ChatHandler {
     const next_cursor =
       rows.length > 0 ? rows[rows.length - 1].created_at : null;
 
+    // Batch fetch events for all messages
+    const messageIds = rows.map((r) => r.message_id);
+    const eventsByMessageId = new Map<
+      string,
+      Array<{
+        event_type: string;
+        data: Record<string, unknown>;
+        created_at: string;
+      }>
+    >();
+    if (messageIds.length > 0) {
+      const events = this.db
+        .select({
+          message_id: schema.messageEvents.message_id,
+          event_type: schema.messageEvents.event_type,
+          data: schema.messageEvents.data,
+          created_at: schema.messageEvents.created_at,
+        })
+        .from(schema.messageEvents)
+        .where(inArray(schema.messageEvents.message_id, messageIds))
+        .orderBy(asc(schema.messageEvents.id))
+        .all();
+
+      for (const ev of events) {
+        const arr = eventsByMessageId.get(ev.message_id) ?? [];
+        arr.push({
+          event_type: ev.event_type,
+          data: JSON.parse(ev.data),
+          created_at: ev.created_at,
+        });
+        eventsByMessageId.set(ev.message_id, arr);
+      }
+    }
+
+    const messagesWithEvents = rows.reverse().map((m) => ({
+      ...m,
+      events: eventsByMessageId.get(m.message_id) ?? [],
+    }));
+
     return {
-      messages: rows.reverse(),
+      messages: messagesWithEvents,
       next_cursor,
       has_more,
     };
@@ -254,54 +293,6 @@ export class ChatHandler {
     }
   }
 
-  // Fine stream: /agents/run-stream — token-by-token text_delta events
-  public async *invokeAgentStream(
-    agentId: string,
-    prompt: string,
-    context: Array<{ role: string; content: string }>,
-    configId: string,
-    orgId: string,
-    chatContext?: AgentChatContext,
-  ): AsyncGenerator<{ event: string; data: unknown }> {
-    const baseUrl = this.env.AGENTS_BASE_URL;
-    if (!baseUrl) {
-      console.error("invokeAgentStream: AGENTS_BASE_URL is not configured");
-      throw new Error("AGENTS_BASE_URL not configured");
-    }
-
-    const opts = await this.buildAgentFetchOptions(
-      agentId,
-      prompt,
-      context,
-      configId,
-      orgId,
-      chatContext,
-    );
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30_000);
-
-    try {
-      const res = await fetch(
-        `${baseUrl.replace(/\/$/, "")}/agents/run-stream`,
-        {
-          method: "POST",
-          signal: controller.signal,
-          ...opts,
-        },
-      );
-
-      if (!res.ok) {
-        console.error(`Agent ${agentId} stream failed: ${res.status}`);
-        throw new Error(`Agent HTTP ${res.status}`);
-      }
-
-      yield* this.consumeSSE(res);
-    } finally {
-      clearTimeout(timeout);
-    }
-  }
-
   private resolveAgentNickname(
     agentId: string,
     config: ChatRoutingConfig | undefined,
@@ -332,7 +323,6 @@ export class ChatHandler {
     eventStream: AsyncGenerator<{ event: string; data: unknown }>,
     options: {
       broadcast: boolean;
-      streamDeltas: boolean;
       config?: ChatRoutingConfig;
     },
   ): Promise<{
@@ -368,14 +358,6 @@ export class ChatHandler {
 
       switch (evt.type) {
         case "text_delta":
-          if (options.streamDeltas && options.broadcast) {
-            this.broadcast({
-              type: "text_delta",
-              agent_id: agentId,
-              message_id: agentMsgId,
-              text: evt.text,
-            });
-          }
           break;
 
         case "tool_call":
@@ -407,6 +389,16 @@ export class ChatHandler {
           break;
 
         case "tool_error":
+          if (options.broadcast) {
+            this.broadcast({
+              type: "tool_error",
+              agent_id: agentId,
+              message_id: agentMsgId,
+              tool_call_id: evt.tool_call_id,
+              name: evt.type || "unknown",
+              error: evt.error,
+            });
+          }
           this.insertEvent(agentMsgId, "tool_error", evt);
           break;
 
@@ -459,17 +451,7 @@ export class ChatHandler {
       }
     }
 
-    if (!finalResult?.text) {
-      console.error(`Agent ${agentId}: no final text in stream`);
-      if (options.broadcast) {
-        this.broadcast({
-          type: "agent_error",
-          agent_id: agentId,
-          message_id: agentMsgId,
-          code: "no_response",
-          message: "Agent stream ended without producing a response",
-        });
-      }
+    if (!finalResult) {
       return null;
     }
 
@@ -477,7 +459,7 @@ export class ChatHandler {
 
     // Strip "[AgentName]: " prefix that agents echo back from context format
     // Only strip if the prefix matches a known agent nickname in the config
-    let cleanText = finalResult.text;
+    let cleanText = finalResult.text ?? "";
     const knownNicknames =
       options.config?.agent_setups?.map((s) => s.nickname) ?? [];
     const bracketPrefix = cleanText.match(/^\[(.+?)\]:\s*/);
@@ -543,7 +525,6 @@ export class ChatHandler {
     configId: string;
     orgId: string;
     config: Record<string, unknown> | undefined;
-    streamDeltas: boolean;
   }): Promise<{
     agentMessages: Array<{
       text: string;
@@ -605,30 +586,20 @@ export class ChatHandler {
 
       const context = this.contextManager.assembleContext();
 
-      const eventStream = params.streamDeltas
-        ? this.invokeAgentStream(
-            current.agentId,
-            current.prompt,
-            context,
-            params.configId,
-            params.orgId,
-            chatContext,
-          )
-        : this.invokeAgentCoarse(
-            current.agentId,
-            current.prompt,
-            context,
-            params.configId,
-            params.orgId,
-            chatContext,
-          );
+      const eventStream = this.invokeAgentCoarse(
+        current.agentId,
+        current.prompt,
+        context,
+        params.configId,
+        params.orgId,
+        chatContext,
+      );
 
       const result = await this.processAgentEvents(
         current.agentId,
         eventStream,
         {
           broadcast: true,
-          streamDeltas: params.streamDeltas,
           config: initialDecision.config,
         },
       );
@@ -770,7 +741,6 @@ export class ChatHandler {
       configId,
       orgId,
       config,
-      streamDeltas: true,
     });
 
     // Compact BEFORE broadcasting done so clients don't disconnect mid-compaction
@@ -888,7 +858,6 @@ export class ChatHandler {
         configId,
         orgId,
         config,
-        streamDeltas: false,
       });
 
       // Compact BEFORE broadcasting done so clients don't disconnect mid-compaction

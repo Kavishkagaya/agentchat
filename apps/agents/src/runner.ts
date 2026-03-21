@@ -110,19 +110,24 @@ async function buildMcpClients(
     throw err;
   }
 
-  // Get tool sets from MCP clients and merge them
-  const mcpToolSetsList = await Promise.all(
-    mcpClients.map((client) => client.tools()),
-  );
-  const toolSets =
-    mcpToolSetsList.length > 0 ? [Object.assign({}, ...mcpToolSetsList)] : [];
-
   // Return tools and cleanup function
   const close = async () => {
     await Promise.allSettled(mcpClients.map((client) => client.close()));
   };
 
-  return { toolSets, close };
+  // Get tool sets from MCP clients and merge them
+  try {
+    const mcpToolSetsList = await Promise.all(
+      mcpClients.map((client) => client.tools()),
+    );
+    const toolSets =
+      mcpToolSetsList.length > 0 ? [Object.assign({}, ...mcpToolSetsList)] : [];
+    return { toolSets, close };
+  } catch (err) {
+    console.error("[MCP] Failed to load tools from clients:", err);
+    const toolSets: ToolSet[] = [];
+    return { toolSets, close };
+  }
 }
 
 export async function buildAgentRunner(
@@ -187,6 +192,7 @@ export async function buildAgentRunner(
     options: {
       maxSteps: 10,
       onToolCall: callbacks?.onToolCall,
+      onToolError: callbacks?.onToolError,
       onFinish: closeMcpClients,
     },
   });

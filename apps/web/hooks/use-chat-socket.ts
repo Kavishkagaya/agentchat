@@ -19,6 +19,7 @@ function mapHistoryMessage(m: ChatHistoryMessage): ChatMessage {
     sender_name: m.sender_name,
     agent_id: m.agent_id,
     agent_nickname: m.agent_nickname,
+    events: m.events,
   };
 }
 
@@ -182,16 +183,78 @@ export function useChatSocket(chatId: string) {
               agent_id: data.agent_id,
               agent_nickname: data.agent_nickname,
               message_id: data.message_id,
-              isStreaming: true,
+              isPending: true,
             },
           ]);
           break;
 
-        case "text_delta":
+        case "tool_call":
           setMessages((prev) =>
             prev.map((m) =>
               m.message_id === data.message_id
-                ? { ...m, text: m.text + data.text }
+                ? {
+                    ...m,
+                    events: [
+                      ...(m.events ?? []),
+                      {
+                        event_type: "tool_call",
+                        data: {
+                          tool_call_id: data.tool_call_id,
+                          name: data.name,
+                          args: data.args,
+                        },
+                        created_at: new Date().toISOString(),
+                      },
+                    ],
+                  }
+                : m,
+            ),
+          );
+          break;
+
+        case "tool_result":
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.message_id === data.message_id
+                ? {
+                    ...m,
+                    events: [
+                      ...(m.events ?? []),
+                      {
+                        event_type: "tool_result",
+                        data: {
+                          tool_call_id: data.tool_call_id,
+                          name: data.name,
+                          result: data.result,
+                        },
+                        created_at: new Date().toISOString(),
+                      },
+                    ],
+                  }
+                : m,
+            ),
+          );
+          break;
+
+        case "tool_error":
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.message_id === data.message_id
+                ? {
+                    ...m,
+                    events: [
+                      ...(m.events ?? []),
+                      {
+                        event_type: "tool_error",
+                        data: {
+                          tool_call_id: data.tool_call_id,
+                          name: data.name,
+                          error: data.error,
+                        },
+                        created_at: new Date().toISOString(),
+                      },
+                    ],
+                  }
                 : m,
             ),
           );
@@ -205,7 +268,7 @@ export function useChatSocket(chatId: string) {
                     ...m,
                     text: data.text,
                     agent_nickname: data.agent_nickname,
-                    isStreaming: false,
+                    isPending: false,
                   }
                 : m,
             ),
@@ -219,7 +282,7 @@ export function useChatSocket(chatId: string) {
                 ? {
                     ...m,
                     text: data.message,
-                    isStreaming: false,
+                    isPending: false,
                     isError: true,
                     errorCode: data.code,
                   }
@@ -227,6 +290,38 @@ export function useChatSocket(chatId: string) {
             ),
           );
           setIsThinking(false);
+          break;
+
+        case "routing_warning":
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.message_id === data.message_id
+                ? {
+                    ...m,
+                    events: [
+                      ...(m.events ?? []),
+                      {
+                        event_type: "routing_warning",
+                        data: {
+                          unknown_mentions: data.unknown_mentions,
+                          source: data.source,
+                          origin: data.origin,
+                        },
+                        created_at: new Date().toISOString(),
+                      },
+                    ],
+                  }
+                : m,
+            ),
+          );
+          break;
+
+        case "agent_status":
+          // Update thinking indicator if needed, but events array is for displaying in UI
+          break;
+
+        case "reasoning":
+          // Reasoning events are stream-only, not in coarse mode
           break;
 
         case "history_cleared":

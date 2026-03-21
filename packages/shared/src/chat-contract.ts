@@ -241,6 +241,14 @@ export type ChatWsEvent =
       result: unknown;
     }
   | {
+      type: "tool_error";
+      agent_id: string;
+      message_id: string;
+      tool_call_id: string;
+      name: string;
+      error: string;
+    }
+  | {
       type: "agent_status";
       agent_id: string;
       message_id: string;
@@ -271,6 +279,14 @@ export type ChatWsEvent =
   | { type: "done" }
   | { type: "error"; code: string; message: string };
 
+// ── Message events ──────────────────────────────────────────
+
+export type MessageEvent = {
+  event_type: string;
+  data: Record<string, unknown>;
+  created_at: string;
+};
+
 // ── Chat history response ───────────────────────────────────
 
 export type ChatHistoryMessage = {
@@ -283,6 +299,7 @@ export type ChatHistoryMessage = {
   agent_nickname?: string | null;
   tokens?: number;
   created_at: string;
+  events?: MessageEvent[];
 };
 
 export type ChatHistoryResponse = {

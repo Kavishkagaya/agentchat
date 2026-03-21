@@ -1,7 +1,8 @@
 import {
+  generateText,
   type LanguageModel,
+  stepCountIs,
   streamText,
-  ToolLoopAgent,
   type ToolSet,
   tool,
 } from "ai";
@@ -65,6 +66,9 @@ function resolveTools(
 ): ToolSet | undefined {
   // Start with MCP tools (if any) — these are pre-built by @ai-sdk/mcp
   const mcpMerged = Object.assign({}, ...(mcpToolSets ?? []));
+  console.log(
+    `[Agent ${agentId}] Resolving tools. Registry tools: ${toolRefs?.length ?? 0}, MCP tools: ${Object.keys(mcpMerged).length}`,
+  );
 
   // Build registry-based tools from toolRefs
   let registryTools: ToolSet = {};
@@ -98,12 +102,19 @@ function resolveTools(
         execute: async (args) => {
           console.log(`[Tool Execute] ${toolName} called with:`, args);
           options?.onToolCall?.(toolRef.id, args, toolName);
-          const result = await implementation.execute(args, {
-            agent_id: agentId,
-            tool: toolRef,
-          });
-          console.log(`[Tool Execute] ${toolName} returned:`, result);
-          return result;
+          try {
+            const result = await implementation.execute(args, {
+              agent_id: agentId,
+              tool: toolRef,
+            });
+            console.log(`[Tool Execute] ${toolName} returned:`, result);
+            return result;
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            console.error(`[Tool Execute] ${toolName} failed:`, err);
+            options?.onToolError?.(toolRef.id, message, toolName);
+            throw err;
+          }
         },
       });
       return acc;
@@ -122,6 +133,9 @@ function resolveTools(
   }
 
   const merged = { ...mcpMerged, ...registryTools };
+  console.log(
+    `[Agent ${agentId}] Final tool set has ${Object.keys(merged).length} tools: ${Object.keys(merged).join(", ")}`,
+  );
 
   return Object.keys(merged).length > 0 ? merged : undefined;
 }
@@ -157,14 +171,21 @@ export function createAgentRunner(params: {
         input.chat_context,
       );
 
-      const agent = new ToolLoopAgent({
-        model,
-        instructions: systemPrompt,
-        tools,
-      });
-
       try {
-        return await agent.generate({ messages });
+        return await generateText({
+          model,
+          system: systemPrompt,
+          messages,
+          tools,
+          stopWhen: stepCountIs(params.options?.maxSteps ?? 10),
+          temperature: params.config.temperature,
+          maxOutputTokens: params.config.max_tokens,
+          topP: params.config.top_p,
+          presencePenalty: params.config.presence_penalty,
+          frequencyPenalty: params.config.frequency_penalty,
+          stopSequences: params.config.stop,
+          seed: params.config.seed,
+        });
       } finally {
         await params.options?.onFinish?.();
       }
@@ -182,15 +203,15 @@ export function createAgentRunner(params: {
         system: systemPrompt,
         messages,
         tools,
+        stopWhen: stepCountIs(params.options?.maxSteps ?? 10),
         temperature: params.config.temperature,
-        maxTokens: params.config.max_tokens,
+        maxOutputTokens: params.config.max_tokens,
         topP: params.config.top_p,
         presencePenalty: params.config.presence_penalty,
         frequencyPenalty: params.config.frequency_penalty,
         stopSequences: params.config.stop,
         seed: params.config.seed,
-        maxSteps: params.options?.maxSteps ?? 10,
-      } as any);
+      });
 
       try {
         for await (const part of result.fullStream) {
