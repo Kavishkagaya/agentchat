@@ -17,6 +17,8 @@ export const contextMessages = sqliteTable("context_messages", {
   role: text("role").notNull(),
   text: text("text").notNull(),
   tokens: integer("tokens").notNull(),
+  agent_nickname: text("agent_nickname"),
+  sender_name: text("sender_name"),
   created_at: text("created_at").notNull(),
 });
 

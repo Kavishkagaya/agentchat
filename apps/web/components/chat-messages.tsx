@@ -16,7 +16,9 @@ type ChatMessagesProps = {
   isThinking: boolean;
 };
 
-const ToolEventLog = memo(({ events }: { events: MessageEvent[] }) => {
+const ToolEventLog = memo(({ events }: { events: MessageEvent[] | undefined }) => {
+  if (!events) return null;
+
   return (
     <div className="text-xs text-muted-foreground space-y-2 mb-2">
       {events.map((evt) => {
@@ -77,6 +79,22 @@ const ToolEventLog = memo(({ events }: { events: MessageEvent[] }) => {
             <div key={key} className="text-amber-600 dark:text-amber-500">
               ⚠️ Unknown mention(s): {unknownMentions.join(", ")}
             </div>
+          );
+        }
+
+        if (evt.event_type === "reasoning") {
+          const text = (evt.data as Record<string, unknown>).text as string;
+          return (
+            <details
+              key={`reasoning_${evt.created_at}`}
+              className="cursor-pointer"
+              open
+            >
+              <summary className="hover:opacity-80">🧠 Thinking</summary>
+              <div className="pl-4 mt-1 text-xs whitespace-pre-wrap break-words text-muted-foreground font-mono">
+                {text}
+              </div>
+            </details>
           );
         }
 

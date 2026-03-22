@@ -21,25 +21,43 @@ export class ContextManager {
       .values({
         ...params,
         tokens,
+        agent_nickname: params.agent_nickname ?? null,
+        sender_name: params.sender_name ?? null,
         created_at: params.created_at ?? new Date().toISOString(),
       })
       .run();
   }
 
-  assembleContext(): Array<{ role: string; content: string }> {
+  assembleContext(agentNickname?: string): Array<{ role: string; content: string; name?: string }> {
     try {
       return this.db
         .select({
           role: schema.contextMessages.role,
           text: schema.contextMessages.text,
+          agent_nickname: schema.contextMessages.agent_nickname,
+          sender_name: schema.contextMessages.sender_name,
         })
         .from(schema.contextMessages)
         .orderBy(asc(schema.contextMessages.id))
         .all()
-        .map((row: { role: string; text: string }) => ({
-          role: row.role,
-          content: row.text,
-        }));
+        .map((row: { role: string; text: string; agent_nickname: string | null; sender_name: string | null }) => {
+          // Preserve system role — compaction summaries must not become "user"
+          if (row.role === "system") {
+            return { role: "system", content: row.text };
+          }
+
+          let role: string;
+          if (agentNickname && row.agent_nickname === agentNickname) {
+            role = "assistant";
+          } else {
+            role = "user";
+          }
+
+          // Use agent_nickname for agents, sender_name for humans
+          const name = row.agent_nickname ?? row.sender_name ?? undefined;
+
+          return { role, content: row.text, ...(name ? { name } : {}) };
+        });
     } catch (error) {
       console.error("assembleContext failed:", error);
       return [];

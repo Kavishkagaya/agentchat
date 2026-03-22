@@ -41,7 +41,9 @@ async function authorizeRequest(
 }
 
 /**
- * Execute agent with coarse SSE (tool events and final response only).
+ * Execute agent with SSE. Mode controls which events are sent:
+ * - "coarse": status, tool_call/result/error, final only
+ * - "stream": all events including text_delta and reasoning
  */
 async function executeAgent(
   env: Env,
@@ -49,6 +51,7 @@ async function executeAgent(
   body: AgentRunRequest,
   configId: string | null,
   send: ReturnType<typeof createEventStream>["send"],
+  mode: "coarse" | "stream" = "coarse",
 ): Promise<void> {
   const tracer = createTracer(agentId ?? "unknown");
   const traceId = tracer.invocationId;
@@ -62,7 +65,12 @@ async function executeAgent(
     tracer.recordPhase("configLoad", Date.now() - configStart, {
       cacheHit: false, // TODO: expose cache hit from loadAgentConfig
     });
-    console.log(`[Agent ${agentId}] Config loaded, tools in config:`, Array.isArray(record.config.tools) ? record.config.tools.map(t => t.id).join(", ") : "none");
+    console.log(
+      `[Agent ${agentId}] Config loaded, tools in config:`,
+      Array.isArray(record.config.tools)
+        ? record.config.tools.map((t) => t.id).join(", ")
+        : "none",
+    );
 
     send("status", { status: "running" });
 
@@ -74,15 +82,15 @@ async function executeAgent(
 
     let streamStart = Date.now();
     let streamPhaseRecorded = false;
-    const invocations: Array<{ nickname: string }> = [];
+    const invocations: Array<{ nickname: string; reason?: string }> = [];
     let accumulatedText = "";
 
     for await (const event of streamAgent(record, env, input, {
       onToolCall: (toolId, args) => {
         if (toolId === "invoke_agent") {
-          const a = args as { nickname?: string };
+          const a = args as { nickname?: string; reason?: string };
           if (a.nickname) {
-            invocations.push({ nickname: a.nickname });
+            invocations.push({ nickname: a.nickname, reason: a.reason });
           }
         }
       },
@@ -105,9 +113,15 @@ async function executeAgent(
       switch (event.type) {
         case "text_delta":
           accumulatedText += event.text;
+          if (mode === "stream") {
+            send("text_delta", { text: event.text });
+          }
           break;
 
         case "reasoning":
+          if (mode === "stream") {
+            send("reasoning", { text: event.text });
+          }
           break;
 
         case "tool_call":
@@ -188,6 +202,7 @@ async function executeAgent(
 type HandlerOptions = {
   requireAuth: boolean;
   devOnly?: boolean;
+  mode?: "coarse" | "stream";
 };
 
 function createAgentHandler(options: HandlerOptions) {
@@ -261,7 +276,14 @@ function createAgentHandler(options: HandlerOptions) {
           }
         }
 
-        await executeAgent(env, agentId, body, configId, send);
+        await executeAgent(
+          env,
+          agentId,
+          body,
+          configId,
+          send,
+          options.mode ?? "coarse",
+        );
       } finally {
         await close();
       }
@@ -271,12 +293,25 @@ function createAgentHandler(options: HandlerOptions) {
   };
 }
 
-// Export the 2 handlers as factory instances
+// Export the 4 handlers as factory instances
 export const handleAgentRun = createAgentHandler({
   requireAuth: true,
+  mode: "coarse",
+});
+
+export const handleAgentRunStream = createAgentHandler({
+  requireAuth: true,
+  mode: "stream",
 });
 
 export const handleAgentRunDev = createAgentHandler({
   requireAuth: false,
   devOnly: true,
+  mode: "coarse",
+});
+
+export const handleAgentRunDevStream = createAgentHandler({
+  requireAuth: false,
+  devOnly: true,
+  mode: "stream",
 });

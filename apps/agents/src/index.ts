@@ -3,7 +3,9 @@ import type { Env } from "./env";
 import { validateEnv } from "./env";
 import {
   handleAgentRun,
+  handleAgentRunStream,
   handleAgentRunDev,
+  handleAgentRunDevStream,
 } from "./handlers";
 import { snapshotMetrics } from "./telemetry";
 import { getAllTraces, getTrace } from "./tracing";
@@ -53,8 +55,26 @@ export default {
       }
     }
 
+    if (request.method === "POST" && url.pathname === "/agents/run-stream") {
+      try {
+        return await handleAgentRunStream(request, env);
+      } catch (error) {
+        return Response.json(
+          {
+            ok: false,
+            error: error instanceof Error ? error.message : "agent error",
+          },
+          { status: 400 },
+        );
+      }
+    }
+
     if (request.method === "POST" && url.pathname === "/agents/run-dev") {
       return handleAgentRunDev(request, env);
+    }
+
+    if (request.method === "POST" && url.pathname === "/agents/run-dev-stream") {
+      return handleAgentRunDevStream(request, env);
     }
 
     if (request.method === "GET" && url.pathname === "/metrics") {

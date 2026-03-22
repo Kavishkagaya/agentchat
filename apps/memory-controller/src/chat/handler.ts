@@ -7,6 +7,7 @@ import {
   type ChatWsEvent,
   chatMessageRequestSchema,
   createAgentAccessToken,
+  type InvocationRequest,
   type MessageOrigin,
   normalizeChatRoutingConfig,
   normalizeNickname,
@@ -71,18 +72,15 @@ export class ChatHandler {
       })
       .run();
 
-    // Context messages include attribution so the LLM knows who said what
-    let contextText = params.text;
-    if (params.role === "assistant" && params.agentNickname) {
-      contextText = `[${params.agentNickname}]: ${params.text}`;
-    } else if (params.role === "user" && params.senderName) {
-      contextText = `[${params.senderName}]: ${params.text}`;
-    }
+    // Context messages use clean text; identity is tracked in agent_nickname/sender_name fields
+    const contextText = params.text;
 
     this.contextManager.insertContextMessage({
       role: params.role,
       text: contextText,
       tokens,
+      agent_nickname: params.agentNickname ?? null,
+      sender_name: params.senderName ?? null,
       created_at: createdAt,
     });
 
@@ -272,25 +270,17 @@ export class ChatHandler {
       chatContext,
     );
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30_000);
+    const res = await fetch(`${baseUrl.replace(/\/$/, "")}/agents/run-stream`, {
+      method: "POST",
+      ...opts,
+    });
 
-    try {
-      const res = await fetch(`${baseUrl.replace(/\/$/, "")}/agents/run`, {
-        method: "POST",
-        signal: controller.signal,
-        ...opts,
-      });
-
-      if (!res.ok) {
-        console.error(`Agent ${agentId} run failed: ${res.status}`);
-        throw new Error(`Agent HTTP ${res.status}`);
-      }
-
-      yield* this.consumeSSE(res);
-    } finally {
-      clearTimeout(timeout);
+    if (!res.ok) {
+      console.error(`Agent ${agentId} run failed: ${res.status}`);
+      throw new Error(`Agent HTTP ${res.status}`);
     }
+
+    yield* this.consumeSSE(res);
   }
 
   private resolveAgentNickname(
@@ -331,15 +321,17 @@ export class ChatHandler {
     usage: AgentUsage | null;
     agent_id: string;
     message_id: string;
-    invocations: Array<{ nickname: string }>;
+    invocations: Array<{ nickname: string; reason?: string }>;
   } | null> {
     const agentMsgId = `msg_${crypto.randomUUID()}`;
     let finalResult: {
       text: string;
       agent_nickname: string;
       usage: AgentUsage | null;
-      invocations: Array<{ nickname: string }>;
+      invocations: Array<{ nickname: string; reason?: string }>;
     } | null = null;
+    let accumulatedText = "";
+    let accumulatedReasoning = "";
     const knownNickname = this.resolveAgentNickname(agentId, options.config);
 
     // Broadcast that this agent started (so UI can show typing indicator)
@@ -358,6 +350,15 @@ export class ChatHandler {
 
       switch (evt.type) {
         case "text_delta":
+          accumulatedText += evt.text;
+          if (options.broadcast) {
+            this.broadcast({
+              type: "text_delta",
+              agent_id: agentId,
+              message_id: agentMsgId,
+              text: evt.text,
+            });
+          }
           break;
 
         case "tool_call":
@@ -395,7 +396,7 @@ export class ChatHandler {
               agent_id: agentId,
               message_id: agentMsgId,
               tool_call_id: evt.tool_call_id,
-              name: evt.type || "unknown",
+              name: evt.name || "unknown",
               error: evt.error,
             });
           }
@@ -403,6 +404,7 @@ export class ChatHandler {
           break;
 
         case "reasoning":
+          accumulatedReasoning += evt.text;
           if (options.broadcast) {
             this.broadcast({
               type: "reasoning",
@@ -427,14 +429,17 @@ export class ChatHandler {
           }
           break;
 
-        case "final":
+        case "final": {
+          // Use accumulated text_delta if available, otherwise use final text
+          const messageText = accumulatedText.trim() || evt.text || "";
           finalResult = {
-            text: evt.text,
+            text: messageText,
             agent_nickname: knownNickname,
             usage: evt.usage,
             invocations: evt.invocations ?? [],
           };
           break;
+        }
 
         case "error":
           if (options.broadcast) {
@@ -475,6 +480,11 @@ export class ChatHandler {
       agentNickname,
       tokens: finalResult.usage?.completionTokens,
     });
+
+    // Store accumulated reasoning as a single event row
+    if (accumulatedReasoning.trim()) {
+      this.insertEvent(agentMsgId, "reasoning", { text: accumulatedReasoning });
+    }
 
     // Broadcast the complete message
     if (options.broadcast) {
@@ -558,9 +568,9 @@ export class ChatHandler {
     // twice concurrently. Removed once the agent finishes so it can be
     // re-triggered in a later round.
     const runningAgents = new Set<string>();
-    const queue = initialDecision.targetAgentIds.map((agentId) => {
+    const queue: InvocationRequest[] = initialDecision.targetAgentIds.map((agentId) => {
       runningAgents.add(agentId);
-      return { agentId, prompt: params.text, depth: 0 };
+      return { agentId, prompt: params.text, depth: 0, origin: "user" };
     });
 
     const agentMessages: Array<{
@@ -584,7 +594,7 @@ export class ChatHandler {
         agentSetups: initialDecision.config.agent_setups ?? [],
       });
 
-      const context = this.contextManager.assembleContext();
+      const context = this.contextManager.assembleContext(agentNickname);
 
       const eventStream = this.invokeAgentCoarse(
         current.agentId,
@@ -595,14 +605,35 @@ export class ChatHandler {
         chatContext,
       );
 
-      const result = await this.processAgentEvents(
-        current.agentId,
-        eventStream,
-        {
-          broadcast: true,
-          config: initialDecision.config,
-        },
-      );
+      let result: {
+        text: string;
+        agent_nickname: string;
+        usage: AgentUsage | null;
+        agent_id: string;
+        message_id: string;
+        invocations: Array<{ nickname: string; reason?: string }>;
+      } | null;
+      try {
+        result = await this.processAgentEvents(
+          current.agentId,
+          eventStream,
+          {
+            broadcast: true,
+            config: initialDecision.config,
+          },
+        );
+      } catch (error) {
+        // Broadcast error to UI and continue with next agent
+        this.broadcast({
+          type: "agent_error",
+          agent_id: current.agentId,
+          message_id: `msg_${crypto.randomUUID()}`,
+          code: "agent_execution_error",
+          message: error instanceof Error ? error.message : "agent execution failed",
+        });
+        runningAgents.delete(current.agentId);
+        continue;
+      }
 
       // Agent finished — remove from running set so it can be re-triggered later
       runningAgents.delete(current.agentId);
@@ -654,8 +685,10 @@ export class ChatHandler {
         runningAgents.add(targetAgentId);
         queue.push({
           agentId: targetAgentId,
-          prompt: result.text,
+          prompt: inv.reason?.trim() || result.text,
           depth: current.depth + 1,
+          origin: "agent",
+          callerAgentId: current.agentId,
         });
       }
 

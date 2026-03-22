@@ -320,8 +320,56 @@ export function useChatSocket(chatId: string) {
           // Update thinking indicator if needed, but events array is for displaying in UI
           break;
 
+        case "text_delta":
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.message_id === data.message_id
+                ? {
+                    ...m,
+                    text: m.text + (data.text ?? ""),
+                  }
+                : m,
+            ),
+          );
+          break;
+
         case "reasoning":
-          // Reasoning events are stream-only, not in coarse mode
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m.message_id !== data.message_id) return m;
+              const existing = m.events?.find((e) => e.event_type === "reasoning");
+              if (existing) {
+                // Accumulate text into the existing reasoning event
+                return {
+                  ...m,
+                  events: m.events?.map((e) =>
+                    e.event_type === "reasoning"
+                      ? {
+                          ...e,
+                          data: {
+                            text:
+                              ((e.data as Record<string, unknown>).text as string) +
+                              (data as Record<string, unknown>).text,
+                          },
+                        }
+                      : e,
+                  ),
+                };
+              }
+              // First chunk — create the reasoning event entry
+              return {
+                ...m,
+                events: [
+                  ...(m.events ?? []),
+                  {
+                    event_type: "reasoning",
+                    data: { text: (data as Record<string, unknown>).text },
+                    created_at: new Date().toISOString(),
+                  },
+                ],
+              };
+            }),
+          );
           break;
 
         case "history_cleared":

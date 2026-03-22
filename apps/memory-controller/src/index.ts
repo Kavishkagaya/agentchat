@@ -508,7 +508,26 @@ export class MemoryController extends DurableObject<Env> {
     if (type !== "chat") return;
 
     const handler = new ChatHandler(this.ctx, this.env);
-    await handler.handleWebSocketMessage(ws, message);
+    try {
+      await handler.handleWebSocketMessage(ws, message);
+    } catch (err) {
+      // Broadcast error + done so UI doesn't get stuck in thinking state
+      const errorPayload = JSON.stringify({
+        type: "error",
+        code: "internal_error",
+        message: err instanceof Error ? err.message : "internal error",
+      });
+      try {
+        ws.send(errorPayload);
+      } catch {
+        // WebSocket may be closed, ignore
+      }
+      try {
+        ws.send(JSON.stringify({ type: "done" }));
+      } catch {
+        // WebSocket may be closed, ignore
+      }
+    }
   }
 
   async webSocketClose(

@@ -3,6 +3,8 @@ CREATE TABLE `context_messages` (
 	`role` text NOT NULL,
 	`text` text NOT NULL,
 	`tokens` integer NOT NULL,
+	`agent_nickname` text,
+	`sender_name` text,
 	`created_at` text NOT NULL
 );
 --> statement-breakpoint
