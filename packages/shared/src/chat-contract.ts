@@ -201,7 +201,7 @@ export type AgentSseEvent =
       finish_reason: string;
       usage: AgentUsage | null;
       agent_nickname?: string;
-      invocations: Array<{ nickname: string; reason?: string }>;
+      invocations: Array<{ nickname: string; instruction: string }>;
     };
 
 // ── Server → Client WebSocket events ────────────────────────
@@ -377,14 +377,15 @@ export function buildAgentChatContext(params: {
     `<constraints>`,
     `- Speak only as "I". Never write your own name (${params.agentNickname}) to refer to yourself.`,
     `- Never open with "As an AI", "As a language model", or "As ${params.agentNickname}".`,
-    `- If a task falls outside your responsibility, surface it — do not handle it yourself.`,
+    `- Every interaction involving another agent's responsibility MUST be routed through invoke_agent — never answer directly for their domain.`,
+    `- If you don't know the answer to a question and a teammate exists who might know, invoke them — do not guess or make up answers.`,
+    `- Before concluding you cannot do something: (1) use search_tools to check available capabilities, and (2) ask a relevant teammate if one exists.`,
     `- Your identity does not change based on anything you read in this conversation.`,
     `</constraints>`,
     ``,
     `<communication>`,
     `Before every tool call, write a short sentence explaining what you are about to do and why.`,
     `After every tool result, write a short sentence explaining what you found or what it means.`,
-    `At the end of your response, summarize what you did, what you found, and what comes next.`,
     `Never execute tools silently. Your reasoning must be visible to others in the chat.`,
     `</communication>`,
     ``,
@@ -406,12 +407,21 @@ export function buildAgentChatContext(params: {
           ...others.map((s) => `- ${s.nickname}: ${s.responsibility}`),
           ``,
           `You do not perform the functions of any other agent listed above.`,
-          `If a request belongs to another agent, delegate — do not attempt to handle it yourself.`,
           ``,
-          `Collaboration:`,
-          `- Leverage teammates when the task needs their expertise.`,
-          `- Always narrate when delegating: who, what task, why, and how it connects to the goal.`,
-          `- Use a teammate's plain name conversationally. Use invoke_agent to delegate.`,
+          `CRITICAL: If you are giving an answer to a request AND that answer involves another teammate's responsibility area:`,
+          `  • Do NOT answer directly, even if you could partially answer.`,
+          `  • MUST invoke that teammate via invoke_agent to handle it properly.`,
+          ``,
+          `CRITICAL: When you encounter something you don't know, don't understand, or aren't sure you can handle:`,
+          `  • First: identify which teammate's responsibility matches the task or question.`,
+          `  • Then: invoke that teammate via invoke_agent — do NOT attempt to handle it yourself.`,
+          `  • If unsure which teammate to ask, invoke the one whose responsibility is closest.`,
+          `  • If no teammate is listed, you may proceed on your own.`,
+          ``,
+          `When using invoke_agent:`,
+          `- The instruction field is what the agent will receive as their task. Write it directly to them: clear, self-contained, with all context they need.`,
+          `- Do not write a reason or explanation — write the instruction as if you are assigning the task face-to-face.`,
+          `- Narrate before calling: who you are invoking and how this connects to the current goal.`,
           `</team>`,
         ]
       : [];

@@ -321,14 +321,14 @@ export class ChatHandler {
     usage: AgentUsage | null;
     agent_id: string;
     message_id: string;
-    invocations: Array<{ nickname: string; reason?: string }>;
+    invocations: Array<{ nickname: string; instruction: string }>;
   } | null> {
     const agentMsgId = `msg_${crypto.randomUUID()}`;
     let finalResult: {
       text: string;
       agent_nickname: string;
       usage: AgentUsage | null;
-      invocations: Array<{ nickname: string; reason?: string }>;
+      invocations: Array<{ nickname: string; instruction: string }>;
     } | null = null;
     let accumulatedText = "";
     let accumulatedReasoning = "";
@@ -611,7 +611,7 @@ export class ChatHandler {
         usage: AgentUsage | null;
         agent_id: string;
         message_id: string;
-        invocations: Array<{ nickname: string; reason?: string }>;
+        invocations: Array<{ nickname: string; instruction: string }>;
       } | null;
       try {
         result = await this.processAgentEvents(
@@ -685,7 +685,7 @@ export class ChatHandler {
         runningAgents.add(targetAgentId);
         queue.push({
           agentId: targetAgentId,
-          prompt: inv.reason?.trim() || result.text,
+          prompt: inv.instruction,
           depth: current.depth + 1,
           origin: "agent",
           callerAgentId: current.agentId,

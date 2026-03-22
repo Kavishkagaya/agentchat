@@ -15,7 +15,7 @@ export interface ToolRegistryOptions {
 
 const invokeAgentSchema = z.object({
   nickname: z.string().describe("The teammate's nickname"),
-  reason: z.string().optional().describe("Why you are delegating"),
+  instruction: z.string().describe("The exact task and context to pass to the invoked agent — write it as a direct instruction to them, not a reason for delegating"),
 });
 
 const invokeAgentTool: ToolImplementation<typeof invokeAgentSchema> = {
@@ -28,6 +28,46 @@ const invokeAgentTool: ToolImplementation<typeof invokeAgentSchema> = {
     return { ok: true, queued: args.nickname };
   },
 };
+
+/**
+ * Create a tool search tool that allows agents to discover available tools by keyword.
+ * Searches tool IDs and descriptions via substring matching (case-insensitive).
+ */
+export function createToolSearchTool(
+  tools: Array<{ id: string; description: string }>,
+): ToolImplementation {
+  const searchToolSchema = z.object({
+    query: z
+      .string()
+      .describe("Keyword to search available tools by name or description"),
+  });
+
+  return {
+    id: "search_tools",
+    description:
+      "Search available tools by keyword to discover what capabilities you have access to",
+    schema: searchToolSchema,
+    execute: async (args: z.infer<typeof searchToolSchema>) => {
+      const q = args.query.toLowerCase();
+      const matches = tools.filter(
+        (t) =>
+          t.id.toLowerCase().includes(q) ||
+          t.description.toLowerCase().includes(q),
+      );
+
+      if (matches.length === 0) {
+        return { results: [], message: "No tools found matching that query" };
+      }
+
+      return {
+        results: matches.map((t) => ({
+          name: t.id,
+          description: t.description,
+        })),
+      };
+    },
+  } as ToolImplementation<typeof searchToolSchema>;
+}
 
 /**
  * Create a tool registry for an agent run.

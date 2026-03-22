@@ -15,7 +15,7 @@ import {
   resolveModelEnv,
   resolveTooling,
 } from "./resolution";
-import { createToolRegistry } from "./tools";
+import { createToolRegistry, createToolSearchTool } from "./tools";
 import { createCfSandboxResolver } from "./tools/sandbox-resolver";
 
 export type RunResult = {
@@ -61,12 +61,8 @@ async function resolveSkills(
         updatedAt: s.updatedAt.toISOString(),
       }));
 
-      // Build skill list injection for system prompt
-      if (skills.length > 0) {
-        systemPromptInjection = `Available skills:\n${skills
-          .map((s) => `- \`${s.name}\`: ${s.description || ""}`)
-          .join("\n")}`;
-      }
+      // Skills are no longer injected into system prompt.
+      // Agents discover skills via search_tools tool, then load via load_skill.
     } catch (error) {
       // Log but don't fail if skill loading fails
       console.error("Failed to load skills:", error);
@@ -176,8 +172,24 @@ export async function buildAgentRunner(
     skills,
   });
 
+  // Collect all tool descriptors (registry + MCP) for search_tools discovery
+  const allToolDescriptions = [
+    ...toolRegistry.list().map((t) => ({
+      id: t.id,
+      description: t.description,
+    })),
+    ...mcpToolSets.flatMap((ts) =>
+      Object.entries(ts).map(([name, tool]) => ({
+        id: name,
+        description: (tool as { description?: string }).description ?? "",
+      })),
+    ),
+  ];
+  // Register the search_tools tool for agent-initiated capability discovery
+  toolRegistry.register(createToolSearchTool(allToolDescriptions));
+
   // Wire registry tools into agent config by generating tool refs from the registry
-  // This ensures sandbox tools, skill tools, and any other registered tools are available to the agent
+  // This ensures sandbox tools, skill tools, search_tools, and any other registered tools are available to the agent
   const registeredToolRefs = toolRegistry.list().map((impl) => ({
     id: impl.id,
     description: impl.description,
